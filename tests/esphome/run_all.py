@@ -30,6 +30,7 @@ TESTS = [
     "preset_settings_integration",
     "timer_integration",
     "keep_awake_integration",
+    "preset_persistence_integration",
 ]
 
 

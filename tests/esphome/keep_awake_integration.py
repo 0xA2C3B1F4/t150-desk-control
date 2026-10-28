@@ -18,8 +18,8 @@ import time
 from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
 
 
-# Scenarios with preset 3 polling: a verified-cycle local change and a
-# conflicting journal loaded at boot.
+# Scenarios with preset 3 polling: later changes remain ambiguous even after
+# a verified RAM restore and must retain the original backup.
 POLLED = " || ".join(
     f'std::string(getenv("SCENARIO")) == "{n}"'
     for n in ("recover_local_change", "recover_local_change_temp", "recover_conflict", "recover_interrupted")
@@ -58,6 +58,9 @@ def main():
     priority: -100
     then:
       - lambda: |-
+          keep_awake_test::Probe::empty_rx_crosses_freshness_boundary();
+          keep_awake_test::Probe::stop_cancels_confirmed_restore();
+          keep_awake_test::Probe::gap_cancels_recovery();
           keep_awake_test::Probe::stale_final_readback();
           keep_awake_test::Probe::pending_deadline();
           keep_awake_test::Probe::yielded_stale_final_readback();
@@ -337,6 +340,9 @@ desk_uart:
                 proc.terminate()
                 proc.wait(timeout=5)
             text = re.sub(r"\x1b\[[0-9;]*m", "", (d / "runtime.log").read_text())
+            assert "EMPTY_RX_BOUNDARY=passed" in text
+            assert "STOP_CONFIRMED_RESTORE=passed" in text
+            assert "GAP_CANCELS_RECOVERY=passed" in text
             assert "STALE_FINAL_READBACK=passed" in text
             assert "PENDING_DEADLINE=passed" in text
             assert "YIELDED_STALE_FINAL_READBACK=passed" in text
@@ -353,10 +359,6 @@ desk_uart:
                 "moving_before",
                 "stale_before",
                 "raw_timeout",
-                "local_change",
-                "local_change_temp",
-                "recover_local_change",
-                "recover_local_change_temp",
             ):
                 assert pending == ["0"], (name, pending)
             else:
@@ -364,6 +366,7 @@ desk_uart:
                 if name not in (
                     "release_failure",
                     "disconnect",
+                    "late_then_stale",
                     "restore_mismatch",
                     "early_restore_timeout",
                     "early_restore_conflict",
@@ -374,6 +377,10 @@ desk_uart:
                     "recover_accept_changed",
                     "recover_accept_timeout",
                     "recover_disabled_t",
+                    "local_change",
+                    "local_change_temp",
+                    "recover_local_change",
+                    "recover_local_change_temp",
                 ):
                     assert pending[-1] == "0", (name, pending)
             brakes = sum(f == bytes([0x17, 1, 0, 0]) for f in sent)
@@ -429,12 +436,12 @@ desk_uart:
                     gaps = [int(m) for m in re.findall(r"SAMPLE_GAP=(\d+)", text)]
                     assert gaps and max(gaps) >= 1200, gaps
             elif name == "late_then_stale":
-                # Telemetry was lost before the original was verified: the
-                # original is still restored, but no new cycle is started.
+                # A full connection loss now cancels queued restoration.
+                # Reconnect reads only; the borrowed value needs a decision.
                 assert brakes == 0 and presses == 0, (brakes, presses)
-                assert writes == [raw, original] and preset == original, writes
-                assert "telemetry lost before original preset 3 was verified" in text
-                assert "Keep-awake failed" in controls[-1], controls
+                assert writes == [raw] and preset == raw, writes
+                assert pending[-1] == "1", pending
+                assert any("decision" in status for status in controls), controls
             elif name.startswith("early_restore_"):
                 assert presses == brakes == 0, (name, presses, brakes)
                 assert pending[-1] == "1", (name, pending)
@@ -448,10 +455,12 @@ desk_uart:
                 assert writes == ([raw, original] if name.endswith("mismatch") else [raw]), (name, writes)
             elif name.startswith("local_change"):
                 assert presses == 1 and writes == [raw, original] and brakes == 0, (presses, writes)
-                assert "retained backup cleared" in text
+                assert "retained backup cleared" not in text
+                assert pending[-1] == "1", (name, pending)
             elif name.startswith("recover_local_change"):
                 assert presses == 0 and not writes and brakes == 0
-                assert "Checking retained keep-awake backup" not in text
+                assert pending[-1] == "1", (name, pending)
+                assert any("decision" in s for s in controls), (name, controls)
             elif name.startswith("recover_"):
                 assert presses == 0 and brakes == (2 if name == "recover_stop" else 0)
                 if name in ("recover_clean", "recover_disabled_clean"):
@@ -475,14 +484,18 @@ desk_uart:
                     "recover_accept_t",
                     "recover_stop",
                 ):
-                    assert text.count("journal committed") == 1, (name, "Backup not durably cleared")
+                    if name in ("recover_accept", "recover_accept_t", "recover_stop"):
+                        assert "backup discarded" in text, (name, "Explicit acceptance did not complete")
+                    else:
+                        assert text.count("journal committed") == 0, (name, "Readback/restore must not rewrite or clear the backup")
                     assert not any(
                         "Interrupted preset transaction; restore required" in line
                         for line in text.splitlines()
                         if "RESULT=" in line
                     )
                 if name in ("recover_clean", "recover_disabled_clean"):
-                    assert "Retained preset backup checked and cleared" in text
+                    assert "checked and cleared" not in text
+                    assert "EEPROM" in text, (name, "RAM-only recovery result must be explicit")
                 # A journal loaded at boot is never cleared by preset polling.
                 assert "retained backup cleared" not in text
             elif name == "moving_before":

@@ -240,10 +240,15 @@ The caller drains `take_frame()`, feeds replies through `accept()`, and supplies
 its monotonic clock, fresh/deduplicated telemetry and raw-Q stability to `tick()`.
 `Backup` requires durable storage before `commit(true)`. `Recall` requires a
 separate bounded preset pulse and `recalled()`. `take_brake()` requests the
-transport's priority stop path. `ClearJournal` requires durable record clearing.
+transport's priority stop path. `ClearJournal` hands completion to the caller's
+storage policy. ESPHome retains the backup after RAM restoration or a matching
+recovery read; only explicit acceptance clears it durably.
 `recover()` reinstates a pending record without sending anything; explicit
-`retry_restore()` requests restoration, never motion. `check_recovery()` reads
-without overwriting an ambiguous value. `accept_current()` reads preset 3 twice
+`restore_backup()` requests explicit restoration, never motion. It requires two
+stable reads with different receive sequences before replacing a non-original
+value. The adapter uses this method for its Restore button. `retry_restore()`
+retains the strict automatic-restoration path, which refuses a third value.
+`check_recovery()` reads without overwriting an ambiguous value. `accept_current()` reads preset 3 twice
 with different receive sequences; matching values allow the caller to clear the
 backup without writing to the controller. Lost telemetry, unstable height or
 interruption retain the backup. Cancellation drops any unsent target frame.
@@ -299,7 +304,13 @@ stateDiagram-v2
     RestoreVerify --> Fault: mismatch or timeout
     ClearJournal --> Fault: journal_cleared(false)
     [*] --> Fault: recover() at boot
-    Fault --> Settle: retry_restore()
+    Fault --> Settle: retry_restore(), strict retry
+    Fault --> RestoreCheck: restore_backup(), explicit Restore
+    RestoreCheck --> RestoreConfirm: first read
+    RestoreConfirm --> ClearJournal: second read, new sequence, same original
+    RestoreConfirm --> RestoreWrite: second read, new sequence, same non-original
+    RestoreCheck --> Fault: timeout or interrupted
+    RestoreConfirm --> Fault: value changed, timeout or interrupted
     Fault --> RecoveryRead: check_recovery()
     RecoveryRead --> ClearJournal: preset 3 = original
     RecoveryRead --> Fault: any other value
@@ -310,11 +321,12 @@ stateDiagram-v2
 ```
 
 After early restoration, `Monitoring` is busy but no longer dirty: the original
-preset has been read back and the journal cleared. A Stop still goes through
+preset has been read back and the RAM transaction has completed. The adapter
+retains its persistent backup. A Stop still goes through
 the transport's braking/settling interlock. Lost telemetry or the 60 s movement
 timeout requests a brake and ends monitoring with an error. Failure while early
-restoration is in progress, including journal-clear failure, also requests a
-brake; an uncleared journal remains available for recovery. Keep-awake never
+restoration is in progress, including storage-handshake failure, also requests a
+brake; the backup remains available for recovery. Keep-awake never
 uses the early-restoration path. Stability is a heuristic, not proof of reaching
 the requested height.
 

@@ -205,8 +205,8 @@ desk_uart:
                     outgoing.extend(os.read(master, 4096))
             proc.terminate()
             proc.wait(timeout=5)
-        assert all(f[0] == 0x13 for f in frames(outgoing)), "Restart replayed motion or overwrote preset"
-        assert "Interrupted target move" in (work / "restart.log").read_text()
+        assert all(f[0] in (0x13, 0x15) for f in frames(outgoing)), "Restart replayed motion or overwrote preset"
+        assert "backup" in (work / "restart.log").read_text().lower()
         summary = {
             "passed": True,
             "transport": "ESPHome host + synthetic PTY, no hardware",

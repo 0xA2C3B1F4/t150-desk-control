@@ -1,5 +1,6 @@
 #include "desk_protocol/target.h"
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 using namespace desk_protocol;
 #define CHECK(x) do { if (!(x)) { std::cerr << __LINE__ << ": " #x "\n"; std::exit(1); } } while(false)
@@ -35,6 +36,54 @@ static void early_restored(TemporaryPreset &t) {
   t.journal_cleared(true); CHECK(t.phase()==Phase::Monitoring && t.busy() && !t.dirty());
 }
 int main() {
+  // Explicit recovery can restore an older temporary value or another stable
+  // value only after two distinct replies. Ordinary restoration still refuses
+  // a third value; caller acceptance is required for this separate operation.
+  {
+    TemporaryPreset t; t.recover(456, 122);
+    CHECK(t.restore_backup(0)); take(t,0x15,0x1F);
+    auto first=value(0x1F,555); first.bytes[5]=1;
+    t.accept(first,1); take(t,0x15,0x1F);
+    CHECK(t.phase()==Phase::RestoreConfirm);
+    t.accept(first,2); Frame f; CHECK(!t.take_frame(f));
+    auto second=first; second.bytes[5]=2;
+    t.accept(second,3); f=take(t,0x19,0x1F); CHECK(be16(f.bytes+2)==456);
+    t.accept(ack(),4); take(t,0x15,0x1F);
+    t.accept(value(0x1F,456),5); CHECK(t.phase()==Phase::ClearJournal);
+    t.journal_cleared(true); CHECK(!t.dirty() && !t.busy() && !t.failed());
+  }
+  {
+    TemporaryPreset t; t.recover(456,122); CHECK(t.restore_backup(0)); take(t,0x15,0x1F);
+    auto first=value(0x1F,555); first.bytes[5]=1;
+    t.accept(first,1); take(t,0x15,0x1F);
+    auto changed=value(0x1F,556); changed.bytes[5]=2;
+    t.accept(changed,2); Frame f;
+    CHECK(t.failed() && t.dirty() && t.phase()==Phase::Fault && !t.take_frame(f));
+    CHECK(std::strcmp(t.error(),"Preset changed during recovery; backup retained")==0);
+  }
+  for (bool stale : {false,true}) {
+    TemporaryPreset t; t.recover(456,122); CHECK(t.restore_backup(0)); take(t,0x15,0x1F);
+    t.tick(stale?1:700,!stale,2000,true); Frame f;
+    CHECK(t.failed() && t.dirty() && t.phase()==Phase::Fault && !t.take_frame(f));
+  }
+  {
+    TemporaryPreset t; t.recover(456,122); CHECK(t.restore_backup(0)); take(t,0x15,0x1F);
+    auto first=value(0x1F,456); first.bytes[5]=1;
+    t.accept(first,1); take(t,0x15,0x1F);
+    first.bytes[5]=2; t.accept(first,2); Frame f;
+    CHECK(t.phase()==Phase::ClearJournal && !t.take_frame(f));
+  }
+  {
+    TemporaryPreset t;
+    const char *reason="Preset 3 differs from retained backup; restore backup or accept current preset";
+    t.recover(456,122,reason);
+    CHECK(t.dirty() && t.failed() && std::strcmp(t.error(),reason)==0);
+    CHECK(t.accept_current(0)); take(t,0x15,0x1F);
+    auto first=value(0x1F,555); first.bytes[5]=1;
+    t.accept(first,1); take(t,0x15,0x1F);
+    auto changed=value(0x1F,556); changed.bytes[5]=2; t.accept(changed,2);
+    CHECK(t.failed() && std::strcmp(t.error(),"Preset changed during recovery; backup retained")==0);
+  }
   // A user button may interrupt every phase before recall. A dirty preset
   // still needs settling and verified restoration; no temporary recall leaks.
   for (int stage = 0; stage <= 6; ++stage) {
@@ -130,6 +179,11 @@ int main() {
     TemporaryPreset t; recalled(t,75); t.observe_height(75); t.tick(3008,true,2000,true);
     take(t,0x15,0x1F); t.accept(value(0x1F,456),3009); t.journal_cleared(true);
     CHECK(!t.busy()); // No movement: retain the settled fallback.
+  }
+  {
+    TemporaryPreset t; early_restored(t);
+    t.connection_lost(104); Frame f;
+    CHECK(t.take_brake() && !t.take_frame(f) && t.failed() && !t.busy());
   }
   uint16_t raw=999;
   CHECK(!metric_target_raw(729,raw)); CHECK(!metric_target_raw(1181,raw));

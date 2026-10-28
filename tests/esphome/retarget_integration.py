@@ -163,7 +163,7 @@ desk_uart:
             "unlocked=1",
             "end_latched=0",
             "Pending target cancelled by Stop",
-            "Target replacement cancelled by fault",
+            "Pending target cancelled by connection loss; request again",
             "Stop completed; remote controls ready",
         ]:
             assert marker in out, marker
