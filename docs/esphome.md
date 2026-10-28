@@ -356,9 +356,20 @@ it checks preset 3 with read-only requests once telemetry is fresh and settled.
 A matching original resolves that recovery check while keeping the backup; it
 does not clear an existing keep-awake fault. Any different value needs a
 recovery decision. A later preset read cannot silently discard the backup or
-replace it with a new original. Records from earlier component versions remain
-recoverable with the same component ID. Resolve retained backups before
-downgrading to an older component that cannot read the new record format.
+replace it with a new original.
+
+Backups include the configured height profile. A different profile, damaged
+record or storage error blocks movement, preset edits, Restore and Accept;
+Stop and height telemetry remain available. Check **Control status** and keep
+the stored data for inspection. Resolve a backup under its original profile
+before switching profiles. Units, entity names and user height limits do
+not change the profile identity. This identity does not identify the connected
+controller or its firmware.
+
+Earlier eight-byte records migrate with the same component ID and the built-in
+profile. Accept commits a resolved record before clearing the old format, so an
+interrupted cleanup cannot revive an accepted backup. Resolve backups before
+downgrading: older component versions cannot enforce the profile binding.
 
 The recovery buttons and pending sensor can also be configured with target
 movement disabled. Keep them available for retained backups. Keep the

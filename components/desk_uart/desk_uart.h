@@ -5,7 +5,8 @@
 #include "desk_protocol/target.h"
 #include "desk_protocol/timer.h"
 #include "desk_protocol/presets.h"
-#include "esphome/core/preferences.h"
+#include "desk_protocol/preset_journal.h"
+#include "journal_storage.h"
 #include "esphome/core/component.h"
 #include "esphome/core/automation.h"
 #include "esphome/components/uart/uart.h"
@@ -49,6 +50,7 @@ class DeskUART : public Component, public uart::UARTDevice {
   void set_keep_awake_enabled(bool enabled) { keep_awake_enabled_ = enabled; }
   void set_target_enabled(bool enabled) { target_enabled_ = enabled; }
   void set_preference_key(uint32_t key) { preference_key_ = key; }
+  void set_v4_preference_key(uint32_t key) { v4_preference_key_ = key; }
   void set_restore_pending_sensor(binary_sensor::BinarySensor *s) { restore_pending_sensor_ = s; }
   void set_load_limit_number(uint8_t index, number::Number *n) { if (index < 2) limit_numbers_[index] = n; }
   void set_preset_height_number(uint8_t slot, number::Number *n) { if (slot >= 1 && slot <= 3) preset_numbers_[slot - 1] = n; }
@@ -110,6 +112,16 @@ class DeskUART : public Component, public uart::UARTDevice {
   bool timer_enabled_{false}, last_timer_pending_{false};
   const char *last_timer_error_{nullptr};
   void target_loop_(uint32_t now);
+  void load_journal_();
+  const char *journal_error_() const;
+  virtual JournalLoad read_journal_storage_(uint32_t key, uint8_t *data, size_t length) {
+    return read_journal_storage(key, data, length);
+  }
+  virtual bool write_journal_storage_(uint32_t key, const uint8_t *data, size_t length) {
+    return write_journal_storage(key, data, length);
+  }
+  bool write_journal_(const desk_protocol::PresetJournal &journal);
+  bool clear_legacy_journal_();
   bool save_journal_(bool active);
   bool recovery_access_allowed_(uint32_t now) const;
   bool clear_cached_journal_();
@@ -133,16 +145,16 @@ class DeskUART : public Component, public uart::UARTDevice {
   uint8_t last_internal_phase_{255};
   bool last_internal_release_{false};
   uint32_t stable_ms_(uint32_t /*now*/) const { return height_seen_ ? static_cast<uint32_t>(last_height_received_ - last_height_change_) : 0; }
-  struct PresetJournal { uint32_t magic; uint16_t original; uint16_t temporary; };
-  PresetJournal cached_journal_{};
+  desk_protocol::PresetJournal cached_journal_{};
+  const char *journal_block_reason_{nullptr};
+  bool legacy_cleanup_pending_{false};
   // RAM readback evidence only; never authorizes deleting the durable backup.
-  struct VerifiedJournal { bool valid; uint16_t original; uint16_t temporary; };
-  VerifiedJournal verified_journal_{false, 0, 0};
-  ESPPreferenceObject preset_preference_;
+  struct VerifiedJournal { bool valid; uint16_t original; uint16_t temporary; desk_protocol::HeightProfileIdentity profile; };
+  VerifiedJournal verified_journal_{false, 0, 0, {}};
   desk_protocol::TemporaryPreset target_move_{height_profile_};
   number::Number *target_number_{nullptr};
   binary_sensor::BinarySensor *restore_pending_sensor_{nullptr};
-  uint32_t preference_key_{0}, last_height_change_{0}, last_height_received_{0};
+  uint32_t preference_key_{0}, v4_preference_key_{0}, last_height_change_{0}, last_height_received_{0};
   uint16_t last_q_{0};
   float min_height_{height_profile_.control_min_tenths() / 10.0f};
   float max_height_{height_profile_.control_max_tenths() / 10.0f};

@@ -101,22 +101,11 @@ void DeskUART::setup() {
   if (this->frame_errors_sensor_) this->frame_errors_sensor_->publish_state(0);
   if (this->sample_gap_sensor_) this->sample_gap_sensor_->publish_state(NAN);
   this->gap_window_start_ = millis();
-  {  // Recovery records remain relevant even after target controls are disabled.
-    this->preset_preference_ = global_preferences->make_preference<PresetJournal>(this->preference_key_, true);
-    PresetJournal journal{};
-    if (this->preset_preference_.load(&journal) &&
-        (journal.magic == 0x44534B31 || journal.magic == 0x44534B32 || journal.magic == 0x44534B33)) {
-      // Same key and eight-byte layout: legacy records remain recoverable.
-      this->cached_journal_ = journal;
-      this->cached_journal_valid_ = true;
-      this->target_move_.recover(journal.original, journal.temporary);
-      this->keep_awake_recovery_ = true;
-      this->last_target_error_ = this->target_move_.error();
-      ESP_LOGD(TAG, "Checking retained preset backup after startup; EEPROM unverified");
-    }
-    if (this->target_number_) this->target_number_->publish_state(NAN);
-  }
-  if (this->restore_pending_sensor_) this->restore_pending_sensor_->publish_state(this->target_move_.dirty());
+  // Recovery records remain relevant even after target controls are disabled.
+  this->load_journal_();
+  if (this->target_number_) this->target_number_->publish_state(NAN);
+  this->last_restore_pending_ = this->journal_error_() || this->target_move_.dirty();
+  if (this->restore_pending_sensor_) this->restore_pending_sensor_->publish_state(this->last_restore_pending_);
   if (this->timer_pending_sensor_) this->timer_pending_sensor_->publish_state(false);
   if (this->stop_locked_sensor_) this->stop_locked_sensor_->publish_state(false);
   this->last_keep_awake_ = millis();
@@ -235,6 +224,7 @@ void DeskUART::loop() {
       static_cast<uint32_t>(now - this->last_subscribe_) >= 5000) this->subscribe_(now);
 }
 bool DeskUART::recall_preset(uint8_t slot) {
+  if (const char *error = this->journal_error_()) return this->result_(false, error);
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   const uint32_t now = millis();
   if (this->journal_recheck_pending_) return this->result_(false, "Preset backup needs a fresh read after connection loss");
@@ -273,7 +263,7 @@ void DeskUART::discard_pending_preset_(const char *reason) {
 }
 bool DeskUART::pending_preset_loop_(uint32_t now) {
   if (!this->pending_preset_) return false;
-  if (this->journal_recheck_pending_ || !this->motion_enabled_ || this->firmware_export_active_ || this->stop_latched_ ||
+  if (this->journal_error_() || this->journal_recheck_pending_ || !this->motion_enabled_ || this->firmware_export_active_ || this->stop_latched_ ||
       this->release_fault_ || this->keep_awake_fault_ || this->target_move_.failed() ||
       !this->monitor_.fresh(now) || static_cast<uint32_t>(now - this->last_height_received_) > 750 ||
       this->last_q_ != this->pending_preset_q_ ||
@@ -352,7 +342,8 @@ bool DeskUART::clear_stop_latch() {
     return false;
   // No motion is sent, and no request is replayed by clearing the interlock.
   this->stop_latched_ = false;
-  return this->result_(true, "Stop completed; remote controls ready");
+  return this->result_(true, this->journal_error_() ?
+      "Stop completed; preset backup still blocks controls, see control status" : "Stop completed; remote controls ready");
 }
 void LoadLimitNumber::control(float value) {
   if (!std::isfinite(value) || value < 1 || value > 65535 || std::floor(value) != value) {
@@ -449,7 +440,7 @@ void DeskUART::limit_loop_(uint32_t now) {
   }
 }
 bool DeskUART::preset_access_allowed_(uint32_t now) const {
-  return !this->journal_recheck_pending_ && !this->pending_preset_ && !this->firmware_export_active_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
+  return !this->journal_error_() && !this->journal_recheck_pending_ && !this->pending_preset_ && !this->firmware_export_active_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
          static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
          static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000 &&
          !this->target_move_.busy() && !this->retarget_pending_ && !this->timer_.busy() &&
@@ -457,6 +448,7 @@ bool DeskUART::preset_access_allowed_(uint32_t now) const {
          !this->release_ack_.pending() && !this->stop_ack_.pending() && this->limit_phase_ == LimitPhase::Idle;
 }
 bool DeskUART::set_preset_height(uint8_t slot, float cm) {
+  if (const char *error = this->journal_error_()) return this->result_(false, error);
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   const uint32_t now = millis();
   this->last_keep_awake_ = now;
@@ -515,11 +507,89 @@ void DeskUART::preset_settings_loop_(uint32_t now) {
     }
   }
 }
+const char *DeskUART::journal_error_() const {
+  if (this->journal_block_reason_) return this->journal_block_reason_;
+  if (this->cached_journal_valid_ && this->cached_journal_.profile != this->height_profile_.identity())
+    return "Preset backup belongs to a different height profile; controls blocked";
+  return nullptr;
+}
+bool DeskUART::write_journal_(const desk_protocol::PresetJournal &journal) {
+  const auto bytes = journal.encode();
+  if (this->write_journal_storage_(this->v4_preference_key_, bytes.data(), bytes.size())) return true;
+  this->journal_block_reason_ = "Preset backup storage failed; original retained, restart to recheck storage";
+  return false;
+}
+bool DeskUART::clear_legacy_journal_() {
+  const uint8_t empty[8]{};
+  if (!this->write_journal_storage_(this->preference_key_, empty, sizeof(empty))) {
+    this->journal_block_reason_ = "Legacy backup cleanup failed; restart to recheck storage";
+    return false;
+  }
+  this->legacy_cleanup_pending_ = false;
+  return true;
+}
+void DeskUART::load_journal_() {
+  using Journal = desk_protocol::PresetJournal;
+  Journal::Encoded bytes{};
+  const auto current = this->read_journal_storage_(this->v4_preference_key_, bytes.data(), bytes.size());
+  if (current == JournalLoad::Invalid || current == JournalLoad::Error ||
+      (current == JournalLoad::Found && !Journal::decode(bytes, this->cached_journal_))) {
+    this->journal_block_reason_ = "Preset backup unreadable or invalid; controls blocked, storage preserved";
+    return;
+  }
+  if (current == JournalLoad::Found && this->cached_journal_.state == Journal::State::Resolved) {
+    // A committed resolution is authoritative even if power failed before legacy cleanup.
+    this->legacy_cleanup_pending_ = true;
+    return;
+  }
+  if (current == JournalLoad::Found) this->cached_journal_valid_ = true;
+  uint8_t legacy_bytes[8]{};
+  const auto legacy_status = this->read_journal_storage_(this->preference_key_, legacy_bytes, sizeof(legacy_bytes));
+  desk_protocol::LegacyPresetJournal legacy;
+  const bool legacy_active = legacy_status == JournalLoad::Found &&
+      desk_protocol::LegacyPresetJournal::decode(legacy_bytes, sizeof(legacy_bytes), legacy);
+  const uint8_t empty[8]{};
+  const bool legacy_cleared = legacy_status == JournalLoad::Found &&
+      std::memcmp(legacy_bytes, empty, sizeof(empty)) == 0;
+  if (legacy_status == JournalLoad::Error ||
+      (current == JournalLoad::Missing && (legacy_status == JournalLoad::Invalid ||
+       (legacy_status == JournalLoad::Found && !legacy_active && !legacy_cleared)))) {
+    this->journal_block_reason_ = "Legacy preset backup unreadable or invalid; storage preserved";
+    return;
+  }
+  if (current == JournalLoad::Found) {
+    if (this->journal_error_()) return;
+    if (legacy_active && legacy.original != this->cached_journal_.original) {
+      this->journal_block_reason_ = "Stored preset backups disagree; controls blocked, both originals preserved";
+      return;
+    }
+  } else if (legacy_active) {
+    this->cached_journal_.state = Journal::State::Retained;
+    this->cached_journal_.original = legacy.original;
+    this->cached_journal_.temporary = legacy.temporary;
+    this->cached_journal_.profile = desk_protocol::LegacyPresetJournal::profile_identity();
+    this->cached_journal_valid_ = true;
+    if (this->journal_error_() || !this->write_journal_(this->cached_journal_)) return;
+    // Keep the old original until explicit acceptance has committed its tombstone.
+  }
+  if (!this->cached_journal_valid_) return;
+  this->target_move_.recover(this->cached_journal_.original, this->cached_journal_.temporary);
+  this->keep_awake_recovery_ = true;
+  this->last_target_error_ = this->target_move_.error();
+  ESP_LOGD(TAG, "Checking profile-bound preset backup after startup; EEPROM unverified");
+}
 bool DeskUART::clear_cached_journal_() {
+  if (this->journal_error_()) return false;
   if (!this->cached_journal_valid_) return true;
-  PresetJournal empty{};
-  if (!this->preset_preference_.save(&empty) || !global_preferences->sync()) return false;
+  auto resolved = this->cached_journal_;
+  resolved.state = desk_protocol::PresetJournal::State::Resolved;
+  if (!this->write_journal_(resolved)) return false;
   this->cached_journal_valid_ = false;
+  this->cached_journal_ = resolved;
+  this->legacy_cleanup_pending_ = true;
+  // Resolution is already durable. A cleanup failure blocks the next borrow,
+  // but must not turn this resolved backup back into an active one on restart.
+  this->clear_legacy_journal_();
   return true;
 }
 void DeskUART::invalidate_journal_session_() {
@@ -533,6 +603,7 @@ void DeskUART::invalidate_journal_session_() {
   this->discard_retarget_("Pending target cancelled by connection loss; request again");
 }
 void DeskUART::check_retained_preset_(uint16_t preset3_raw) {
+  if (this->journal_error_()) return;
   if (!this->cached_journal_valid_ || preset3_raw == this->cached_journal_.original ||
       this->target_move_.busy()) return;
   // A controller reboot and a legitimate local save are indistinguishable.
@@ -545,6 +616,7 @@ void DeskUART::check_retained_preset_(uint16_t preset3_raw) {
            preset3_raw, this->cached_journal_.original);
 }
 bool DeskUART::save_journal_(bool active) {
+  if (this->journal_error_()) return false;
   this->verified_journal_.valid = false;
   if (!active) {
     // Completing a RAM transaction cannot establish EEPROM persistence.
@@ -559,17 +631,24 @@ bool DeskUART::save_journal_(bool active) {
     ESP_LOGW(TAG, "Retained preset backup conflicts with new borrow; no write sent");
     return false;
   }
-  PresetJournal journal{0x44534B33U, this->target_move_.original(), this->target_move_.target()};
-  if (this->cached_journal_valid_ && this->cached_journal_.magic == journal.magic &&
+  if (this->legacy_cleanup_pending_ && !this->clear_legacy_journal_()) return false;
+  desk_protocol::PresetJournal journal;
+  journal.state = desk_protocol::PresetJournal::State::Retained;
+  journal.profile = this->height_profile_.identity();
+  journal.original = this->target_move_.original();
+  journal.temporary = this->target_move_.target();
+  if (this->cached_journal_valid_ && this->cached_journal_.profile == journal.profile &&
       this->cached_journal_.original == journal.original && this->cached_journal_.temporary == journal.temporary)
     return true;
-  if (!this->preset_preference_.save(&journal) || !global_preferences->sync()) return false;
+  // Preserve the new original in RAM even if durable storage fails before UART write.
   this->cached_journal_ = journal;
   this->cached_journal_valid_ = true;
-  ESP_LOGD(TAG, "Preset recovery journal committed (magic=%08x)", unsigned(journal.magic));
+  if (!this->write_journal_(journal)) return false;
+  ESP_LOGD(TAG, "Profile-bound preset recovery journal committed");
   return true;
 }
 void DeskUART::keep_awake_loop_(uint32_t now) {
+  if (this->journal_error_()) return;
   using Phase = desk_protocol::TemporaryPreset::Phase;
   // Wait for release/braking and fresh settled height before inspecting a
   // retained record. Never replace a running motion state during RX handling.
@@ -612,6 +691,7 @@ void DeskUART::keep_awake_loop_(uint32_t now) {
   ESP_LOGD(TAG, "Keep-awake: reading current raw position and borrowing preset 3");
 }
 bool DeskUART::move_to_height(float cm) {
+  if (const char *error = this->journal_error_()) return this->result_(false, error);
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   const uint32_t now = millis();
   this->last_keep_awake_ = now;
@@ -669,6 +749,7 @@ bool DeskUART::step_height(bool up) {
   return true;
 }
 bool DeskUART::restore_temporary_preset() {
+  if (const char *error = this->journal_error_()) return this->result_(false, error);
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   const uint32_t now = millis();
   this->last_keep_awake_ = now;
@@ -694,13 +775,14 @@ bool DeskUART::restore_temporary_preset() {
   return this->result_(retried, retried ? "Preset restoration requested; waiting for readback" : "No failed preset transaction to restore");
 }
 bool DeskUART::recovery_access_allowed_(uint32_t now) const {
-  return !this->firmware_export_active_ && !this->preset_settings_.busy() && !this->timer_.busy() && !this->retarget_pending_ &&
+  return !this->journal_error_() && !this->firmware_export_active_ && !this->preset_settings_.busy() && !this->timer_.busy() && !this->retarget_pending_ &&
       !this->release_fault_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
       static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
       static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000 && !this->pulse_.active() &&
       !this->release_ack_.pending() && !this->stop_ack_.pending() && this->limit_phase_ == LimitPhase::Idle;
 }
 bool DeskUART::accept_current_preset() {
+  if (const char *error = this->journal_error_()) return this->result_(false, error);
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   const uint32_t now = millis();
   this->last_keep_awake_ = now;
@@ -717,6 +799,7 @@ bool DeskUART::accept_current_preset() {
   return this->result_(true, "Checking current preset twice before discarding backup; no movement");
 }
 void DeskUART::target_loop_(uint32_t now) {
+  if (this->journal_error_()) return;
   if (!this->target_enabled_ && !this->target_move_.busy()) return;
   using Phase = desk_protocol::TemporaryPreset::Phase;
   // Any new or unfinished transaction supersedes an earlier verified restore.
@@ -756,7 +839,7 @@ void DeskUART::target_loop_(uint32_t now) {
     if (!this->target_move_.busy() && this->keep_awake_active_ && !this->keep_awake_fault_ && this->cached_journal_valid_ &&
         this->cached_journal_.original == this->target_move_.original() &&
         this->cached_journal_.temporary == this->target_move_.target())
-      this->verified_journal_ = {true, this->target_move_.original(), this->target_move_.target()};
+      this->verified_journal_ = {true, this->target_move_.original(), this->target_move_.target(), this->height_profile_.identity()};
     if (!this->target_move_.dirty()) {
       if (this->keep_awake_active_) ESP_LOGD(TAG, "Keep-awake: original preset 3 restored and read back");
       else if (this->target_move_.phase() == Phase::Monitoring)
@@ -811,7 +894,7 @@ void DeskUART::target_loop_(uint32_t now) {
   const bool quiet_restore = this->keep_awake_active_ && this->target_move_.keep_awake() &&
       !this->target_move_.failed() && !this->keep_awake_fault_ && !this->release_fault_ &&
       !this->stop_latched_ && this->monitor_.fresh(now);
-  const bool restore_pending = this->target_move_.dirty() && !quiet_restore;
+  const bool restore_pending = this->journal_error_() || (this->target_move_.dirty() && !quiet_restore);
   if (restore_pending != this->last_restore_pending_) {
     this->last_restore_pending_ = restore_pending;
     if (this->restore_pending_sensor_) this->restore_pending_sensor_->publish_state(this->last_restore_pending_);
@@ -864,6 +947,7 @@ void DeskUART::discard_retarget_(const char *reason) {
   this->result_(false, reason);
 }
 const char *DeskUART::control_reason_(uint32_t now) const {
+  if (const char *error = this->journal_error_()) return error;
   if (this->firmware_export_active_) return "Firmware read active; desk controls paused";
   using Phase = desk_protocol::TemporaryPreset::Phase;
   if (this->release_fault_) return "Button release uncertain; inspect desk and restart ESP";

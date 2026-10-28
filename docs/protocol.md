@@ -388,6 +388,20 @@ marking it failed. A dirty preset goes through `Settle` and verified restoration
 an already-sent recall or restoration finishes normally. The adapter owns the
 waiting user button and its cancellation deadline.
 
+`PresetJournal` serializes a 64-byte little-endian record: an eight-byte header,
+48-byte configured profile identity, original and temporary 16-bit raw values,
+and CRC-32/ISO-HDLC over the first 60 bytes. The identity includes mapping and
+control-policy revisions, mapping scalars, A/B, control ranges and directional
+biases. It is compared byte for byte. The ESPHome v4 key derives from
+`desk-preset-journal-v4:` plus the component ID; legacy versions use `v1:`.
+A retained record is applied only to the matching profile. A resolved record
+prevents legacy recovery after Accept. New borrowing waits for legacy cleanup.
+
+ESP32 storage checks distinguish an absent key from malformed or unreadable
+storage, then verify saved bytes through NVS after sync. These checks cannot
+recover data erased by ESPHome's own NVS initialization or a flash reset. Host
+preferences support integration tests but do not provide power-loss durability.
+
 The library has no storage backend. ESPHome owns journal persistence, UART,
 buttons, publication and interlocks. See the adapter documentation for its
 settling heuristic, autosave limitations and recovery workflow.
