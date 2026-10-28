@@ -218,8 +218,13 @@ count. It reports no candidates for gaps such as 73.1/73.2 cm. These candidates
 precede the firmware's directional +7/-6 adjustments. `motion_target()` models
 those adjustments for integer current positions. Actual position may be
 fractional, so a truncated UART reading cannot predict the branch. The helper
-does not change outgoing commands or predict physical stopping height. Profile extraction, alternate YAML profiles and
-physical acceptance of additional ranges are outside this implementation.
+does not change outgoing commands or predict physical stopping height.
+
+The optional [firmware reader](firmware-export.md#firmware-profile-diagnostics)
+uses `firmware_profile.h` to recognize the pinned application structure and
+extract five scalar values. Its result can construct only a research profile;
+it does not select the adapter's configured profile. Alternate YAML profiles
+and physical acceptance of additional ranges remain separate work.
 
 ## Preset settings transaction
 
