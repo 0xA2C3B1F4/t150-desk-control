@@ -179,7 +179,8 @@ The project is independent of Deltaco, the controller manufacturer and M5Stack.
 The optional [firmware export package](docs/firmware-export.md) reads the desk's
 application into ESP32 RAM, using the header's file size up to 128 KiB when
 memory permits. Standard ESPHome buttons control the read;
-an authenticated HTTP route downloads the file. It requires a physical desk
+an authenticated HTTP route downloads the file. Recognized images also expose
+firmware profile diagnostics. It requires a physical desk
 power cycle while the ESP32 stays powered. The normal examples exclude it.
 Use [stamp-c3-firmware-export.yaml](examples/esphome/stamp-c3-firmware-export.yaml)
 only when the reader is needed.

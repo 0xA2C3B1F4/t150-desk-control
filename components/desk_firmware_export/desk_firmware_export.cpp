@@ -1,4 +1,5 @@
 #include "desk_firmware_export.h"
+#include "firmware_profile.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -43,6 +44,23 @@ std::string FirmwareExport::error_text() {
 std::string FirmwareExport::sha256_text() {
   std::lock_guard<std::mutex> lock(mutex_);
   return snapshot_.hash;
+}
+std::string FirmwareExport::profile_status_text() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return snapshot_.profile.status_text();
+}
+std::string FirmwareExport::profile_values_text() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!snapshot_.profile.extracted()) return "Unavailable";
+  const auto &values = snapshot_.profile.scalars;
+  char text[192];
+  const int length = std::snprintf(text, sizeof(text),
+      "Lower seed %u; upper seed %u; offset %u.%u cm; high addend %ld; high display %u.%u cm",
+      unsigned(values.lower_seed), unsigned(values.upper_seed),
+      unsigned(values.display_offset / 10), unsigned(values.display_offset % 10),
+      static_cast<long>(values.high_test_addend),
+      unsigned(values.high_display / 10), unsigned(values.high_display % 10));
+  return length >= 0 && size_t(length) < sizeof(text) ? text : "Unavailable";
 }
 float FirmwareExport::progress() {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -115,7 +133,7 @@ void FirmwareExport::start_() {
   receiving_buffer_.reset();
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    // Keep the last completed image and its hash available during a new read.
+    // Keep the completed image, hash and profile available during a new read.
     snapshot_.received = snapshot_.expected = 0;
     snapshot_.bad = snapshot_.duplicates = 0;
     snapshot_.closed = false;
@@ -133,9 +151,13 @@ void FirmwareExport::finish_() {
   // No more protocol traffic; keep normal commands paused for loader exit.
   fast_loop_.stop();
   char hash[65]{};
+  desk_protocol::firmware_profile::Result profile;
   if (receiver_.data_complete() && !cancelled_) {
-    sha256::SHA256 digest;
-    digest.init(); digest.add(receiving_buffer_.get(), receiver_.expected_size()); digest.calculate(); digest.get_hex(hash);
+    {
+      sha256::SHA256 digest;
+      digest.init(); digest.add(receiving_buffer_.get(), receiver_.expected_size()); digest.calculate(); digest.get_hex(hash);
+    }
+    profile = identify_firmware_profile(receiving_buffer_.get(), receiver_.expected_size());
   }
   update_snapshot_();
   {
@@ -143,7 +165,7 @@ void FirmwareExport::finish_() {
     if (receiver_.data_complete() && !cancelled_) {
       buffer_ = std::move(receiving_buffer_);
       snapshot_.image_size = receiver_.expected_size();
-      std::memcpy(snapshot_.hash, hash, sizeof(hash)); snapshot_.ready = true;
+      std::memcpy(snapshot_.hash, hash, sizeof(hash)); snapshot_.profile = profile; snapshot_.ready = true;
       snapshot_.state = receiver_.termination_complete() ? "complete" : "complete_with_warning";
     } else {
       receiving_buffer_.reset();
@@ -217,14 +239,30 @@ void FirmwareExport::handleRequest(AsyncWebServerRequest *request) {
   if (request->method() == HTTP_GET && url == "/desk-firmware/status") {
     Snapshot value;
     { std::lock_guard<std::mutex> lock(mutex_); value = snapshot_; }
-    // All state/error strings are fixed literals controlled by this component.
+    // State, error and recognition strings are fixed literals. Scalars are
+    // bounded integers from a recognized image, never text from the file header.
+    char scalars[256]{};
+    if (value.profile.extracted()) {
+      const auto &fields = value.profile.scalars;
+      const int length = std::snprintf(scalars, sizeof(scalars),
+          ",\"scalars\":{\"lower_seed\":%u,\"upper_seed\":%u,\"display_offset\":%u,\"high_test_addend\":%ld,\"high_display\":%u}",
+          unsigned(fields.lower_seed), unsigned(fields.upper_seed), unsigned(fields.display_offset),
+          static_cast<long>(fields.high_test_addend), unsigned(fields.high_display));
+      if (length < 0 || size_t(length) >= sizeof(scalars)) {
+        request->send(500, "text/plain", "Firmware profile response too large"); return;
+      }
+    }
     char json[1024];
-    std::snprintf(json, sizeof(json),
-      "{\"state\":\"%s\",\"error\":\"%s\",\"received\":%u,\"size\":%u,\"image_size\":%u,\"max_size\":%u,\"busy\":%s,\"ready\":%s,\"closing_complete\":%s,\"sha256\":\"%s\",\"bad_packets\":%u,\"duplicates\":%u,\"free_heap\":%u,\"largest_block\":%u}",
+    const int length = std::snprintf(json, sizeof(json),
+      "{\"state\":\"%s\",\"error\":\"%s\",\"received\":%u,\"size\":%u,\"image_size\":%u,\"max_size\":%u,\"busy\":%s,\"ready\":%s,\"closing_complete\":%s,\"sha256\":\"%s\",\"bad_packets\":%u,\"duplicates\":%u,\"free_heap\":%u,\"largest_block\":%u,\"image_profile\":{\"status\":\"%s\",\"extraction_supported\":%s,\"control_approved\":false%s}}",
       value.state, value.error ? value.error : "", unsigned(value.received), unsigned(value.expected),
       unsigned(value.image_size), unsigned(Receiver::MAX_IMAGE_SIZE), value.busy ? "true":"false", value.ready ? "true":"false",
       value.closed ? "true":"false", value.hash, value.bad, value.duplicates,
-      unsigned(heap_caps_get_free_size(MALLOC_CAP_8BIT)), unsigned(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+      unsigned(heap_caps_get_free_size(MALLOC_CAP_8BIT)), unsigned(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)),
+      value.profile.status_text(), value.profile.extracted() ? "true" : "false", scalars);
+    if (length < 0 || size_t(length) >= sizeof(json)) {
+      request->send(500, "text/plain", "Firmware status response too large"); return;
+    }
     auto *response = request->beginResponse(200, "application/json", std::string(json));
     response->addHeader("Cache-Control", "no-store"); request->send(response); return;
   }

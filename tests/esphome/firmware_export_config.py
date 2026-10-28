@@ -30,13 +30,13 @@ for enabled, name in [(False, "stamp-c3"), (True, "stamp-c3-firmware-export"), (
     main = (work / "build/src/main.cpp").read_text()
     assert ("desk_firmware_export::FirmwareExport" in main) == enabled
     assert (work / "build/src/esphome/components/desk_firmware_export/desk_firmware_export.cpp").is_file() == enabled
-    for label in ["Read firmware", "Cancel firmware read", "Clear firmware image", "Firmware read status", "Firmware read progress", "Firmware SHA256"]:
-        assert (label in main) == enabled, label
+    for label in ["Read firmware", "Cancel firmware read", "Clear firmware image", "Firmware read status", "Firmware read progress", "Firmware SHA256", "Firmware profile", "Firmware profile values"]:
+        assert (json.dumps(label) in main) == enabled, label
     assert "DESK_FIRMWARE_INDEX" not in main
     assert "firmware-export.js" not in main
     assert f"set_rx_buffer_size({4096 if enabled else 512})" in main
     if enabled:
-        for method in ["start_read()", "cancel_read()", "clear_image()"]:
+        for method in ["start_read()", "cancel_read()", "clear_image()", "profile_status_text()", "profile_values_text()"]:
             assert method in main
     if enabled and args.compile:
         with (work / "firmware-export-compile.log").open("w") as log:

@@ -3,6 +3,7 @@
 #include <mutex>
 #include <driver/uart_select.h>
 #include "desk_protocol/firmware_export.h"
+#include "desk_protocol/firmware_profile.h"
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
 #include "esphome/components/desk_uart/desk_uart.h"
@@ -24,6 +25,8 @@ class FirmwareExport : public Component, public AsyncWebHandler {
   std::string status_text();
   std::string error_text();
   std::string sha256_text();
+  std::string profile_status_text();
+  std::string profile_values_text();
   float progress();
   bool image_ready();
  protected:
@@ -36,6 +39,8 @@ class FirmwareExport : public Component, public AsyncWebHandler {
     unsigned bad{0}, duplicates{0};
     bool busy{false}, ready{false}, closed{false};
     char hash[65]{};
+    // Metadata belongs to the completed image, independent of a new attempt.
+    desk_protocol::firmware_profile::Result profile;
   };
   static constexpr size_t MIN_FREE_HEAP = 48 * 1024;
   static FirmwareExport *instance_;

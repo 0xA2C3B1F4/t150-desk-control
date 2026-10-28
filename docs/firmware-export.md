@@ -93,6 +93,27 @@ Closing-handshake failure is reported separately: a complete CRC-checked image
 can still be downloaded with a warning. CRC and SHA-256 identify received data;
 authenticity requires comparison to a trusted image.
 
+## Firmware profile diagnostics
+
+**Firmware profile** reports whether the completed image matches the known T150
+application or its structure with changed scalar values. Recognition covers the
+55,296-byte application and checks every byte except five extracted 32-bit
+values. Other layouts, code changes and sizes remain unrecognized; they can
+still be downloaded.
+
+**Firmware profile values** shows the lower/upper bound seeds, metric display
+offset, upper-correction addend and upper display value. Seeds are firmware
+inputs, not centimetre travel limits. The image does not establish the active
+boot-time A/B coefficients, so the reader does not calculate a usable travel
+range or change the configured control profile.
+
+Both diagnostics describe the same completed image as **Firmware SHA256** and
+remain available through a new, failed or cancelled read. Clear removes them
+with the image. A closing-handshake warning does not prevent recognition of
+complete data. GET `/desk-firmware/status` includes these results in
+`image_profile`; `control_approved` stays false, and `scalars` appears only when
+extraction succeeds. Offset and display values in JSON use tenths of a centimetre.
+
 ## Memory and HTTP behavior
 
 The reader allocates exactly the advertised size after checking the header,
@@ -124,4 +145,7 @@ wrap. Size tests cover malformed/overflowing headers, allocation refusal, padded
 final packets, mixed packet lengths and sequence-number wrap. ESPHome host tests cover exclusive ownership, busy handoff rejection,
 public command guards, shutdown and fresh telemetry after release. Configuration
 tests verify that only the optional package adds the reader and its entities.
+Profile tests cover normalized hashing, scalar validation and rejection of
+unrecognized code. The ESPHome host test uses the production SHA-256 helper;
+a locally supplied reference image enables additional extraction checks.
 Physical results and proprietary firmware images stay in the research project.

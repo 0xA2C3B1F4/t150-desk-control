@@ -107,3 +107,20 @@ text_sensor:
     entity_category: diagnostic
     update_interval: 1s
     lambda: return id(firmware_reader).sha256_text();
+  # These describe the completed downloadable image, including during a new read.
+  - platform: template
+    name: Firmware profile
+    web_server:
+      sorting_group_id: desk_group_firmware
+      sorting_weight: 90
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return id(firmware_reader).profile_status_text();
+  - platform: template
+    name: Firmware profile values
+    web_server:
+      sorting_group_id: desk_group_firmware
+      sorting_weight: 100
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return id(firmware_reader).profile_values_text();

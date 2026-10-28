@@ -48,6 +48,10 @@ firmware.
 Native profile tests compare every uint16 telemetry, preset and target input
 with the original conversion behavior. Synthetic profiles cover endpoint
 plateaus, gaps, binary32 rounding and rejection of unapproved control profiles.
+Firmware-image tests check normalization spans, scalar validation and the
+research-only extraction result. The host SHA-256 test rejects synthetic unknown
+images and can also check a separately supplied known application image. Optional
+configuration checks include the profile entities; the normal YAML omits them.
 
 Coverage includes framing, height units, presets, Stop, retargeting, recovery,
 keep-awake, timers, load settings and controller identity. Simulated-peer tests
@@ -62,6 +66,16 @@ Set `TMPDIR` to a writable temporary directory first:
 ```sh
 python tests/esphome/run_all.py --work-dir "$TMPDIR/t150-tests"
 ```
+
+To include a local reference image in the profile test, run from the same root:
+
+```sh
+python tests/esphome/firmware_profile_integration.py --work-dir "$TMPDIR/t150-profile-test" --firmware /path/to/UploadedFlashImage.bin
+```
+
+The optional file must match the pinned 55,296-byte application hash. The test
+reads it at runtime and keeps synthetic variants in memory; it is not bundled
+with the repository or embedded in generated code.
 
 The GitHub build in this suite requires a published checkout commit and repository
 read access. It uses Stamp-C3 by default; from the same repository root, run

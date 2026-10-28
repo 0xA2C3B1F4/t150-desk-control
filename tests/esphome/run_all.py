@@ -21,6 +21,7 @@ TESTS = [
     "github_example_build",
     "firmware_export_config",
     "firmware_export_integration",
+    "firmware_profile_integration",
     "display_units_integration",
     "integration",
     "stop_integration",
