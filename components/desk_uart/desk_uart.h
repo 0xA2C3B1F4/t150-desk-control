@@ -76,6 +76,8 @@ class DeskUART : public Component, public uart::UARTDevice {
   bool cancel_timer() { return set_timer(0); }
 
  protected:
+  // Only the existing control profile is configured; research profiles cannot drive UART transactions.
+  const desk_protocol::HeightProfile height_profile_{desk_protocol::HeightProfile::known_t150()};
   bool firmware_export_active_{false};
   void send_(const desk_protocol::Frame &frame);
   void identity_loop_(uint32_t now);
@@ -87,7 +89,7 @@ class DeskUART : public Component, public uart::UARTDevice {
   uint32_t identity_sent_at_{0};
   void preset_settings_loop_(uint32_t now);
   bool preset_access_allowed_(uint32_t now) const;
-  desk_protocol::PresetSettings preset_settings_{};
+  desk_protocol::PresetSettings preset_settings_{height_profile_};
   number::Number *preset_numbers_[3]{nullptr, nullptr, nullptr};
   bool preset_known_[3]{false, false, false};
   uint8_t next_preset_{0};
@@ -137,12 +139,13 @@ class DeskUART : public Component, public uart::UARTDevice {
   struct VerifiedJournal { bool valid; uint16_t original; uint16_t temporary; };
   VerifiedJournal verified_journal_{false, 0, 0};
   ESPPreferenceObject preset_preference_;
-  desk_protocol::TemporaryPreset target_move_{};
+  desk_protocol::TemporaryPreset target_move_{height_profile_};
   number::Number *target_number_{nullptr};
   binary_sensor::BinarySensor *restore_pending_sensor_{nullptr};
   uint32_t preference_key_{0}, last_height_change_{0}, last_height_received_{0};
   uint16_t last_q_{0};
-  float min_height_{73.0f}, max_height_{118.0f};
+  float min_height_{height_profile_.control_min_tenths() / 10.0f};
+  float max_height_{height_profile_.control_max_tenths() / 10.0f};
   bool target_enabled_{false}, height_seen_{false}, target_initialized_{false};
   bool display_inches_{false};
   bool last_restore_pending_{false};

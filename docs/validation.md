@@ -45,6 +45,10 @@ The examples fetch the tested commit from GitHub and compare generated component
 sources with that checkout. Tests use dummy device credentials and do not upload
 firmware.
 
+Native profile tests compare every uint16 telemetry, preset and target input
+with the original conversion behavior. Synthetic profiles cover endpoint
+plateaus, gaps, binary32 rounding and rejection of unapproved control profiles.
+
 Coverage includes framing, height units, presets, Stop, retargeting, recovery,
 keep-awake, timers, load settings and controller identity. Simulated-peer tests
 check timeouts, malformed replies and interrupted operations without a desk.
