@@ -8,12 +8,9 @@ inline bool read_preset_raw(uint8_t slot, Frame &out) {
   out.size = 4; out.bytes[0] = 0x15; out.bytes[1] = 0x1C + slot;
   return true;
 }
-// The same recovered metric profile as target.h. Preserve decimal precision
-// above 100 cm instead of applying the panel's whole-centimetre formatting.
+// Preset values preserve decimal precision above 100 cm.
 inline bool preset_height(uint16_t raw, uint16_t &tenths) {
-  if (raw < 8 || raw > 740) return false;
-  tenths = static_cast<uint16_t>(metric_display(static_cast<uint16_t>(static_cast<uint32_t>(raw) * 24 / 39)).before_rounding_tenths_cm);
-  return tenths >= 730 && tenths <= 1180;
+  return HeightProfile::known_t150().preset_height(raw, tenths);
 }
 
 // One explicit settings transaction, with no motion or EEPROM-save command.
@@ -21,6 +18,7 @@ inline bool preset_height(uint16_t raw, uint16_t &tenths) {
 // and read back. Timeout/cancel does not undo an already transmitted write.
 class PresetSettings {
  public:
+  explicit PresetSettings(const HeightProfile &profile = HeightProfile::known_t150()) : profile_(profile) {}
   enum class Phase { Idle, ScaleA, ScaleB, Read, WriteAck, Verify, Done };
   struct Result {
     uint8_t slot;
@@ -31,7 +29,7 @@ class PresetSettings {
   bool begin_read(uint8_t slot, uint32_t now) { return begin_(slot, false, 0, now); }
   bool begin_write(uint8_t slot, uint16_t tenths, uint32_t now) {
     uint16_t raw;
-    if (!metric_target_raw(tenths, raw)) return false;
+    if (!profile_.target_raw(tenths, raw)) return false;
     return begin_(slot, true, raw, now);
   }
   bool busy() const { return phase_ != Phase::Idle; }
@@ -57,11 +55,11 @@ class PresetSettings {
     switch (phase_) {
       case Phase::ScaleA:
         if (!target_parameter(f, 0x0B, v)) return;
-        if (v != 24) { finish_("Unsupported preset height scale A"); return; }
+        if (v != profile_.scale_a()) { finish_("Unsupported preset height scale A"); return; }
         read_(0x0C, Phase::ScaleB, now); break;
       case Phase::ScaleB:
         if (!target_parameter(f, 0x0C, v)) return;
-        if (v != 39) { finish_("Unsupported preset height scale B"); return; }
+        if (v != profile_.scale_b()) { finish_("Unsupported preset height scale B"); return; }
         if (write_) {
           write_preset_raw(slot_, expected_, frame_);
           queued_ = true; phase_ = Phase::WriteAck; started_ = now;
@@ -83,8 +81,9 @@ class PresetSettings {
     }
   }
  private:
+  HeightProfile profile_;
   bool begin_(uint8_t slot, bool write, uint16_t raw, uint32_t now) {
-    if (busy() || slot < 1 || slot > 3) return false;
+    if (busy() || !profile_.control_approved() || slot < 1 || slot > 3) return false;
     slot_ = slot; write_ = write; expected_ = raw; actual_ = 0; known_ = false; error_ = nullptr;
     read_(0x0B, Phase::ScaleA, now); return true;
   }

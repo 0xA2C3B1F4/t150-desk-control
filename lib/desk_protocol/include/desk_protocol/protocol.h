@@ -3,6 +3,7 @@
 // Portable C++11. No I/O, clock, heap allocation, or platform headers.
 #include <cstddef>
 #include <cstdint>
+#include "height_profile.h"
 
 namespace desk_protocol {
 
@@ -195,21 +196,10 @@ inline bool decode_ack(const Frame &f, Ack &out) {
   out.reserved_byte = f.bytes[3]; out.sequence = be16(f.bytes + 4); return true;
 }
 
-struct MetricDisplay {
-  uint32_t before_rounding_tenths_cm{0};
-  uint32_t displayed_tenths_cm{0};
-  uint8_t decimal_places{0};
-};
-// Observed firmware profile only. Caller must select metric units knowingly.
-// This is a display transform, NOT a physical calibration or inverse target map.
+// Backward-compatible shorthand for the configured T150 display profile.
+// Channel-2 telemetry is already Q; do not apply the raw-position scale again.
 inline MetricDisplay metric_display(uint16_t q) {
-  MetricDisplay out;
-  const uint32_t d = (q >= 4 && q <= 7) ? 730 :
-                     (q >= 457 && q <= 459) ? 1188 : static_cast<uint32_t>(q) + 725;
-  out.before_rounding_tenths_cm = d;
-  out.decimal_places = d < 1000 ? 1 : 0;
-  out.displayed_tenths_cm = d < 1000 ? d : (d / 10) * 10;
-  return out;
+  return HeightProfile::known_t150().display(q);
 }
 
 class HeightMonitor {

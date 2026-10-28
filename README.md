@@ -134,6 +134,7 @@ desk_protocol::Frame frame;
 //   decode_height(frame, height), or dispatch another message type.
 ```
 
+`height_profile.h` contains the shared height conversions and profile checks.
 The caller supplies transport, timing and storage. `target.h`, `presets.h` and
 `timer.h` add the target-height, preset-editing and timer transactions. See
 [protocol](docs/protocol.md#headers) for each header's role, framing, parameter

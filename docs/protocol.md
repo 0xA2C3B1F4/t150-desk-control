@@ -14,6 +14,7 @@ Contents:
 - [Controlled braking](#controlled-braking)
 - [Load-limit builders](#load-limit-builders)
 - [Coordinates and state](#coordinates-and-state)
+- [Height profiles](#height-profiles)
 - [Preset settings transaction](#preset-settings-transaction)
 - [Temporary target transaction](#temporary-target-transaction)
 - [T-key timer transaction](#t-key-timer-transaction)
@@ -26,7 +27,8 @@ Each header includes the one it builds on, so including `presets.h` also makes
 
 | Header | Depends on | Responsibility |
 |---|---|---|
-| `desk_protocol/protocol.h` | standard headers only | Framing (`encode`, `Parser`), command builders, typed decoders, `metric_display`, and the small helpers `HeightMonitor`, `AckTracker` and `ButtonPulse` |
+| `desk_protocol/height_profile.h` | standard headers only | Shared display/position conversions, mathematical profile checks and the existing T150 control policy |
+| `desk_protocol/protocol.h` | `height_profile.h` | Framing (`encode`, `Parser`), command builders, typed decoders, `metric_display`, and the small helpers `HeightMonitor`, `AckTracker` and `ButtonPulse` |
 | `desk_protocol/target.h` | `protocol.h` | Metric target conversion (`metric_target_raw`), typed parameter reads, and the `TemporaryPreset` transaction used for target height and keep-awake |
 | `desk_protocol/presets.h` | `target.h` | Preset height conversion (`preset_height`), preset reads, and the `PresetSettings` read/write transaction |
 | `desk_protocol/timer.h` | `protocol.h` | The `TimerSequence` T-key transaction |
@@ -186,6 +188,38 @@ unrelated or late frames are received.
 `HeightMonitor` marks samples stale after 3000 ms. While fresh it rejects duplicate
 and backwards sequence numbers so replays do not keep the link fresh. After
 staleness it accepts a new epoch, allowing controller restarts.
+
+## Height profiles
+
+`HeightProfile::known_t150()` supplies the configured profile used by ESPHome,
+`TemporaryPreset` and `PresetSettings`. The existing `metric_display`,
+`metric_target_raw` and `preset_height` functions remain shorthand for it.
+Channel-2 telemetry already contains Q; `display(Q)` applies only the display
+mapping. Integer preset coordinates pass through `scaled_q(raw, q)` first,
+using separate binary32 multiplication and division before truncation.
+
+The built-in command policy retains heights 73–118 cm, target/preset coordinates
+8..740 and keep-awake coordinates 6..740. Keep-awake preserves the exact raw
+position. `target_raw()` keeps the existing deterministic selection, including
+raw 8 at 73 cm. Requests for 73.1 and 73.2 cm still select raw 10 and 12, both
+within the 73 cm display plateau.
+
+Research profiles have three separate checks: the caller's extraction-supported
+flag, `assess(boot_a, boot_b).mapping_usable`, and control approval. Assessment
+requires known boot coefficients matching current coefficients; UART reads of
+current A/B alone do not establish the boot values. It checks the integer
+coordinate domain and monotonic display mapping. A research profile cannot
+start target, keep-awake, preset-settings or recovery transactions, even when
+its mathematical checks pass. Imported recovery backups remain in memory. The configured built-in profile does not identify
+the firmware running on a connected controller.
+
+`inverse_candidates()` returns every matching integer coordinate as a range and
+count. It reports no candidates for gaps such as 73.1/73.2 cm. These candidates
+precede the firmware's directional +7/-6 adjustments. `motion_target()` models
+those adjustments for integer current positions. Actual position may be
+fractional, so a truncated UART reading cannot predict the branch. The helper
+does not change outgoing commands or predict physical stopping height. Profile extraction, alternate YAML profiles and
+physical acceptance of additional ranges are outside this implementation.
 
 ## Preset settings transaction
 

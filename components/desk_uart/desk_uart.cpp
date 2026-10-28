@@ -174,7 +174,7 @@ void DeskUART::loop() {
       this->height_seen_ = true;
       this->last_q_ = q;
       this->target_move_.observe_height(q);
-      const auto value = desk_protocol::metric_display(q);
+      const auto value = this->height_profile_.display(q);
       if (this->target_number_ && !this->target_initialized_) {
         this->target_initialized_ = true;
         this->target_number_->publish_state(this->display_height(value.before_rounding_tenths_cm / 10.0f));
@@ -491,7 +491,7 @@ void DeskUART::preset_settings_loop_(uint32_t now) {
     const uint8_t i = r.slot - 1;
     uint16_t tenths;
     this->preset_known_[i] = r.value_known;
-    const bool mapped = r.value_known && desk_protocol::preset_height(r.raw, tenths);
+    const bool mapped = r.value_known && this->height_profile_.preset_height(r.raw, tenths);
     this->next_preset_ = (i + 1) % 3;
     this->last_preset_poll_ = now;
     if (r.error == STOP_PRESET_REASON) ESP_LOGW(TAG, "%s", r.error);
@@ -601,7 +601,7 @@ void DeskUART::keep_awake_loop_(uint32_t now) {
   if (this->journal_recheck_pending_ || this->pending_preset_ || !this->keep_awake_enabled_ || !this->target_enabled_ || this->keep_awake_fault_ ||
       this->preset_settings_.busy() || !this->preset_access_allowed_(now) ||
       static_cast<uint32_t>(now - this->last_keep_awake_) < 30000) return;
-  const auto height = desk_protocol::metric_display(this->last_q_).before_rounding_tenths_cm / 10.0f;
+  const auto height = this->height_profile_.display(this->last_q_).before_rounding_tenths_cm / 10.0f;
   if (height < this->min_height_ || height > this->max_height_) return;
   if (!this->target_move_.begin_keep_awake(now)) return;
   this->keep_awake_active_ = true;
@@ -633,7 +633,8 @@ bool DeskUART::move_to_height(float cm) {
   if ((this->target_move_.phase() == Phase::Moving || this->target_move_.phase() == Phase::Monitoring) && !this->stop_latched_) {
     // Identical HA updates must not interrupt an otherwise valid move.
     uint16_t raw;
-    desk_protocol::metric_target_raw(static_cast<uint16_t>(std::lround(cm * 10)), raw);
+    if (!this->height_profile_.target_raw(static_cast<uint16_t>(std::lround(cm * 10)), raw))
+      return this->result_(false, "Target outside supported height profile");
     if (raw == this->target_move_.target()) return this->result_(true, "Target already active");
     this->stop();
     this->retarget_cm_ = cm;
@@ -657,7 +658,7 @@ bool DeskUART::step_height(bool up) {
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   const uint32_t now = millis();
   if (!this->monitor_.fresh(now)) return this->result_(false, this->control_reason_(now));
-  const float current = desk_protocol::metric_display(this->monitor_.height().q).before_rounding_tenths_cm / 10.0f;
+  const float current = this->height_profile_.display(this->monitor_.height().q).before_rounding_tenths_cm / 10.0f;
   float target = current + (up ? 1.0f : -1.0f);
   if (target < this->min_height_) target = this->min_height_;
   if (target > this->max_height_) target = this->max_height_;
@@ -908,7 +909,7 @@ void DeskUART::controls_loop_(uint32_t now) {
     this->sync_target_ = false;
     // Keep UART precision, as at startup; the panel's whole-cm display is not a target.
     if (this->target_number_) this->target_number_->publish_state(
-        this->display_height(desk_protocol::metric_display(this->monitor_.height().q).before_rounding_tenths_cm / 10.0f));
+        this->display_height(this->height_profile_.display(this->monitor_.height().q).before_rounding_tenths_cm / 10.0f));
   }
   const char *reason = this->control_reason_(now);
   const auto phase = static_cast<uint8_t>(this->target_move_.phase());

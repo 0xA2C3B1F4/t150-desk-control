@@ -2,14 +2,10 @@
 #include "protocol.h"
 
 namespace desk_protocol {
-// Metric T150 profile only, using recovered A=24, B=39. The adapter reads both
-// coefficients before every move. This predicts a setpoint, not stop accuracy.
+// Existing command selection, including the lower endpoint's display plateau.
+// This is not the exact inverse or a prediction of the stopping height.
 inline bool metric_target_raw(uint16_t tenths_cm, uint16_t &raw) {
-  if (tenths_cm < 730 || tenths_cm > 1180) return false;
-  if (tenths_cm == 730) { raw = 8; return true; }
-  const uint16_t q = tenths_cm - 725;
-  raw = static_cast<uint16_t>((static_cast<uint32_t>(q) * 39 + 23) / 24);
-  return raw >= 8 && raw <= 740;
+  return HeightProfile::known_t150().target_raw(tenths_cm, raw);
 }
 inline bool read_target_parameter(uint8_t selector, Frame &out) {
   out = Frame{};
@@ -27,19 +23,20 @@ inline bool target_parameter(const Frame &f, uint8_t selector, uint16_t &value) 
 // Exactly one transaction, no movement retries and no EEPROM-save command.
 class TemporaryPreset {
  public:
+  explicit TemporaryPreset(const HeightProfile &profile = HeightProfile::known_t150()) : profile_(profile) {}
   enum class Phase { Idle, CurrentRaw, CheckRaw, ScaleA, ScaleB, Original, Backup, Write, Verify,
                      Recall, Moving, Settle, RestoreRead, RestoreWrite,
                      RestoreVerify, ClearJournal, Fault, RecoveryRead, AcceptRead, AcceptVerify, Monitoring, RestoreCheck, RestoreConfirm };
   bool begin(uint16_t tenths, uint32_t now) {
     uint16_t raw;
-    if (busy() || !metric_target_raw(tenths, raw)) return false;
+    if (busy() || !profile_.target_raw(tenths, raw)) return false;
     keep_awake_ = false; target_ = raw; failed_ = false; changed_ = false; error_ = "";
     early_restore_ = watching_move_ = motion_seen_ = false;
     read_(0x0B, Phase::ScaleA, now); return true;
   }
   // 15/17 reads the integer position counter. Never write that selector.
   bool begin_keep_awake(uint32_t now) {
-    if (busy()) return false;
+    if (busy() || !profile_.control_approved()) return false;
     keep_awake_ = true; failed_ = false; changed_ = false; error_ = "";
     early_restore_ = watching_move_ = motion_seen_ = false;
     read_(0x17, Phase::CurrentRaw, now); return true;
@@ -107,14 +104,14 @@ class TemporaryPreset {
     phase_ = Phase::Fault;
   }
   bool retry_restore(uint32_t now) {
-    if (phase_ != Phase::Fault || !dirty_) return false;
+    if (!profile_.control_approved() || phase_ != Phase::Fault || !dirty_) return false;
     failed_ = false; error_ = "";
     phase_ = Phase::Settle; started_ = now; return true;
   }
   // Explicit user recovery can replace an older temporary or a local value,
   // but only after two stable, distinct replies. Normal cleanup stays strict.
   bool restore_backup(uint32_t now) {
-    if (phase_ != Phase::Fault || !dirty_) return false;
+    if (!profile_.control_approved() || phase_ != Phase::Fault || !dirty_) return false;
     failed_ = false; error_ = "";
     read_(0x1F, Phase::RestoreCheck, now); return true;
   }
@@ -122,14 +119,14 @@ class TemporaryPreset {
   // matching temporary value might be a newer local edit, not an interruption.
   // Inspect only; any non-original value requires an explicit user decision.
   bool check_recovery(uint32_t now) {
-    if (phase_ != Phase::Fault || !dirty_) return false;
+    if (!profile_.control_approved() || phase_ != Phase::Fault || !dirty_) return false;
     failed_ = false; error_ = "";
     read_(0x1F, Phase::RecoveryRead, now); return true;
   }
   // Explicitly keep the controller's current preset and discard our backup.
   // Two reads must agree before the caller can durably clear the journal.
   bool accept_current(uint32_t now) {
-    if (phase_ != Phase::Fault || !dirty_) return false;
+    if (!profile_.control_approved() || phase_ != Phase::Fault || !dirty_) return false;
     failed_ = false; error_ = "";
     read_(0x1F, Phase::AcceptRead, now); return true;
   }
@@ -152,13 +149,16 @@ class TemporaryPreset {
   // command ACK is not movement. Restore on the first directional Q change.
   void observe_height(uint16_t q) {
     if (phase_ != Phase::Moving || keep_awake_ || baseline_q_ == 0xFFFF) return;
-    const uint16_t goal_q = static_cast<uint32_t>(target_) * 24 / 39;
+    uint16_t goal_q;
+    if (!profile_.scaled_q(target_, goal_q)) return;
     if ((goal_q > baseline_q_ && q > baseline_q_) || (goal_q < baseline_q_ && q < baseline_q_))
       motion_seen_ = true;
   }
   // Called by the transport's stop path, before its brake goes onto UART.
   void cancel(uint32_t now) {
-    if (!busy()) return;
+    // An imported journal on a research profile stays available in memory;
+    // cancellation must not start automatic restoration on that profile.
+    if (!profile_.control_approved() || !busy()) return;
     watching_move_ = false;
     queued_ = false;
     if (!failed_) { failed_ = true; error_ = "Target move interrupted"; }
@@ -185,7 +185,7 @@ class TemporaryPreset {
       case Phase::CurrentRaw:
         if (!target_parameter(f, 0x17, v)) return;
         // Conservative supported profile range, including its raw lower edge.
-        if (v < 6 || v > 740) { fail_("Keep-awake raw height outside supported range", now); return; }
+        if (!profile_.keep_awake_raw(v)) { fail_("Keep-awake raw height outside supported range", now); return; }
         target_ = v; read_(0x1F, Phase::Original, now); break;
       case Phase::CheckRaw:
         if (!target_parameter(f, 0x17, v)) return;
@@ -193,11 +193,11 @@ class TemporaryPreset {
         phase_ = Phase::Recall; break;
       case Phase::ScaleA:
         if (!target_parameter(f, 0x0B, v)) return;
-        if (v != 24) { fail_("Unsupported height scale A", now); return; }
+        if (v != profile_.scale_a()) { fail_("Unsupported height scale A", now); return; }
         read_(0x0C, Phase::ScaleB, now); break;
       case Phase::ScaleB:
         if (!target_parameter(f, 0x0C, v)) return;
-        if (v != 39) { fail_("Unsupported height scale B", now); return; }
+        if (v != profile_.scale_b()) { fail_("Unsupported height scale B", now); return; }
         read_(0x1F, Phase::Original, now); break;
       case Phase::Original:
         if (!target_parameter(f, 0x1F, v)) return;
@@ -272,6 +272,7 @@ class TemporaryPreset {
     }
   }
  private:
+  HeightProfile profile_;
   uint32_t elapsed_(uint32_t now) const { return static_cast<uint32_t>(now - started_); }
   bool waiting_() const {
     return phase_ == Phase::CurrentRaw || phase_ == Phase::CheckRaw || phase_ == Phase::ScaleA || phase_ == Phase::ScaleB || phase_ == Phase::Original ||
