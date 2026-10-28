@@ -150,11 +150,16 @@ static void assessment_and_binary32() {
   CHECK(!setting.begin_read(1, 0) && !setting.begin_write(1, 800, 0));
   CHECK(!setting.take_frame(frame) && !setting.busy());
 
-  // This literal counterexample requires two binary32 rounding operations;
-  // an integer rational implementation would truncate to 7809 instead.
+  // The product is exactly representable; division rounds upward to 7810.
+  // An integer rational implementation would truncate to 7809 instead.
   const auto fractional = HeightProfile::research(known_scalars(), 7508, 8403, true);
   CHECK(fractional.scaled_q(8741, out) && out == 7810);
   CHECK(uint32_t(8741) * 7508 / 8403 == 7809);
+
+  // Multiplication rounds 1253237434 down to 1253237376 before division.
+  // A single final binary32 rounding would instead produce integer 23714.
+  const auto intermediate = HeightProfile::research(known_scalars(), 51398, 52848, true);
+  CHECK(intermediate.scaled_q(24383, out) && out == 23713);
   const auto scaled_overflow = HeightProfile::research(known_scalars(), 65535, 1, true);
   CHECK(!scaled_overflow.scaled_q(65535, out));
   out = 0xABCD;
