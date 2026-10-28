@@ -148,4 +148,7 @@ tests verify that only the optional package adds the reader and its entities.
 Profile tests cover normalized hashing, scalar validation and rejection of
 unrecognized code. The ESPHome host test uses the production SHA-256 helper;
 a locally supplied reference image enables additional extraction checks.
+A separate [host lifecycle test](validation.md#automated-tests) executes the
+reader adapter through failed transfers and a blocked download concurrent with
+Clear, checking image bytes, metadata, and buffer release after sending.
 Physical results and proprietary firmware images stay in the research project.

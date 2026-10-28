@@ -52,6 +52,12 @@ Firmware-image tests check normalization spans, scalar validation and the
 research-only extraction result. The host SHA-256 test rejects synthetic unknown
 images and can also check a separately supplied known application image. Optional
 configuration checks include the profile entities; the normal YAML omits them.
+The reader lifecycle test compiles the unchanged adapter with narrow host
+substitutes for UART, heap and synchronous HTTP sending, plus ESPHome's real
+OpenSSL SHA-256. It checks retained images after failed reads and cancellation,
+profile/status agreement, and download ownership during Clear in Debug and
+Release with ASan/UBSan. It uses synthetic bytes; recognized profile metadata
+is seeded explicitly for retention checks, without claiming image recognition.
 
 Coverage includes framing, height units, presets, Stop, retargeting, recovery,
 keep-awake, timers, load settings and controller identity. Simulated-peer tests
@@ -66,6 +72,17 @@ Set `TMPDIR` to a writable temporary directory first:
 ```sh
 python tests/esphome/run_all.py --work-dir "$TMPDIR/t150-tests"
 ```
+
+The lifecycle test also needs a C++17 compiler, OpenSSL development files and
+`pkg-config`. Run it alone from the same repository root:
+
+```sh
+python tests/esphome/firmware_export_lifecycle.py --work-dir "$TMPDIR/t150-lifecycle"
+```
+
+The HTTP substitute pauses the synchronous send before reading its non-owning
+image pointer. These tests check adapter ownership, not ESP-IDF scheduling or
+hardware SHA behavior.
 
 To include a local reference image in the profile test, run from the same root:
 
