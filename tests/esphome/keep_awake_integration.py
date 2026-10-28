@@ -58,6 +58,8 @@ def main():
     priority: -100
     then:
       - lambda: |-
+          keep_awake_test::Probe::empty_rx_crosses_freshness_boundary();
+          keep_awake_test::Probe::stop_cancels_confirmed_restore();
           keep_awake_test::Probe::gap_cancels_recovery();
           keep_awake_test::Probe::stale_final_readback();
           keep_awake_test::Probe::pending_deadline();
@@ -338,6 +340,8 @@ desk_uart:
                 proc.terminate()
                 proc.wait(timeout=5)
             text = re.sub(r"\x1b\[[0-9;]*m", "", (d / "runtime.log").read_text())
+            assert "EMPTY_RX_BOUNDARY=passed" in text
+            assert "STOP_CONFIRMED_RESTORE=passed" in text
             assert "GAP_CANCELS_RECOVERY=passed" in text
             assert "STALE_FINAL_READBACK=passed" in text
             assert "PENDING_DEADLINE=passed" in text

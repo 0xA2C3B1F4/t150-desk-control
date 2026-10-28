@@ -99,10 +99,11 @@ class TemporaryPreset {
       failed_ = true; error_ = "Cannot clear preset backup"; phase_ = Phase::Fault;
     }
   }
-  void recover(uint16_t original, uint16_t temporary) {
+  void recover(uint16_t original, uint16_t temporary,
+               const char *reason = "Interrupted preset transaction; restore required") {
     original_ = original; target_ = temporary; dirty_ = true;
     queued_ = false; early_restore_ = watching_move_ = motion_seen_ = false;
-    failed_ = true; error_ = "Interrupted preset transaction; restore required";
+    failed_ = true; error_ = reason;
     phase_ = Phase::Fault;
   }
   bool retry_restore(uint32_t now) {
@@ -235,7 +236,7 @@ class TemporaryPreset {
       case Phase::AcceptVerify:
         if (!target_parameter(f, 0x1F, v)) return;
         if (be16(f.bytes + 4) == accepted_sequence_) return;
-        if (v != accepted_raw_) { fail_("Preset changed during acceptance; backup retained", now); return; }
+        if (v != accepted_raw_) { fail_("Preset changed during recovery; backup retained", now); return; }
         if (phase_ == Phase::RestoreConfirm && v != original_) write_(original_, Phase::RestoreWrite, now);
         else phase_ = Phase::ClearJournal;
         break;

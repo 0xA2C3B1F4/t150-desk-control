@@ -188,6 +188,9 @@ void DeskUART::loop() {
   // Use a new timestamp so an ACK timer started in that callback cannot appear
   // to have wrapped around relative to the beginning of this loop.
   const uint32_t now = millis();
+  // RX processing or synchronous callbacks may cross the connection deadline.
+  // Freeze recovery before any transaction can send or complete queued work.
+  if (this->height_seen_ && !this->monitor_.fresh(now)) this->invalidate_journal_session_();
   if (this->release_ack_.expired(now)) {
     this->release_fault_ = true;
     if (this->target_move_.busy()) this->stop();
@@ -298,7 +301,8 @@ bool DeskUART::stop() {
   this->discard_retarget_("Pending target cancelled by Stop");
   this->sync_target_ = true;
   const uint32_t now = millis();
-  if (this->accept_current_active_ || this->recovery_check_active_) this->target_move_.abort_recovery(now);
+  if (this->accept_current_active_ || this->recovery_check_active_ || this->restore_requested_)
+    this->target_move_.abort_recovery(now);
   // Suppress a burst of duplicate requests, not all later explicit Stops.
   // A missing ACK or preset conflict must not permanently disable braking.
   if (this->stop_latched_ && (this->stop_ack_.pending() ||
@@ -533,7 +537,8 @@ void DeskUART::check_retained_preset_(uint16_t preset3_raw) {
       this->target_move_.busy()) return;
   // A controller reboot and a legitimate local save are indistinguishable.
   // Keep the baseline and require a decision instead of deleting it.
-  this->target_move_.recover(this->cached_journal_.original, this->cached_journal_.temporary);
+  this->target_move_.recover(this->cached_journal_.original, this->cached_journal_.temporary,
+        "Preset 3 differs from retained backup; restore backup or accept current preset");
   this->verified_journal_.valid = false;
   this->keep_awake_recovery_ = false;
   ESP_LOGW(TAG, "Preset 3 differs from retained backup: current=%u original=%u; restore or accept explicitly",
@@ -548,7 +553,8 @@ bool DeskUART::save_journal_(bool active) {
   }
   if (this->cached_journal_valid_ &&
       (this->journal_recheck_pending_ || this->cached_journal_.original != this->target_move_.original())) {
-    this->target_move_.recover(this->cached_journal_.original, this->cached_journal_.temporary);
+    this->target_move_.recover(this->cached_journal_.original, this->cached_journal_.temporary,
+        "Preset 3 differs from retained backup; restore backup or accept current preset");
     this->keep_awake_recovery_ = false;
     ESP_LOGW(TAG, "Retained preset backup conflicts with new borrow; no write sent");
     return false;

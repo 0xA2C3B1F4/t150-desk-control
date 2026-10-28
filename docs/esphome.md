@@ -347,7 +347,8 @@ If `Preset restoration pending` is on, follow the
 [preset recovery steps](#preset-restoration-pending-is-on). Recovery does not
 recall a preset or start movement. Restore verifies the saved value in RAM and
 retains the backup. Accept keeps the current value and explicitly discards the
-backup. Neither action verifies EEPROM.
+backup. Stop cancels either explicit recovery action and leaves the backup
+pending. Neither action verifies EEPROM.
 
 The ESP retains the original backup after every completed target or keep-awake
 cycle. After an ESP restart or a height-telemetry gap of at least three seconds,
@@ -557,6 +558,8 @@ The following messages describe why recovery is pending:
 |---|---|
 | `Interrupted preset transaction; restore required` | A preset backup was loaded after an ESP restart; the transaction needs recovery |
 | `Preset recovery needs a decision: restore backup or accept current preset` | A recovery check found that preset 3 differs from the saved original |
+| `Preset 3 differs from retained backup; restore backup or accept current preset` | A preset read or new borrow found a different value during the current session; choose which value to keep |
+| `Preset changed during recovery; backup retained` | The two confirmation reads disagreed during Restore or Accept |
 | `Preset changed locally; refusing overwrite` | Automatic restoration found a third value and left it untouched; choose explicitly whether to Restore or Accept |
 | `Preset recovery interrupted; backup retained` | The recovery checks no longer passed, for example because height changed or telemetry was lost |
 | A timeout or readback mismatch | The value could not be confirmed; inspect `Last command result` before retrying |

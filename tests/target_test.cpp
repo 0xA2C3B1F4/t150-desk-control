@@ -1,5 +1,6 @@
 #include "desk_protocol/target.h"
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 using namespace desk_protocol;
 #define CHECK(x) do { if (!(x)) { std::cerr << __LINE__ << ": " #x "\n"; std::exit(1); } } while(false)
@@ -58,6 +59,7 @@ int main() {
     auto changed=value(0x1F,556); changed.bytes[5]=2;
     t.accept(changed,2); Frame f;
     CHECK(t.failed() && t.dirty() && t.phase()==Phase::Fault && !t.take_frame(f));
+    CHECK(std::strcmp(t.error(),"Preset changed during recovery; backup retained")==0);
   }
   for (bool stale : {false,true}) {
     TemporaryPreset t; t.recover(456,122); CHECK(t.restore_backup(0)); take(t,0x15,0x1F);
@@ -70,6 +72,17 @@ int main() {
     t.accept(first,1); take(t,0x15,0x1F);
     first.bytes[5]=2; t.accept(first,2); Frame f;
     CHECK(t.phase()==Phase::ClearJournal && !t.take_frame(f));
+  }
+  {
+    TemporaryPreset t;
+    const char *reason="Preset 3 differs from retained backup; restore backup or accept current preset";
+    t.recover(456,122,reason);
+    CHECK(t.dirty() && t.failed() && std::strcmp(t.error(),reason)==0);
+    CHECK(t.accept_current(0)); take(t,0x15,0x1F);
+    auto first=value(0x1F,555); first.bytes[5]=1;
+    t.accept(first,1); take(t,0x15,0x1F);
+    auto changed=value(0x1F,556); changed.bytes[5]=2; t.accept(changed,2);
+    CHECK(t.failed() && std::strcmp(t.error(),"Preset changed during recovery; backup retained")==0);
   }
   // A user button may interrupt every phase before recall. A dirty preset
   // still needs settling and verified restoration; no temporary recall leaks.
