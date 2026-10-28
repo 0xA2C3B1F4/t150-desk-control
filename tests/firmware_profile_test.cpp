@@ -160,6 +160,16 @@ static void invalid_scalars() {
     const auto result = parse(candidate);
     CHECK(result.status == fp::Status::InvalidScalars && !result.extracted());
   }
+  auto boundary = image;
+  word(boundary, 0x17B8, static_cast<uint32_t>(-725));  // high_start = 0
+  CHECK(parse(boundary).status == fp::Status::ScalarVariant);
+  word(boundary, 0x17B8, static_cast<uint32_t>(-724));  // high_start = -1
+  CHECK(parse(boundary).status == fp::Status::InvalidScalars);
+  boundary = image;
+  word(boundary, 0x5FD8, 459);  // Largest lower seed strictly below upper seed 460.
+  const auto adjacent_seeds = parse(boundary);
+  CHECK(adjacent_seeds.status == fp::Status::ScalarVariant && adjacent_seeds.extracted());
+  CHECK(adjacent_seeds.scalars.lower_seed == 459 && adjacent_seeds.scalars.upper_seed == 460);
   auto limits = image;
   word(limits, 0x5FD8, 0); word(limits, 0x5FD4, 10000); word(limits, 0x17B4, 5000);
   word(limits, 0x17B8, static_cast<uint32_t>(-15000)); word(limits, 0x17BC, 10000);

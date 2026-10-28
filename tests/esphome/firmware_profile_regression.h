@@ -64,16 +64,11 @@ inline void synthetic() {
   std::vector<uint8_t> image(fp::APPLICATION_SIZE);
   for (size_t i = 0; i < image.size(); ++i) image[i] = static_cast<uint8_t>(i * 37 + 11);
   // The digest is checked independently with Python hashlib after the host exits.
-  esphome::sha256::SHA256 digest;
-  digest.init();
-  for (size_t i = 0; i < fp::NORMALIZED_SPAN_COUNT; ++i) {
-    fp::Span span{};
-    require(fp::normalized_span(image.data(), image.size(), i, span), "Cannot normalize supported image size");
-    if (span.size) digest.add(span.data, span.size);
-  }
-  digest.calculate();
+  uint8_t normalized[32]{};
+  require(esphome::desk_firmware_export::normalized_firmware_sha256(image.data(), image.size(), normalized),
+          "Production normalization failed");
   char hex[65]{};
-  digest.get_hex(hex);
+  esphome::format_hex_to(hex, sizeof(hex), normalized, sizeof(normalized));
   ESP_LOGI("profile_test", "PROFILE_NORMALIZED_SHA=%s", hex);
   check(image, fp::Status::Unrecognized);
   std::fill(image.begin(), image.end(), 0);

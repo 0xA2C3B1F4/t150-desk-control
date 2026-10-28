@@ -35,11 +35,17 @@ struct Span { const uint8_t *data; std::size_t size; };
 namespace detail {
 // Offsets from application address 0x08002800. Only the pinned normalized
 // digest establishes this layout; matching scalar values alone proves nothing.
-static const std::size_t SCALAR_OFFSETS[5] = {0x17B4, 0x17B8, 0x17BC, 0x5FD4, 0x5FD8};
-static const uint8_t FAMILY_SHA256[32] = {
-  0x3f,0x0b,0x62,0x22,0x73,0xa2,0xc2,0xc8,0x70,0x60,0x8b,0xf8,0x57,0xed,0x52,0xb3,
-  0xa4,0x7d,0x40,0x3e,0x97,0xb4,0x4a,0x15,0xd0,0xd2,0x1b,0xc9,0x2a,0xb7,0x4b,0x6d
-};
+inline const std::size_t *scalar_offsets() {
+  static const std::size_t offsets[5] = {0x17B4, 0x17B8, 0x17BC, 0x5FD4, 0x5FD8};
+  return offsets;
+}
+inline const uint8_t *family_sha256() {
+  static const uint8_t digest[32] = {
+    0x3f,0x0b,0x62,0x22,0x73,0xa2,0xc2,0xc8,0x70,0x60,0x8b,0xf8,0x57,0xed,0x52,0xb3,
+    0xa4,0x7d,0x40,0x3e,0x97,0xb4,0x4a,0x15,0xd0,0xd2,0x1b,0xc9,0x2a,0xb7,0x4b,0x6d
+  };
+  return digest;
+}
 inline uint32_t read_u32(const uint8_t *data, std::size_t offset) {
   return static_cast<uint32_t>(data[offset]) |
       (static_cast<uint32_t>(data[offset + 1]) << 8) |
@@ -66,8 +72,9 @@ inline bool normalized_span(const uint8_t *data, std::size_t size,
   static const uint8_t zeros[4] = {};
   if (index % 2) { out = {zeros, sizeof(zeros)}; return true; }
   const std::size_t slot = index / 2;
-  const std::size_t begin = slot ? detail::SCALAR_OFFSETS[slot - 1] + 4 : 0;
-  const std::size_t end = slot < 5 ? detail::SCALAR_OFFSETS[slot] : size;
+  const std::size_t *offsets = detail::scalar_offsets();
+  const std::size_t begin = slot ? offsets[slot - 1] + 4 : 0;
+  const std::size_t end = slot < 5 ? offsets[slot] : size;
   out = {data + begin, end - begin};
   return true;
 }
@@ -81,7 +88,7 @@ inline Result identify(const uint8_t *data, std::size_t size,
   if (!data) return result;
   if (size != APPLICATION_SIZE) { result.status = Status::UnsupportedSize; return result; }
   result.status = Status::Unrecognized;
-  if (!normalized_sha256 || std::memcmp(normalized_sha256, detail::FAMILY_SHA256, 32)) return result;
+  if (!normalized_sha256 || std::memcmp(normalized_sha256, detail::family_sha256(), 32)) return result;
   result.scalars = HeightProfile::Scalars(detail::read_u32(data, 0x5FD8),
       detail::read_u32(data, 0x5FD4), detail::read_u32(data, 0x17B4),
       detail::read_i32(data, 0x17B8), detail::read_u32(data, 0x17BC));

@@ -153,8 +153,10 @@ void FirmwareExport::finish_() {
   char hash[65]{};
   desk_protocol::firmware_profile::Result profile;
   if (receiver_.data_complete() && !cancelled_) {
-    sha256::SHA256 digest;
-    digest.init(); digest.add(receiving_buffer_.get(), receiver_.expected_size()); digest.calculate(); digest.get_hex(hash);
+    {
+      sha256::SHA256 digest;
+      digest.init(); digest.add(receiving_buffer_.get(), receiver_.expected_size()); digest.calculate(); digest.get_hex(hash);
+    }
     profile = identify_firmware_profile(receiving_buffer_.get(), receiver_.expected_size());
   }
   update_snapshot_();
@@ -250,7 +252,7 @@ void FirmwareExport::handleRequest(AsyncWebServerRequest *request) {
         request->send(500, "text/plain", "Firmware profile response too large"); return;
       }
     }
-    char json[1536];
+    char json[1024];
     const int length = std::snprintf(json, sizeof(json),
       "{\"state\":\"%s\",\"error\":\"%s\",\"received\":%u,\"size\":%u,\"image_size\":%u,\"max_size\":%u,\"busy\":%s,\"ready\":%s,\"closing_complete\":%s,\"sha256\":\"%s\",\"bad_packets\":%u,\"duplicates\":%u,\"free_heap\":%u,\"largest_block\":%u,\"image_profile\":{\"status\":\"%s\",\"extraction_supported\":%s,\"control_approved\":false%s}}",
       value.state, value.error ? value.error : "", unsigned(value.received), unsigned(value.expected),
