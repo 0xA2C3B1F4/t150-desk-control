@@ -121,7 +121,9 @@ class DeskUART : public Component, public uart::UARTDevice {
   bool keep_awake_recovery_{false}, cached_journal_valid_{false}, keep_awake_pressed_{false};
   // Tracks early abort or user-requested yield through verified restore or fault.
   const char *soft_abort_error_{nullptr};
-  void clear_stale_journal_(uint16_t preset3_raw);
+  void check_retained_preset_(uint16_t preset3_raw);
+  void invalidate_journal_session_();
+  bool journal_recheck_pending_{false};
   bool recovery_check_active_{false}, accept_current_active_{false}, restore_requested_{false};
   uint32_t last_keep_awake_{0};
   uint16_t keep_awake_q_{0};
@@ -131,8 +133,7 @@ class DeskUART : public Component, public uart::UARTDevice {
   uint32_t stable_ms_(uint32_t /*now*/) const { return height_seen_ ? static_cast<uint32_t>(last_height_received_ - last_height_change_) : 0; }
   struct PresetJournal { uint32_t magic; uint16_t original; uint16_t temporary; };
   PresetJournal cached_journal_{};
-  // The retained automatic journal whose cycle restored and read back the
-  // original during this boot. Never set from a journal loaded at startup.
+  // RAM readback evidence only; never authorizes deleting the durable backup.
   struct VerifiedJournal { bool valid; uint16_t original; uint16_t temporary; };
   VerifiedJournal verified_journal_{false, 0, 0};
   ESPPreferenceObject preset_preference_;

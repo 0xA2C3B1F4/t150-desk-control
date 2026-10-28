@@ -10,7 +10,7 @@ for identification, the WT95 white variant and the scope of controller testing.
 |---|---|---|
 | Height | Reads channel-2 telemetry; displays cm or inches selected in YAML | Uses the same position profile in either unit |
 | Presets | Recalls and edits three stored heights | Local buttons and controller autosave can conflict with remote edits |
-| Target height | Borrows preset 3, then restores its original value | Uses a profile-specific 73–118 cm range |
+| Target height | Borrows preset 3, restores RAM and retains its original backup | Uses a profile-specific 73–118 cm range; EEPROM restoration is unverified |
 | Stop | Requests controlled deceleration | Not an emergency stop; UART failure can prevent delivery |
 | Retargeting | Brakes, restores the borrowed preset, then starts the latest target | Covered by simulated-peer tests; physical retarget behavior still needs testing |
 | Keep-awake | Uses the current raw position for an idle-only preset recall after 30 seconds of inactivity | Cannot wake an already sleeping UART |
@@ -32,6 +32,9 @@ interval and a second preset press during movement.
 Early preset restoration has been checked during short moves. Long moves and
 moves with the original preset far from the target remain unverified. These
 checks do not establish positioning accuracy across the full height range.
+Backup retention has been checked across Stamp power loss. A controller restart
+with a different preset value blocked automation until explicit Restore; Restore
+and Accept were checked without desk movement. EEPROM contents remain unverified.
 See the [protocol documentation](protocol.md) for movement and recovery behavior.
 
 ## Automated tests

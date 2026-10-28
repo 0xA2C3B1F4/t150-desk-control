@@ -181,7 +181,7 @@ rejects conflicting `unit_of_measurement` values.
 | `preset_1_height` / `preset_2_height` / `preset_3_height` | Editable Configuration values |
 | `target_height` | Requested height, distinct from measured height |
 | `stop` / `stop_locked` | Controlled brake and pending stop cleanup |
-| `restore_preset_3` / `preset_restore_pending` | Interrupted preset recovery |
+| `restore_preset_3` / `preset_restore_pending` | Preset RAM restoration and unresolved recovery |
 | `accept_current_preset_3` | Keep the controller's current preset 3 and discard the pending backup |
 | `timer_30min` / `timer_60min` / `timer_90min` / `timer_120min` | Experimental T-key sequences |
 | `cancel_timer` / `timer_command_pending` | Cancellation sequence and sequence-in-progress status |
@@ -195,6 +195,9 @@ Preset height edits check active scale coefficients A=24 and B=39, write one
 RAM setting and verify it by readback. They do not recall the preset or move
 the desk. An edit can subsequently be autosaved by the controller. The number
 entities belong in Configuration; dashboards can place them beside recall buttons.
+If an original preset-3 backup is retained, first use **Accept current preset 3**
+to discard it before deliberately editing preset 3. Accept is available while
+idle even when no restoration is pending.
 
 ## Configuration reference
 
@@ -285,8 +288,10 @@ The adapter continues monitoring the move after restoring the preset. It finishe
 after at least three seconds from recall and 1.5 seconds of unchanged fresh
 height. If no movement is detected, those same settling conditions trigger
 restoration. Idle keep-awake cycles use this settling path.
-It does not send an explicit EEPROM-save command. The controller can autosave
-RAM independently, including during a power interruption or local save action.
+The adapter restores RAM and reads it back; it does not send an EEPROM-save
+command. The controller saves all three presets during a local M/save action,
+sleep entry or software reset. A save while preset 3 is borrowed can therefore
+persist the temporary value. RAM restoration does not verify or repair EEPROM.
 
 Wait for the target transaction to finish before using local M/save or preset 3.
 An unexpected preset value pauses the transaction for recovery. Settling is
@@ -340,11 +345,22 @@ Braking with a pending controller button event is not physically validated.
 
 If `Preset restoration pending` is on, follow the
 [preset recovery steps](#preset-restoration-pending-is-on). Recovery does not
-recall a preset or start movement. It either restores the saved value or keeps
-the controller's current value and discards the backup.
+recall a preset or start movement. Restore verifies the saved value in RAM and
+retains the backup. Accept keeps the current value and explicitly discards the
+backup. Neither action verifies EEPROM.
+
+The ESP retains the original backup after every completed target or keep-awake
+cycle. After an ESP restart or a height-telemetry gap of at least three seconds,
+it checks preset 3 with read-only requests once telemetry is fresh and settled.
+A matching original resolves that recovery check while keeping the backup; it
+does not clear an existing keep-awake fault. Any different value needs a
+recovery decision. A later preset read cannot silently discard the backup or
+replace it with a new original. Records from earlier component versions remain
+recoverable with the same component ID. Resolve retained backups before
+downgrading to an older component that cannot read the new record format.
 
 The recovery buttons and pending sensor can also be configured with target
-movement disabled. Keep them available until the backup is resolved. Keep the
+movement disabled. Keep them available for retained backups. Keep the
 component ID stable, and resolve pending recovery before erasing ESP flash or
 connecting the ESP to another desk.
 
@@ -394,26 +410,14 @@ A height-change or late-sample abort after the press has been sent requests a
 brake and pauses keep-awake. A failed preset restoration remains a fault; it
 does not necessarily send another brake request.
 
-### After an ESP restart
+### Retained backups
 
-Identical automatic cycles reuse a retained ESP flash journal to avoid writing
-flash twice per cycle. On boot, the automatic journal is checked using
-read-only UART requests once fresh stable telemetry returns, even if keep-awake
-or target movement is now disabled. If preset 3 still equals the original value,
-the retained journal is cleared from ESP flash once. Otherwise, recovery waits
-for the [preset recovery steps](#preset-restoration-pending-is-on).
-Even a value equal to the old temporary target is ambiguous, because it could
-be a newer local save. Boot leaves that value for an explicit recovery choice.
-Normal uninterrupted cycles still restore their borrowed slot automatically.
-
-While the ESP keeps running, a retained journal can be cleared before a
-restart. This happens only when a cycle during this boot restored and read back
-the original, the journal still describes that cycle, no transaction or
-unresolved fault is pending, and a later `preset_3_height` read finds a
-different value, such as a local M+3 save. The clear must commit to flash;
-otherwise it is logged and a restart still asks for a decision. A journal
-loaded at startup is never cleared this way. Without `preset_3_height`, preset 3
-is not polled and the journal is kept.
+Identical cycles reuse the retained ESP flash record instead of saving and
+clearing it on every cycle. Retention also applies to user target moves. See
+[Recovering a borrowed preset](#recovering-a-borrowed-preset) for startup,
+reconnect and local-edit handling. A backup can remain stored while
+`Preset restoration pending` is off; that sensor reports unresolved recovery,
+not whether a retained record exists.
 
 A restore-button request during a healthy cycle is rejected without disabling
 that cycle's height-change and telemetry checks.
@@ -518,22 +522,25 @@ behavior and limits.
 
 ### Preset restoration pending is on
 
-The ESP holds a backup of preset 3 and blocks new moves until recovery is
-resolved. Use the recovery buttons under Configuration. The ordinary preset
-recall buttons command movement; they are not a way to inspect a saved height.
+The ESP cannot confirm preset 3 against its retained original and blocks new
+moves until recovery is resolved. Use the recovery buttons under Configuration.
+The ordinary preset recall buttons command movement; they are not a way to
+inspect a saved height.
 
 1. Leave the desk stationary, wait for `UART connected`, and allow other
    operations to finish. If a release fault is shown, handle it first using
    [A button release is unconfirmed](#a-button-release-is-unconfirmed).
 2. Choose one recovery action:
    - **Restore interrupted preset** (`restore_preset_3`) restores the saved
-     original only if preset 3 still contains the temporary value. If the
-     original is already present, it clears the backup without writing. It
-     refuses to overwrite any third value and leaves the backup pending.
+     original after two matching reads with different receive sequences. This
+     explicit choice can replace a newer local value or an older temporary
+     value. If the original is already present, no write is needed. Restoration
+     verifies RAM, clears the pending state and retains the backup.
    - **Accept current preset 3** (`accept_current_preset_3`) keeps the value
      currently held by the controller and discards the backup after two matching
      reads. Choose this when you want to keep the current preset, for example
-     after deliberately saving a new value locally. It sends no preset write.
+     after deliberately saving a new value locally. It sends no preset write
+     and does not establish that the accepted value is stored in EEPROM.
 3. Check `Last command result` for successful recovery and that
    `Preset restoration pending` turns off. A changing value, timeout, lost
    telemetry, Stop or failed flash update leaves the backup pending. Resolve
@@ -549,8 +556,8 @@ The following messages describe why recovery is pending:
 | Message | Meaning |
 |---|---|
 | `Interrupted preset transaction; restore required` | A preset backup was loaded after an ESP restart; the transaction needs recovery |
-| `Preset recovery needs a decision: restore backup or accept current preset` | The boot check found that preset 3 differs from the saved original |
-| `Preset changed locally; refusing overwrite` | Preset 3 holds neither the original nor the temporary value; Restore leaves it untouched |
+| `Preset recovery needs a decision: restore backup or accept current preset` | A recovery check found that preset 3 differs from the saved original |
+| `Preset changed locally; refusing overwrite` | Automatic restoration found a third value and left it untouched; choose explicitly whether to Restore or Accept |
 | `Preset recovery interrupted; backup retained` | The recovery checks no longer passed, for example because height changed or telemetry was lost |
 | A timeout or readback mismatch | The value could not be confirmed; inspect `Last command result` before retrying |
 

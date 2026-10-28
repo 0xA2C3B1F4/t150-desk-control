@@ -31,6 +31,51 @@ class Probe : public esphome::desk_uart::DeskUART {
       ESP_LOGI("fixture", "HANDOFF_REPLACE=%d", this->recall_preset(2));
     }
   }
+  static void gap_cancels_recovery() {
+    using Phase = desk_protocol::TemporaryPreset::Phase;
+    for (bool restoring : {false, true}) {
+      Probe p;
+      p.cached_journal_valid_ = true;
+      p.cached_journal_ = {0x44534B33, 456, 122};
+      auto &t = p.target_move_;
+      t.recover(456, 122);
+      require(restoring ? t.restore_backup(1000) : t.accept_current(1000), "begin recovery before gap");
+      p.restore_requested_ = restoring;
+      p.accept_current_active_ = !restoring;
+      desk_protocol::Frame f;
+      require(t.take_frame(f), "first recovery read");
+      f = value(0x1F, 555); f.bytes[5] = 1;
+      t.accept(f, 1001);
+      require(t.take_frame(f), "second recovery read");
+      if (restoring) {
+        f = value(0x1F, 555); f.bytes[5] = 2;
+        t.accept(f, 1002); // Leave the resulting RAM write queued.
+        require(t.phase() == Phase::RestoreWrite, "queued restore before gap");
+      }
+      p.invalidate_journal_session_();
+      require(p.journal_recheck_pending_ && p.cached_journal_valid_, "gap retains backup");
+      require(!p.accept_current_active_ && !p.restore_requested_, "gap cancels explicit intent");
+      require(!t.take_frame(f) && t.phase() == Phase::Fault, "gap drops queued UART work");
+      // A later original-valued automatic check must not inherit Accept's
+      // permission to clear persistent storage.
+      require(t.check_recovery(2000), "automatic read-only recheck");
+      require(t.take_frame(f), "automatic read");
+      t.accept(value(0x1F, 456), 2001);
+      require(t.phase() == Phase::ClearJournal, "matching RAM check");
+      require(p.save_journal_(false) && p.cached_journal_valid_, "recheck cannot clear backup");
+      t.journal_cleared(true);
+    }
+    Probe p;
+    p.cached_journal_valid_ = true;
+    p.cached_journal_ = {0x44534B33, 456, 122};
+    auto &t = p.target_move_;
+    t.recover(456, 122); require(t.retry_restore(0), "prepare fallback restore");
+    t.tick(2000, true, 2000, true);
+    p.invalidate_journal_session_();
+    desk_protocol::Frame f;
+    require(!t.take_frame(f), "gap drops pending restore read");
+    ESP_LOGI("fixture", "GAP_CANCELS_RECOVERY=passed");
+  }
   static void pending_deadline() {
     Probe p;
     p.motion_enabled_ = true;

@@ -29,7 +29,7 @@ class TemporaryPreset {
  public:
   enum class Phase { Idle, CurrentRaw, CheckRaw, ScaleA, ScaleB, Original, Backup, Write, Verify,
                      Recall, Moving, Settle, RestoreRead, RestoreWrite,
-                     RestoreVerify, ClearJournal, Fault, RecoveryRead, AcceptRead, AcceptVerify, Monitoring };
+                     RestoreVerify, ClearJournal, Fault, RecoveryRead, AcceptRead, AcceptVerify, Monitoring, RestoreCheck, RestoreConfirm };
   bool begin(uint16_t tenths, uint32_t now) {
     uint16_t raw;
     if (busy() || !metric_target_raw(tenths, raw)) return false;
@@ -78,6 +78,7 @@ class TemporaryPreset {
     if (!queued_) return false;
     f = output_; queued_ = false; return true;
   }
+  bool brake_pending() const { return brake_; }
   bool take_brake() { bool b = brake_; brake_ = false; return b; }
   // This handshake is deliberately outside frame processing: flash must be
   // committed before the first UART write, including on ESP power failure.
@@ -100,6 +101,7 @@ class TemporaryPreset {
   }
   void recover(uint16_t original, uint16_t temporary) {
     original_ = original; target_ = temporary; dirty_ = true;
+    queued_ = false; early_restore_ = watching_move_ = motion_seen_ = false;
     failed_ = true; error_ = "Interrupted preset transaction; restore required";
     phase_ = Phase::Fault;
   }
@@ -107,6 +109,13 @@ class TemporaryPreset {
     if (phase_ != Phase::Fault || !dirty_) return false;
     failed_ = false; error_ = "";
     phase_ = Phase::Settle; started_ = now; return true;
+  }
+  // Explicit user recovery can replace an older temporary or a local value,
+  // but only after two stable, distinct replies. Normal cleanup stays strict.
+  bool restore_backup(uint32_t now) {
+    if (phase_ != Phase::Fault || !dirty_) return false;
+    failed_ = false; error_ = "";
+    read_(0x1F, Phase::RestoreCheck, now); return true;
   }
   // A retained automatic journal can describe a completed cycle. On boot a
   // matching temporary value might be a newer local edit, not an interruption.
@@ -124,10 +133,12 @@ class TemporaryPreset {
     read_(0x1F, Phase::AcceptRead, now); return true;
   }
   bool inspecting_recovery() const {
-    return phase_ == Phase::RecoveryRead || phase_ == Phase::AcceptRead || phase_ == Phase::AcceptVerify;
+    return phase_ == Phase::RecoveryRead || phase_ == Phase::AcceptRead || phase_ == Phase::AcceptVerify ||
+           phase_ == Phase::RestoreCheck || phase_ == Phase::RestoreConfirm;
   }
   void abort_recovery(uint32_t now) {
-    if (!inspecting_recovery() && phase_ != Phase::ClearJournal) return;
+    if (!inspecting_recovery() && phase_ != Phase::ClearJournal &&
+        phase_ != Phase::RestoreWrite && phase_ != Phase::RestoreVerify) return;
     failed_ = true; error_ = "Preset recovery interrupted; backup retained";
     queued_ = false; phase_ = Phase::Fault; started_ = now;
   }
@@ -153,6 +164,17 @@ class TemporaryPreset {
     if (phase_ == Phase::ClearJournal || phase_ == Phase::Fault) return;
     if (inspecting_recovery()) { phase_ = Phase::Fault; return; }
     phase_ = dirty_ ? Phase::Settle : Phase::Idle; started_ = now;
+  }
+  // A lost controller session makes queued replies and automatic restoration
+  // ambiguous. Preserve the backup and request braking if motion was monitored.
+  void connection_lost(uint32_t now) {
+    if (!busy()) return;
+    const bool moving = watching_move_;
+    cancel(now);
+    queued_ = false;
+    failed_ = true; error_ = "Controller connection lost; preset backup retained";
+    phase_ = dirty_ ? Phase::Fault : Phase::Idle;
+    brake_ = brake_ || moving;
   }
   void accept(const Frame &f, uint32_t now) {
     if (waiting_() && elapsed_(now) >= 700) return;
@@ -204,15 +226,19 @@ class TemporaryPreset {
         if (!target_parameter(f, 0x1F, v)) return;
         if (v != original_) { fail_("Preset recovery needs a decision: restore backup or accept current preset", now); return; }
         phase_ = Phase::ClearJournal; break;
+      case Phase::RestoreCheck:
       case Phase::AcceptRead:
         if (!target_parameter(f, 0x1F, v)) return;
         accepted_raw_ = v; accepted_sequence_ = be16(f.bytes + 4);
-        read_(0x1F, Phase::AcceptVerify, now); break;
+        read_(0x1F, phase_ == Phase::RestoreCheck ? Phase::RestoreConfirm : Phase::AcceptVerify, now); break;
+      case Phase::RestoreConfirm:
       case Phase::AcceptVerify:
         if (!target_parameter(f, 0x1F, v)) return;
         if (be16(f.bytes + 4) == accepted_sequence_) return;
         if (v != accepted_raw_) { fail_("Preset changed during acceptance; backup retained", now); return; }
-        phase_ = Phase::ClearJournal; break;
+        if (phase_ == Phase::RestoreConfirm && v != original_) write_(original_, Phase::RestoreWrite, now);
+        else phase_ = Phase::ClearJournal;
+        break;
       default: break;
     }
   }

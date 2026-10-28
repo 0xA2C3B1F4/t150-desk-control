@@ -17,6 +17,7 @@ bool DeskUART::begin_firmware_export() {
       this->preset_settings_.busy() || this->target_move_.dirty() || this->keep_awake_active_ ||
       this->keep_awake_fault_ || this->recovery_check_active_ || this->accept_current_active_ ||
       this->restore_requested_ || this->identity_pending_ != 255) return false;
+  this->invalidate_journal_session_();
   this->firmware_export_active_ = true;
   this->parser_.reset();
   this->monitor_ = {};
@@ -29,6 +30,7 @@ bool DeskUART::begin_firmware_export() {
 }
 void DeskUART::end_firmware_export() {
   if (!this->firmware_export_active_) return;
+  this->invalidate_journal_session_();
   this->parser_.reset();
   this->monitor_ = {};
   this->height_seen_ = this->connected_ = false;
@@ -102,15 +104,15 @@ void DeskUART::setup() {
   {  // Recovery records remain relevant even after target controls are disabled.
     this->preset_preference_ = global_preferences->make_preference<PresetJournal>(this->preference_key_, true);
     PresetJournal journal{};
-    if (this->preset_preference_.load(&journal) && (journal.magic == 0x44534B31 || journal.magic == 0x44534B32)) {
+    if (this->preset_preference_.load(&journal) &&
+        (journal.magic == 0x44534B31 || journal.magic == 0x44534B32 || journal.magic == 0x44534B33)) {
+      // Same key and eight-byte layout: legacy records remain recoverable.
+      this->cached_journal_ = journal;
+      this->cached_journal_valid_ = true;
       this->target_move_.recover(journal.original, journal.temporary);
-      if (journal.magic == 0x44534B32) {
-        this->cached_journal_ = journal;
-        this->cached_journal_valid_ = true;
-        this->keep_awake_recovery_ = true;
-        this->last_target_error_ = this->target_move_.error();
-        ESP_LOGD(TAG, "Checking retained keep-awake backup after startup");
-      } else ESP_LOGW(TAG, "Interrupted target move: restore saved preset before new motion");
+      this->keep_awake_recovery_ = true;
+      this->last_target_error_ = this->target_move_.error();
+      ESP_LOGD(TAG, "Checking retained preset backup after startup; EEPROM unverified");
     }
     if (this->target_number_) this->target_number_->publish_state(NAN);
   }
@@ -127,6 +129,7 @@ void DeskUART::release_(const desk_protocol::Frame &frame, uint32_t now) {
 void DeskUART::loop() {
   if (this->firmware_export_active_) return;
   const uint32_t loop_start = millis();
+  if (this->height_seen_ && !this->monitor_.fresh(loop_start)) this->invalidate_journal_session_();
   desk_protocol::Frame frame;
   // Release has priority even if network/telemetry has gone away.
   if (this->pulse_.poll(loop_start, frame)) this->release_(frame, loop_start);
@@ -138,6 +141,7 @@ void DeskUART::loop() {
     uint8_t byte;
     if (!this->read_byte(&byte)) break;
     const uint32_t now = millis();
+    if (this->height_seen_ && !this->monitor_.fresh(now)) this->invalidate_journal_session_();
     const auto parsed = this->parser_.feed(byte, now, frame);
     if (parsed == desk_protocol::ParseResult::BadChecksum || parsed == desk_protocol::ParseResult::BadLength ||
         parsed == desk_protocol::ParseResult::Overflow)
@@ -230,6 +234,7 @@ void DeskUART::loop() {
 bool DeskUART::recall_preset(uint8_t slot) {
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   const uint32_t now = millis();
+  if (this->journal_recheck_pending_) return this->result_(false, "Preset backup needs a fresh read after connection loss");
   if (!this->motion_enabled_ || slot < 1 || slot > 3) return this->result_(false, "Preset controls disabled or invalid preset");
   this->last_keep_awake_ = now;
   if (this->keep_awake_active_ && !this->keep_awake_fault_ && !this->target_move_.failed() &&
@@ -265,7 +270,7 @@ void DeskUART::discard_pending_preset_(const char *reason) {
 }
 bool DeskUART::pending_preset_loop_(uint32_t now) {
   if (!this->pending_preset_) return false;
-  if (!this->motion_enabled_ || this->firmware_export_active_ || this->stop_latched_ ||
+  if (this->journal_recheck_pending_ || !this->motion_enabled_ || this->firmware_export_active_ || this->stop_latched_ ||
       this->release_fault_ || this->keep_awake_fault_ || this->target_move_.failed() ||
       !this->monitor_.fresh(now) || static_cast<uint32_t>(now - this->last_height_received_) > 750 ||
       this->last_q_ != this->pending_preset_q_ ||
@@ -440,7 +445,7 @@ void DeskUART::limit_loop_(uint32_t now) {
   }
 }
 bool DeskUART::preset_access_allowed_(uint32_t now) const {
-  return !this->pending_preset_ && !this->firmware_export_active_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
+  return !this->journal_recheck_pending_ && !this->pending_preset_ && !this->firmware_export_active_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
          static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
          static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000 &&
          !this->target_move_.busy() && !this->retarget_pending_ && !this->timer_.busy() &&
@@ -457,9 +462,8 @@ bool DeskUART::set_preset_height(uint8_t slot, float cm) {
   if (!this->preset_known_[slot - 1]) return this->result_(false, "Read original preset height before editing");
   if (this->preset_settings_.busy() || !this->preset_access_allowed_(now))
     return this->result_(false, "Preset edit blocked: moving, recent recall, stale telemetry or another operation; see control status");
-  // A saved automatic backup must not outlive an intentional preset edit.
-  if (slot == 3 && !this->clear_cached_journal_())
-    return this->result_(false, "Cannot clear retained preset backup before edit");
+  if (slot == 3 && this->cached_journal_valid_)
+    return this->result_(false, "Accept current preset first to discard the retained backup before editing preset 3");
   if (!this->preset_settings_.begin_write(slot, static_cast<uint16_t>(std::lround(cm * 10)), now)) return false;
   this->preset_known_[slot - 1] = false;
   this->preset_numbers_[slot - 1]->publish_state(NAN);
@@ -479,7 +483,7 @@ void DeskUART::preset_settings_loop_(uint32_t now) {
   this->preset_settings_.tick(now);
   desk_protocol::PresetSettings::Result r{};
   if (this->preset_settings_.take_result(r)) {
-    if (r.slot == 3 && r.value_known && !r.write && !r.error) this->clear_stale_journal_(r.raw);
+    if (r.slot == 3 && r.value_known && !r.write && !r.error) this->check_retained_preset_(r.raw);
     const uint8_t i = r.slot - 1;
     uint16_t tenths;
     this->preset_known_[i] = r.value_known;
@@ -514,46 +518,65 @@ bool DeskUART::clear_cached_journal_() {
   this->cached_journal_valid_ = false;
   return true;
 }
-void DeskUART::clear_stale_journal_(uint16_t preset3_raw) {
-  // Only the retained record of a cycle that restored and read back the
-  // original during this boot qualifies. A record loaded at startup is
-  // ambiguous and stays for an explicit user decision.
-  const auto &v = this->verified_journal_;
-  if (!v.valid || !this->cached_journal_valid_ || this->cached_journal_.original != v.original ||
-      this->cached_journal_.temporary != v.temporary || preset3_raw == v.original)
-    return;
-  if (this->target_move_.busy() || this->target_move_.dirty() || this->keep_awake_active_ ||
-      this->keep_awake_fault_ || this->soft_abort_error_ || this->stop_latched_ || this->release_fault_)
-    return;
+void DeskUART::invalidate_journal_session_() {
+  if (!this->cached_journal_valid_ || this->journal_recheck_pending_) return;
   this->verified_journal_.valid = false;
-  if (this->clear_cached_journal_())
-    ESP_LOGI(TAG, "Preset 3 changed after a verified keep-awake restore; retained backup cleared");
-  else
-    ESP_LOGW(TAG, "Cannot clear retained keep-awake backup; an ESP restart will ask for a decision");
+  this->journal_recheck_pending_ = true;
+  this->target_move_.connection_lost(millis());
+  this->accept_current_active_ = this->restore_requested_ = this->recovery_check_active_ = false;
+  this->keep_awake_recovery_ = false;
+  this->discard_pending_preset_("Pending preset cancelled by connection loss; press again");
+  this->discard_retarget_("Pending target cancelled by connection loss; request again");
+}
+void DeskUART::check_retained_preset_(uint16_t preset3_raw) {
+  if (!this->cached_journal_valid_ || preset3_raw == this->cached_journal_.original ||
+      this->target_move_.busy()) return;
+  // A controller reboot and a legitimate local save are indistinguishable.
+  // Keep the baseline and require a decision instead of deleting it.
+  this->target_move_.recover(this->cached_journal_.original, this->cached_journal_.temporary);
+  this->verified_journal_.valid = false;
+  this->keep_awake_recovery_ = false;
+  ESP_LOGW(TAG, "Preset 3 differs from retained backup: current=%u original=%u; restore or accept explicitly",
+           preset3_raw, this->cached_journal_.original);
 }
 bool DeskUART::save_journal_(bool active) {
   this->verified_journal_.valid = false;
-  // A successfully restored automatic backup may remain on flash. The next
-  // identical cycle reuses it. Boot only reads; an ambiguous value is never
-  // overwritten without an explicit user recovery request.
-  // This avoids two flash commits per cycle while preserving recovery.
-  if (this->keep_awake_active_ && !active) return true;
-  PresetJournal journal{active ? (this->keep_awake_active_ ? 0x44534B32U : 0x44534B31U) : 0U,
-                        this->target_move_.original(), this->target_move_.target()};
-  if (this->keep_awake_active_ && this->cached_journal_valid_ &&
+  if (!active) {
+    // Completing a RAM transaction cannot establish EEPROM persistence.
+    // Only explicit, double-read acceptance discards the retained baseline.
+    return !this->accept_current_active_ || this->clear_cached_journal_();
+  }
+  if (this->cached_journal_valid_ &&
+      (this->journal_recheck_pending_ || this->cached_journal_.original != this->target_move_.original())) {
+    this->target_move_.recover(this->cached_journal_.original, this->cached_journal_.temporary);
+    this->keep_awake_recovery_ = false;
+    ESP_LOGW(TAG, "Retained preset backup conflicts with new borrow; no write sent");
+    return false;
+  }
+  PresetJournal journal{0x44534B33U, this->target_move_.original(), this->target_move_.target()};
+  if (this->cached_journal_valid_ && this->cached_journal_.magic == journal.magic &&
       this->cached_journal_.original == journal.original && this->cached_journal_.temporary == journal.temporary)
     return true;
   if (!this->preset_preference_.save(&journal) || !global_preferences->sync()) return false;
   this->cached_journal_ = journal;
-  this->cached_journal_valid_ = journal.magic == 0x44534B32;
+  this->cached_journal_valid_ = true;
   ESP_LOGD(TAG, "Preset recovery journal committed (magic=%08x)", unsigned(journal.magic));
   return true;
 }
 void DeskUART::keep_awake_loop_(uint32_t now) {
   using Phase = desk_protocol::TemporaryPreset::Phase;
-  // Only the automatic retained record is checked automatically at boot.
-  // An interrupted user move keeps its existing explicit recovery behavior.
-  if (this->keep_awake_recovery_ && !this->stop_latched_ && this->recovery_access_allowed_(now)) {
+  // Wait for release/braking and fresh settled height before inspecting a
+  // retained record. Never replace a running motion state during RX handling.
+  if (this->journal_recheck_pending_ && this->cached_journal_valid_ && !this->target_move_.brake_pending() && this->recovery_access_allowed_(now) &&
+      (!this->target_move_.busy() || this->target_move_.phase() == Phase::Fault ||
+       this->target_move_.phase() == Phase::Settle)) {
+    this->target_move_.recover(this->cached_journal_.original, this->cached_journal_.temporary);
+    this->journal_recheck_pending_ = false;
+    this->keep_awake_active_ = false;
+    this->soft_abort_error_ = nullptr;
+    this->keep_awake_recovery_ = true;
+  }
+  if (this->keep_awake_recovery_ && this->recovery_access_allowed_(now)) {
     this->keep_awake_recovery_ = false;
     this->recovery_check_active_ = this->target_move_.check_recovery(now);
   }
@@ -569,7 +592,7 @@ void DeskUART::keep_awake_loop_(uint32_t now) {
     }
     return;
   }
-  if (this->pending_preset_ || !this->keep_awake_enabled_ || !this->target_enabled_ || this->keep_awake_fault_ ||
+  if (this->journal_recheck_pending_ || this->pending_preset_ || !this->keep_awake_enabled_ || !this->target_enabled_ || this->keep_awake_fault_ ||
       this->preset_settings_.busy() || !this->preset_access_allowed_(now) ||
       static_cast<uint32_t>(now - this->last_keep_awake_) < 30000) return;
   const auto height = desk_protocol::metric_display(this->last_q_).before_rounding_tenths_cm / 10.0f;
@@ -588,6 +611,8 @@ bool DeskUART::move_to_height(float cm) {
   this->last_keep_awake_ = now;
   if (!this->target_enabled_ || !std::isfinite(cm) || cm < this->min_height_ || cm > this->max_height_)
     return this->result_(false, "Target outside configured range or target control disabled");
+  if (this->journal_recheck_pending_)
+    return this->result_(false, "Retained preset backup needs a fresh read after connection loss");
   if (this->keep_awake_active_)
     return this->result_(false, "Keep-awake preset transaction in progress; request again after restoration");
   // Only an already active slider move may be replaced. Never queue across a
@@ -641,16 +666,19 @@ bool DeskUART::restore_temporary_preset() {
   const uint32_t now = millis();
   this->last_keep_awake_ = now;
   if (!this->recovery_access_allowed_(now)) return this->result_(false, "Preset recovery blocked: wait for fresh settled height and other operations to finish");
-  if (this->keep_awake_fault_ && !this->target_move_.busy()) {
+  if (this->keep_awake_fault_ && !this->target_move_.busy() && !this->cached_journal_valid_) {
     this->keep_awake_fault_ = false;
     this->last_keep_awake_ = now;
     return this->result_(true, "Keep-awake fault cleared; next attempt after 30 seconds");
   }
-  const bool retried = this->target_move_.retry_restore(now);
+  if (this->cached_journal_valid_ && !this->target_move_.busy())
+    this->target_move_.recover(this->cached_journal_.original, this->cached_journal_.temporary);
+  const bool retried = this->target_move_.restore_backup(now);
   if (retried) {
     this->keep_awake_active_ = false;
     this->keep_awake_recovery_ = false;
     this->restore_requested_ = true;
+    this->journal_recheck_pending_ = false;
     this->keep_awake_fault_ = false;
     this->soft_abort_error_ = nullptr;
     this->last_target_error_ = nullptr;
@@ -670,8 +698,11 @@ bool DeskUART::accept_current_preset() {
   const uint32_t now = millis();
   this->last_keep_awake_ = now;
   if (!this->recovery_access_allowed_(now)) return this->result_(false, "Preset acceptance blocked: wait for fresh settled height and other operations to finish");
+  if (this->cached_journal_valid_ && !this->target_move_.busy())
+    this->target_move_.recover(this->cached_journal_.original, this->cached_journal_.temporary);
   if (!this->target_move_.accept_current(now)) return this->result_(false, "No failed preset backup to discard");
   this->accept_current_active_ = true;
+  this->journal_recheck_pending_ = false;
   this->keep_awake_active_ = false;
   this->soft_abort_error_ = nullptr;
   this->keep_awake_recovery_ = false;
@@ -691,7 +722,7 @@ void DeskUART::target_loop_(uint32_t now) {
     this->keep_awake_fault_ = true;
     this->result_(false, "Keep-awake interrupted; telemetry lost before original preset 3 was verified");
   }
-  if ((this->target_move_.inspecting_recovery() || this->accept_current_active_ || this->recovery_check_active_) &&
+  if ((this->target_move_.inspecting_recovery() || this->accept_current_active_ || this->recovery_check_active_ || this->restore_requested_) &&
       !this->recovery_access_allowed_(now))
     this->target_move_.abort_recovery(now);
   this->target_move_.tick(now, this->monitor_.fresh(now), this->stable_ms_(now),
@@ -755,9 +786,9 @@ void DeskUART::target_loop_(uint32_t now) {
   }
   if (this->recovery_check_active_ || this->accept_current_active_ || this->restore_requested_) {
     if (!this->target_move_.busy()) {
-      this->result_(true, this->accept_current_active_ ? "Current preset accepted; backup discarded, no movement" :
-        this->recovery_check_active_ ? "Retained preset backup checked and cleared; no movement" : "Original preset restored and verified; no movement");
-      this->keep_awake_fault_ = false;
+      this->result_(true, this->accept_current_active_ ? "Current preset accepted; backup discarded, EEPROM unverified" :
+        this->recovery_check_active_ ? "Original preset RAM checked; backup retained, EEPROM unverified" : "Original preset RAM restored; backup retained, EEPROM unverified");
+      if (!this->recovery_check_active_) this->keep_awake_fault_ = false;
       this->last_keep_awake_ = now;
       this->last_target_error_ = nullptr;
     }
