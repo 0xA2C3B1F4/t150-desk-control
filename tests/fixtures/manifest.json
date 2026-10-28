@@ -1,0 +1,16 @@
+[
+  {
+    "fixture": "channel2-120s.bin",
+    "source": "T150-PJ-V1.5 live UART RX capture, 2026-10-25; uart-keepawake-ch2-01",
+    "sha256": "24bcd555588734918b199e62cf580b70a7103a8f793a47a60f5a4ad6a71ace91",
+    "bytes": 8389,
+    "provenance": "Unmodified live UART RX capture; no credentials or firmware image."
+  },
+  {
+    "fixture": "preset3-73.bin",
+    "source": "T150-PJ-V1.5 live UART RX capture, 2026-10-25; uart-preset3-73-01",
+    "sha256": "e8420aac306e8cf96f9cbdd804c73bbe7fa5ec4819730bf6e5992ed26b039c1f",
+    "bytes": 576,
+    "provenance": "Unmodified live UART RX capture; no credentials or firmware image."
+  }
+]

@@ -1,0 +1,7 @@
+# Optional diagnostic build. The normal stamp-c3.yaml has no dump reader.
+# Keep this file, stamp-c3.yaml and secrets.yaml together; retain packages/.
+# !include paths below are relative to this file. See docs/firmware-export.md
+# in the repository for copied layouts and GitHub component sources.
+packages:
+  desk: !include stamp-c3.yaml
+  firmware_export: !include packages/firmware-export.yaml

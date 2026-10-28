@@ -1,0 +1,9 @@
+{
+  "name": "desk_protocol",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Platform-independent UART library for the Deltaco Gaming DT410 / GAM-140 desk with a T150-22-03-PJ enclosure and T150-PJ-V1.5 controller PCB",
+  "build": {"includeDir": "include"},
+  "frameworks": "*",
+  "platforms": "*"
+}

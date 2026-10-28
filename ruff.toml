@@ -1,0 +1,2 @@
+# Formatting for the Python test scripts: ruff format tests/
+line-length = 120

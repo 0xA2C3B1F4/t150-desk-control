@@ -1,0 +1,3 @@
+add_library(desk_protocol INTERFACE)
+target_include_directories(desk_protocol INTERFACE ${CMAKE_CURRENT_LIST_DIR}/include)
+target_compile_features(desk_protocol INTERFACE cxx_std_11)

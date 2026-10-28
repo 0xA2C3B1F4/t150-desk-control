@@ -1,0 +1,25 @@
+# Local credentials and generated images
+secrets.yaml
+secrets.*.yaml
+!secrets.example.yaml
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+firmware/
+*.elf
+*.hex
+*.bin
+!tests/fixtures/*.bin
+
+# Build and dependency data
+build/
+.esphome/
+.pio/
+.pioenvs/
+.piolibdeps/
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store

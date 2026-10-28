@@ -1,0 +1,87 @@
+name: Tests
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v6
+      - name: C++11 ${{ matrix.build_type }} with ASan and UBSan
+        run: |
+          cmake -S . -B "$RUNNER_TEMP/native" -DDESK_SANITIZERS=ON -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          cmake --build "$RUNNER_TEMP/native" --parallel 2
+          ctest --test-dir "$RUNNER_TEMP/native" --output-on-failure
+  esphome:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        test: [config_validation, identity_integration, firmware_export_config, firmware_export_integration, integration, stop_integration, load_limits_integration, target_integration, retarget_integration, preset_settings_integration, timer_integration, keep_awake_integration, display_units_integration]
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Configure temporary directories
+        run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "PIP_CACHE_DIR=$RUNNER_TEMP/pip-cache" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Validate adapter against a simulated UART peer
+        run: |
+          extra_args=()
+          if [[ "${{ matrix.test }}" == "firmware_export_config" ]]; then
+            extra_args+=(--compile)
+          fi
+          python "tests/esphome/${{ matrix.test }}.py" --work-dir "$TMPDIR/desk-test/run" "${extra_args[@]}"
+      - name: Preserve test diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: diagnostics-${{ matrix.test }}
+          path: |
+            ${{ runner.temp }}/desk-test/run/**/*.log
+            ${{ runner.temp }}/desk-test/run/**/*.json
+            ${{ runner.temp }}/desk-test/run/host.yaml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  github-example:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [stamp-c3, esp32]
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Configure temporary directories
+        run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "PIP_CACHE_DIR=$RUNNER_TEMP/pip-cache" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Build example from the checked-out GitHub revision
+        run: python tests/esphome/github_example_build.py --example "${{ matrix.example }}" --work-dir "$TMPDIR/desk-example/run"
+      - name: Preserve example diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: diagnostics-github-example-${{ matrix.example }}
+          path: |
+            ${{ runner.temp }}/desk-example/run/*.log
+            ${{ runner.temp }}/desk-example/run/summary.json
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,0 +1,109 @@
+# Optional: include only in firmware builds intended for reading desk dumps.
+# Requires the existing desk and desk_serial IDs plus web_server.
+substitutions:
+  # Relative to the main device YAML, not this packages/ directory.
+  # Override in the main YAML when moving a local configuration.
+  firmware_components_path: ../../components
+
+# For GitHub use, replace this local source with the same GitHub ref as desk_uart.
+external_components:
+  - source:
+      type: local
+      path: ${firmware_components_path}
+    components: [desk_firmware_export]
+
+web_server:
+  version: 3
+  sorting_groups:
+    - id: desk_group_firmware
+      name: Firmware
+      sorting_weight: 70
+
+uart:
+  id: desk_serial
+  rx_buffer_size: 4096
+  rx_full_threshold: 64
+  rx_timeout: 2
+
+desk_firmware_export:
+  id: firmware_reader
+  desk_id: desk
+
+button:
+  - platform: template
+    name: Read firmware
+    web_server:
+      sorting_group_id: desk_group_firmware
+      sorting_weight: 10
+    id: read_firmware
+    entity_category: config
+    icon: mdi:memory
+    on_press:
+      - lambda: id(firmware_reader).start_read();
+  - platform: template
+    name: Cancel firmware read
+    web_server:
+      sorting_group_id: desk_group_firmware
+      sorting_weight: 20
+    id: cancel_firmware_read
+    entity_category: config
+    icon: mdi:cancel
+    on_press:
+      - lambda: id(firmware_reader).cancel_read();
+  - platform: template
+    name: Clear firmware image
+    web_server:
+      sorting_group_id: desk_group_firmware
+      sorting_weight: 30
+    id: clear_firmware_image
+    entity_category: config
+    icon: mdi:delete-outline
+    on_press:
+      - lambda: id(firmware_reader).clear_image();
+
+sensor:
+  - platform: template
+    name: Firmware read progress
+    web_server:
+      sorting_group_id: desk_group_firmware
+      sorting_weight: 50
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: return id(firmware_reader).progress();
+
+binary_sensor:
+  - platform: template
+    name: Firmware image ready
+    web_server:
+      sorting_group_id: desk_group_firmware
+      sorting_weight: 60
+    entity_category: diagnostic
+    lambda: return id(firmware_reader).image_ready();
+
+text_sensor:
+  - platform: template
+    name: Firmware read status
+    web_server:
+      sorting_group_id: desk_group_firmware
+      sorting_weight: 40
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return id(firmware_reader).status_text();
+  - platform: template
+    name: Firmware read error
+    web_server:
+      sorting_group_id: desk_group_firmware
+      sorting_weight: 70
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return id(firmware_reader).error_text();
+  - platform: template
+    name: Firmware SHA256
+    web_server:
+      sorting_group_id: desk_group_firmware
+      sorting_weight: 80
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return id(firmware_reader).sha256_text();
