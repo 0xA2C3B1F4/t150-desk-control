@@ -85,12 +85,25 @@ desk_uart:
         outgoing = bytearray()
         injected = []
         next_event = 0
+        subscription = bytes([0x13, 2, 0, 1, 0xF4, 0, 0])
         with (work / "runtime.log").open("w") as log:
             proc = subprocess.Popen(
                 [str(work / "build/.pioenvs/desk-load-raw-test/program")],
                 cwd=work, env=env, stdout=log, stderr=subprocess.STDOUT,
             )
-            start = time.monotonic()
+            startup_begin = time.monotonic()
+            start = None
+            # Align injections with the real subscription clock, not Popen.
+            while start is None:
+                assert proc.poll() is None, "ESPHome host exited before its initial subscription"
+                assert time.monotonic() - startup_begin < 10, "Timed out waiting for the initial subscription"
+                if select.select([master], [], [], 0.01)[0]:
+                    outgoing.extend(os.read(master, 4096))
+                    initial = list(frames(outgoing))
+                    if initial:
+                        assert initial[0] == subscription, initial[0].hex(" ")
+                        start = time.monotonic()
+            startup_seconds = start - startup_begin
             while time.monotonic() - start < 6.2:
                 elapsed = time.monotonic() - start
                 assert proc.poll() is None, "ESPHome host exited early"
@@ -125,13 +138,13 @@ desk_uart:
         disconnect = by_kind["connected"][1]
         assert abs(stale["milliseconds"] - disconnect["milliseconds"]) <= 25
         assert abs(stale["milliseconds"] - by_kind["height"][4]["milliseconds"]) <= 25
-        subscription = bytes([0x13, 2, 0, 1, 0xF4, 0, 0])
         sent = list(frames(outgoing))
         assert sent == [subscription, subscription], [body.hex(" ") for body in sent]
         summary = {
             "passed": True,
             "transport": "synthetic PTY; no hardware",
             "checks": [
+                "injection schedule starts after the initial subscription within a bounded startup wait",
                 "raw BE16 minimum, maximum and escaped bytes published without scaling",
                 "load changes published when height is unchanged",
                 "sequence wrap accepted; fresh duplicates and out-of-order frames ignored",
@@ -139,6 +152,7 @@ desk_uart:
                 "same 3000 ms freshness as connected; one stale NaN and fresh recovery",
                 "UART TX contains only the two existing channel-2 subscriptions",
             ],
+            "startup_seconds": round(startup_seconds, 3),
             "stale_age_ms": stale_age,
             "samples": samples,
             "injected": injected,

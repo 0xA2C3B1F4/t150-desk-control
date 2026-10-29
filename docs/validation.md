@@ -15,7 +15,7 @@ for identification, the WT95 white variant and the scope of controller testing.
 | Retargeting | Brakes, restores the borrowed preset, then starts the latest target | Covered by simulated-peer tests; physical retarget behavior still needs testing |
 | Keep-awake | Uses the current raw position for an idle-only preset recall after 30 seconds of inactivity | Cannot wake an already sleeping UART |
 | Recovery | Preserves ambiguous preset values until the user chooses how to proceed | Pending recovery blocks new movement |
-| Raw load telemetry | Optional filtered value from the existing height stream | Captured-frame and simulated-peer coverage; ESPHome sensor hardware check pending |
+| Raw load telemetry | Optional filtered value from the existing height stream | Physical units are uncalibrated |
 | Load settings | Reads and writes raw protection thresholds | No conversion to kilograms or amperes; downward adjustment needs hardware testing |
 | Timers | Sends T-key sequences for 30–120 minutes or cancellation | No timer-state readback; the full ESP-driven sequence needs hardware testing |
 
@@ -28,7 +28,9 @@ readback. ESP32-WROOM-32 has build coverage; its UART wiring has not been tested
 on hardware. The adapter's inch display has simulated-peer coverage;
 installation and Home Assistant checks for that setting are pending.
 Stamp-C3 checks also cover preset-button priority over keep-awake, the inactivity
-interval and a second preset press during movement.
+interval and a second preset press during movement. Raw-load telemetry was
+checked against UART frames on Stamp-C3, including stale-state recovery after
+a controller restart and invalidation during firmware-reader start/cancel.
 
 Early preset restoration has been checked during short moves. Long moves and
 moves with the original preset far from the target remain unverified. These
