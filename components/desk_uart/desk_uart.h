@@ -31,6 +31,7 @@ class DeskUART : public Component, public uart::UARTDevice {
   void on_shutdown() override;
   float get_setup_priority() const override { return setup_priority::DATA; }
   void set_height_sensor(sensor::Sensor *s) { height_sensor_ = s; }
+  void set_load_raw_sensor(sensor::Sensor *s) { load_raw_sensor_ = s; }
   void set_display_inches(bool inches) { display_inches_ = inches; }
   float display_height(float cm) const { return display_inches_ ? cm / 2.54f : cm; }
   float input_height_cm(float value) const { return display_inches_ ? value * 2.54f : value; }
@@ -178,7 +179,9 @@ class DeskUART : public Component, public uart::UARTDevice {
   desk_protocol::ButtonPulse pulse_{};
   desk_protocol::AckTracker release_ack_{};
   desk_protocol::AckTracker stop_ack_{};
-  sensor::Sensor *height_sensor_{nullptr};
+  void invalidate_load_raw_();
+  sensor::Sensor *height_sensor_{nullptr}, *load_raw_sensor_{nullptr};
+  bool load_raw_valid_{false};
   sensor::Sensor *frame_errors_sensor_{nullptr}, *sample_gap_sensor_{nullptr};
   uint32_t frame_errors_{0}, published_frame_errors_{0}, last_frame_error_publish_{0};
   uint32_t max_sample_gap_{0}, gap_window_start_{0};

@@ -80,6 +80,10 @@ CONFIG_SCHEMA = cv.All(
             accuracy_decimals=1,
             state_class=STATE_CLASS_MEASUREMENT, icon="mdi:desk",
         ),
+        cv.Optional("load_raw"): sensor.sensor_schema(
+            accuracy_decimals=0, state_class=STATE_CLASS_MEASUREMENT,
+            icon="mdi:gauge", entity_category="diagnostic",
+        ),
         cv.Optional("connected"): binary_sensor.binary_sensor_schema(
             device_class=DEVICE_CLASS_CONNECTIVITY,
         ),
@@ -148,6 +152,8 @@ async def to_code(config):
     await uart.register_uart_device(var, config)
     cg.add(var.set_display_inches(config["display_unit"] == "in"))
     cg.add(var.set_height_sensor(await sensor.new_sensor(config["height"])))
+    if "load_raw" in config:
+        cg.add(var.set_load_raw_sensor(await sensor.new_sensor(config["load_raw"])))
     if "connected" in config:
         cg.add(var.set_connected_sensor(await binary_sensor.new_binary_sensor(config["connected"])))
     if "uart_frame_errors" in config:

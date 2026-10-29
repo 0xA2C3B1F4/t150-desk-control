@@ -11,6 +11,12 @@ static const char *const TAG = "desk_uart";
 // command results, so they cannot replace that Stop's own result.
 static const char *const STOP_PRESET_REASON = "Preset setting interrupted by Stop; readback required";
 
+void DeskUART::invalidate_load_raw_() {
+  if (!this->load_raw_valid_) return;
+  this->load_raw_valid_ = false;
+  if (this->load_raw_sensor_) this->load_raw_sensor_->publish_state(NAN);
+}
+
 bool DeskUART::begin_firmware_export() {
   const uint32_t now = millis();
   if (this->firmware_export_active_ || !this->preset_access_allowed_(now) ||
@@ -24,6 +30,7 @@ bool DeskUART::begin_firmware_export() {
   this->height_seen_ = this->connected_ = false;
   if (this->connected_sensor_) this->connected_sensor_->publish_state(false);
   this->height_sensor_->publish_state(NAN);
+  this->invalidate_load_raw_();
   if (this->control_status_) this->control_status_->publish_state("Firmware read active; desk controls paused");
   this->last_control_status_ = nullptr;
   return true;
@@ -34,6 +41,7 @@ void DeskUART::end_firmware_export() {
   this->parser_.reset();
   this->monitor_ = {};
   this->height_seen_ = this->connected_ = false;
+  this->invalidate_load_raw_();
   this->last_keep_awake_ = millis();
   this->last_subscribe_ = millis() - 5000;
   this->last_control_status_ = nullptr;
@@ -96,6 +104,8 @@ void DeskUART::subscribe_(uint32_t now) {
 }
 void DeskUART::setup() {
   this->height_sensor_->publish_state(NAN);
+  this->load_raw_valid_ = false;
+  if (this->load_raw_sensor_) this->load_raw_sensor_->publish_state(NAN);
   for (auto *n : this->preset_numbers_) if (n) n->publish_state(NAN);
   if (this->connected_sensor_) this->connected_sensor_->publish_state(false);
   if (this->frame_errors_sensor_) this->frame_errors_sensor_->publish_state(0);
@@ -171,6 +181,13 @@ void DeskUART::loop() {
       // Convert before the metric panel's whole-centimetre truncation above 100 cm.
       const auto tenths = this->display_inches_ ? value.before_rounding_tenths_cm : value.displayed_tenths_cm;
       this->height_sensor_->publish_state(this->display_height(tenths / 10.0f));
+      // Sensor callbacks can hand the UART to the firmware reader or delay it.
+      if (this->firmware_export_active_) return;
+      if (this->load_raw_sensor_ && this->monitor_.fresh(millis())) {
+        this->load_raw_valid_ = true;
+        this->load_raw_sensor_->publish_state(this->monitor_.height().load_raw);
+        if (this->firmware_export_active_) return;
+      }
     }
   }
   // publish_state() may synchronously invoke an automation that calls stop().
@@ -199,6 +216,7 @@ void DeskUART::loop() {
   this->controls_loop_(now);
   this->identity_loop_(now);
   const bool fresh = this->monitor_.fresh(now);
+  if (!fresh) this->invalidate_load_raw_();
   if (fresh != this->connected_) {
     this->connected_ = fresh;
     if (this->connected_sensor_) this->connected_sensor_->publish_state(fresh);
@@ -1038,6 +1056,7 @@ void DeskUART::dump_config() {
   ESP_LOGCONFIG(TAG, "  Experimental T-key timer: %s", this->timer_enabled_ ? "enabled" : "disabled");
   ESP_LOGCONFIG(TAG, "  Keep-awake via preset 3 after 30 s of inactivity: %s", this->keep_awake_enabled_ ? "enabled" : "disabled");
   LOG_SENSOR("  ", "Height", this->height_sensor_);
+  LOG_SENSOR("  ", "Load (raw)", this->load_raw_sensor_);
   LOG_TEXT_SENSOR("  ", "Controller model", this->identity_sensors_[0]);
   LOG_TEXT_SENSOR("  ", "Controller manufacturer", this->identity_sensors_[1]);
   LOG_TEXT_SENSOR("  ", "Controller identifiers", this->identity_sensors_[2]);
