@@ -522,10 +522,9 @@ bool DeskUART::write_journal_(const desk_protocol::PresetJournal &journal) {
 bool DeskUART::clear_legacy_journal_() {
   const uint8_t empty[8]{};
   if (!this->write_journal_storage_(this->preference_key_, empty, sizeof(empty))) {
-    this->journal_block_reason_ = "Legacy backup cleanup failed; restart to recheck storage";
+    this->journal_block_reason_ = "Legacy backup cleanup failed; restart to check the retained backup again";
     return false;
   }
-  this->legacy_cleanup_pending_ = false;
   return true;
 }
 void DeskUART::load_journal_() {
@@ -537,12 +536,8 @@ void DeskUART::load_journal_() {
     this->journal_block_reason_ = "Preset backup unreadable or invalid; controls blocked, storage preserved";
     return;
   }
-  if (current == JournalLoad::Found && this->cached_journal_.state == Journal::State::Resolved) {
-    // A committed resolution is authoritative even if power failed before legacy cleanup.
-    this->legacy_cleanup_pending_ = true;
-    return;
-  }
-  if (current == JournalLoad::Found) this->cached_journal_valid_ = true;
+  this->cached_journal_valid_ = current == JournalLoad::Found &&
+      this->cached_journal_.state == Journal::State::Retained;
   uint8_t legacy_bytes[8]{};
   const auto legacy_status = this->read_journal_storage_(this->preference_key_, legacy_bytes, sizeof(legacy_bytes));
   desk_protocol::LegacyPresetJournal legacy;
@@ -552,25 +547,28 @@ void DeskUART::load_journal_() {
   const bool legacy_cleared = legacy_status == JournalLoad::Found &&
       std::memcmp(legacy_bytes, empty, sizeof(empty)) == 0;
   if (legacy_status == JournalLoad::Error ||
-      (current == JournalLoad::Missing && (legacy_status == JournalLoad::Invalid ||
+      (!this->cached_journal_valid_ && (legacy_status == JournalLoad::Invalid ||
        (legacy_status == JournalLoad::Found && !legacy_active && !legacy_cleared)))) {
     this->journal_block_reason_ = "Legacy preset backup unreadable or invalid; storage preserved";
     return;
   }
-  if (current == JournalLoad::Found) {
+  if (this->cached_journal_valid_) {
     if (this->journal_error_()) return;
     if (legacy_active && legacy.original != this->cached_journal_.original) {
       this->journal_block_reason_ = "Stored preset backups disagree; controls blocked, both originals preserved";
       return;
     }
   } else if (legacy_active) {
+    // A resolved v4 marker cannot date a legacy record. It may be leftover
+    // cleanup or a newer borrow by older firmware, even with identical values.
+    // Preserve it as a retained backup and run the usual recovery checks.
     this->cached_journal_.state = Journal::State::Retained;
     this->cached_journal_.original = legacy.original;
     this->cached_journal_.temporary = legacy.temporary;
     this->cached_journal_.profile = desk_protocol::LegacyPresetJournal::profile_identity();
     this->cached_journal_valid_ = true;
     if (this->journal_error_() || !this->write_journal_(this->cached_journal_)) return;
-    // Keep the old original until explicit acceptance has committed its tombstone.
+    // Only explicit acceptance may clear the legacy original.
   }
   if (!this->cached_journal_valid_) return;
   this->target_move_.recover(this->cached_journal_.original, this->cached_journal_.temporary);
@@ -581,15 +579,21 @@ void DeskUART::load_journal_() {
 bool DeskUART::clear_cached_journal_() {
   if (this->journal_error_()) return false;
   if (!this->cached_journal_valid_) return true;
+  // Reject an unreadable or wrong-sized legacy key before replacing the
+  // retained v4 record with a resolved marker.
+  uint8_t legacy_bytes[8]{};
+  const auto legacy = this->read_journal_storage_(this->preference_key_, legacy_bytes, sizeof(legacy_bytes));
+  if (legacy != JournalLoad::Missing && legacy != JournalLoad::Found) {
+    this->journal_block_reason_ = "Legacy preset backup unreadable or invalid; storage preserved";
+    return false;
+  }
   auto resolved = this->cached_journal_;
   resolved.state = desk_protocol::PresetJournal::State::Resolved;
-  if (!this->write_journal_(resolved)) return false;
+  if (!this->write_journal_(resolved) || !this->clear_legacy_journal_()) return false;
+  // Keep the RAM original and report failure until both writes are verified.
+  // If cleanup was interrupted, startup retains the active legacy record again.
   this->cached_journal_valid_ = false;
   this->cached_journal_ = resolved;
-  this->legacy_cleanup_pending_ = true;
-  // Resolution is already durable. A cleanup failure blocks the next borrow,
-  // but must not turn this resolved backup back into an active one on restart.
-  this->clear_legacy_journal_();
   return true;
 }
 void DeskUART::invalidate_journal_session_() {
@@ -631,7 +635,6 @@ bool DeskUART::save_journal_(bool active) {
     ESP_LOGW(TAG, "Retained preset backup conflicts with new borrow; no write sent");
     return false;
   }
-  if (this->legacy_cleanup_pending_ && !this->clear_legacy_journal_()) return false;
   desk_protocol::PresetJournal journal;
   journal.state = desk_protocol::PresetJournal::State::Retained;
   journal.profile = this->height_profile_.identity();

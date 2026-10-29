@@ -394,8 +394,20 @@ and CRC-32/ISO-HDLC over the first 60 bytes. The identity includes mapping and
 control-policy revisions, mapping scalars, A/B, control ranges and directional
 biases. It is compared byte for byte. The ESPHome v4 key derives from
 `desk-preset-journal-v4:` plus the component ID; legacy versions use `v1:`.
-A retained record is applied only to the matching profile. A resolved record
-prevents legacy recovery after Accept. New borrowing waits for legacy cleanup.
+A retained record is applied only to the matching profile. A resolved v4 record
+means no backup remains only when the legacy key is missing or all zeros.
+When v4 is missing or resolved, an active legacy record is imported under its
+frozen historical profile and checked through normal recovery. Identical values
+cannot prove that it predates Accept: an older component may have written a
+newer backup after a downgrade.
+A resolved marker also cannot override invalid or unreadable legacy storage.
+
+Only explicit Accept clears legacy data, after saving the resolved v4 record.
+It first checks that the legacy key is absent or readable at the expected size.
+Both writes and their readbacks must succeed before Accept completes. A failure
+keeps the in-memory original and blocks movement and recovery until a restart
+rechecks the stored records. Startup and new borrowing never clear an active
+legacy backup.
 
 ESP32 storage checks distinguish an absent key from malformed or unreadable
 storage, then verify saved bytes through NVS after sync. These checks cannot

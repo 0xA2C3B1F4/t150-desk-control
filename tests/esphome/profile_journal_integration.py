@@ -57,7 +57,7 @@ desk_uart:
                            stderr=subprocess.STDOUT, timeout=20, check=True)
         output = (work / "runtime.log").read_text()
         cases = re.findall(r"PROFILE_JOURNAL_CASE=([a-z0-9_]+)", output)
-        assert len(cases) == 12 and len(set(cases)) == len(cases), cases
+        assert len(cases) == 20 and len(set(cases)) == len(cases), cases
         assert "PROFILE_JOURNAL_ALL=passed" in output
         assert "JOURNAL_STORAGE_ALL=passed" in output
         storage_cases = re.findall(r"JOURNAL_STORAGE_CASE=([a-z0-9_]+)", output)

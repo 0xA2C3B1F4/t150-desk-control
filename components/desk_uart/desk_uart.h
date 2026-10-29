@@ -147,7 +147,6 @@ class DeskUART : public Component, public uart::UARTDevice {
   uint32_t stable_ms_(uint32_t /*now*/) const { return height_seen_ ? static_cast<uint32_t>(last_height_received_ - last_height_change_) : 0; }
   desk_protocol::PresetJournal cached_journal_{};
   const char *journal_block_reason_{nullptr};
-  bool legacy_cleanup_pending_{false};
   // RAM readback evidence only; never authorizes deleting the durable backup.
   struct VerifiedJournal { bool valid; uint16_t original; uint16_t temporary; desk_protocol::HeightProfileIdentity profile; };
   VerifiedJournal verified_journal_{false, 0, 0, {}};
