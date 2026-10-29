@@ -173,6 +173,7 @@ async def to_code(config):
         cg.add(var.set_timer_pending_sensor(await binary_sensor.new_binary_sensor(config["timer_command_pending"])))
     cg.add(var.set_target_range(config["min_height"], config["max_height"]))
     cg.add(var.set_preference_key(zlib.crc32(("desk-preset-journal-v1:" + str(config[CONF_ID])).encode())))
+    cg.add(var.set_v4_preference_key(zlib.crc32(("desk-preset-journal-v4:" + str(config[CONF_ID])).encode())))
     display_min, display_max = display_bounds(config)
     for slot in (1, 2, 3):
         key = f"preset_{slot}_height"

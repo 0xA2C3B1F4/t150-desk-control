@@ -1,8 +1,17 @@
 #pragma once
 #include <cstdint>
+#include <array>
 #include <limits>
 
 namespace desk_protocol {
+// Canonical configured semantics, independent of units, entity names and user limits.
+// This is not evidence of a connected controller's firmware or boot coefficients.
+struct HeightProfileIdentity {
+  std::array<uint8_t, 48> bytes{};
+  bool operator==(const HeightProfileIdentity &other) const { return bytes == other.bytes; }
+  bool operator!=(const HeightProfileIdentity &other) const { return !(*this == other); }
+};
+
 struct MetricDisplay {
   uint32_t before_rounding_tenths_cm{0};
   uint32_t displayed_tenths_cm{0};
@@ -53,6 +62,27 @@ class HeightProfile {
   static HeightProfile research(const Scalars &values, uint16_t current_a,
                                 uint16_t current_b, bool extraction_supported) {
     return HeightProfile(values, current_a, current_b, extraction_supported, false);
+  }
+  HeightProfileIdentity identity() const {
+    HeightProfileIdentity result;
+    std::size_t offset = 0;
+    const auto u16 = [&result, &offset](uint16_t value) {
+      result.bytes[offset++] = static_cast<uint8_t>(value);
+      result.bytes[offset++] = static_cast<uint8_t>(value >> 8);
+    };
+    const auto u32 = [&result, &offset](uint32_t value) {
+      for (uint8_t shift = 0; shift < 32; shift += 8)
+        result.bytes[offset++] = static_cast<uint8_t>(value >> shift);
+    };
+    // Bump these revisions whenever mapping or control semantics change.
+    u16(1); u16(builtin_ ? 1 : 0);
+    u32(values_.lower_seed); u32(values_.upper_seed); u32(values_.display_offset);
+    u32(static_cast<uint32_t>(values_.high_test_addend)); u32(values_.high_display);
+    u16(a_); u16(b_); u16(control_min_tenths()); u16(control_max_tenths());
+    u16(builtin_ ? 8 : 0); u16(builtin_ ? 740 : 0);
+    u16(builtin_ ? 6 : 0); u16(builtin_ ? 740 : 0);
+    u16(8); u16(7); u16(static_cast<uint16_t>(-6)); u16(1);
+    return result;
   }
   uint16_t scale_a() const { return a_; }
   uint16_t scale_b() const { return b_; }

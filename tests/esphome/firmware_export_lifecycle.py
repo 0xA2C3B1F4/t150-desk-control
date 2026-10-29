@@ -206,7 +206,7 @@ def main():
                    "A successful read after Clear publishes its exact length, hash and profile"],
         "limits": ["Platform boundaries are host stand-ins; this is not ESP-IDF or network validation",
                    "Known-profile metadata is an explicit lifecycle fixture, not recognition of synthetic firmware",
-                   "Authentication is outside the handler fixture and remains covered by separate device checks"],
+                   "Authentication is not exercised by this fixture"],
     }
     (args.work_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
