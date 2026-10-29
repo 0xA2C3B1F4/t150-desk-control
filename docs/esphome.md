@@ -356,9 +356,23 @@ it checks preset 3 with read-only requests once telemetry is fresh and settled.
 A matching original resolves that recovery check while keeping the backup; it
 does not clear an existing keep-awake fault. Any different value needs a
 recovery decision. A later preset read cannot silently discard the backup or
-replace it with a new original. Records from earlier component versions remain
-recoverable with the same component ID. Resolve retained backups before
-downgrading to an older component that cannot read the new record format.
+replace it with a new original.
+
+Backups include the configured height profile. A different profile, damaged
+record or storage error blocks movement, preset edits, Restore and Accept;
+Stop and height telemetry remain available. Check **Control status** and keep
+the stored data for inspection. Resolve a backup under its original profile
+before switching profiles. Units, entity names and user height limits do
+not change the profile identity. This identity does not identify the connected
+controller or its firmware.
+
+Earlier eight-byte records migrate with the same component ID and the built-in
+profile. Accept commits a resolved record before clearing the old format.
+Startup preserves and checks any active old-format backup, even beside a
+resolved record: it may remain from interrupted cleanup or have been created
+by an older component. An accepted backup can therefore return to recovery
+after a restart. Resolve backups before downgrading; older component versions
+cannot enforce the profile binding.
 
 The recovery buttons and pending sensor can also be configured with target
 movement disabled. Keep them available for retained backups. Keep the
@@ -523,10 +537,20 @@ behavior and limits.
 
 ### Preset restoration pending is on
 
-The ESP cannot confirm preset 3 against its retained original and blocks new
-moves until recovery is resolved. Use the recovery buttons under Configuration.
-The ordinary preset recall buttons command movement; they are not a way to
-inspect a saved height.
+Check `Control status` first. These storage and profile conditions block both
+Restore and Accept:
+
+| Control status starts with | Action |
+|---|---|
+| `Preset backup belongs to a different height profile` | Use the matching component/profile with the same component ID, then retry recovery. |
+| `Preset backup storage failed` or `Legacy backup cleanup failed` | Restart the ESP to recheck the saved records. If a backup remains active, follow the recovery steps below. If the storage error persists, preserve the data for inspection. |
+| `Preset backup unreadable or invalid` or `Legacy preset backup unreadable or invalid` | Preserve the stored data for inspection. Recovery buttons cannot repair an unreadable or damaged record. |
+| `Stored preset backups disagree` | Preserve both stored originals for inspection. Neither button can choose which backup to trust. |
+
+For an interrupted preset transaction or a differing preset value, use the
+recovery buttons under Configuration. New moves remain blocked until recovery
+is resolved. The ordinary preset recall buttons command movement; they are not
+a way to inspect a saved height.
 
 1. Leave the desk stationary, wait for `UART connected`, and allow other
    operations to finish. If a release fault is shown, handle it first using

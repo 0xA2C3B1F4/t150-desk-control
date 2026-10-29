@@ -71,7 +71,9 @@ class Probe : public esphome::desk_uart::DeskUART {
       if (has_number) p.set_preset_height_number(3, &preset);
       p.target_enabled_ = true;
       p.cached_journal_valid_ = true;
-      p.cached_journal_ = {0x44534B33, 456, 122};
+      p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
+      p.cached_journal_.profile = p.height_profile_.identity();
+      p.cached_journal_.original = 456; p.cached_journal_.temporary = 122;
       const uint32_t now = esphome::millis();
       const uint32_t sample_at = now - 2800;
       auto h = desk_protocol::Frame{};
@@ -114,7 +116,9 @@ class Probe : public esphome::desk_uart::DeskUART {
       p.set_uart_parent(&wire); p.set_height_sensor(&height);
       p.target_enabled_ = true;
       p.cached_journal_valid_ = true;
-      p.cached_journal_ = {0x44534B33, 456, 122};
+      p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
+      p.cached_journal_.profile = p.height_profile_.identity();
+      p.cached_journal_.original = 456; p.cached_journal_.temporary = 122;
       const uint32_t now = esphome::millis();
       auto h = desk_protocol::Frame{};
       h.size = 32; h.bytes[0] = 5; h.bytes[20] = 75;
@@ -173,7 +177,9 @@ class Probe : public esphome::desk_uart::DeskUART {
     for (bool restoring : {false, true}) {
       Probe p;
       p.cached_journal_valid_ = true;
-      p.cached_journal_ = {0x44534B33, 456, 122};
+      p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
+      p.cached_journal_.profile = p.height_profile_.identity();
+      p.cached_journal_.original = 456; p.cached_journal_.temporary = 122;
       auto &t = p.target_move_;
       t.recover(456, 122);
       require(restoring ? t.restore_backup(1000) : t.accept_current(1000), "begin recovery before gap");
@@ -204,7 +210,9 @@ class Probe : public esphome::desk_uart::DeskUART {
     }
     Probe p;
     p.cached_journal_valid_ = true;
-    p.cached_journal_ = {0x44534B33, 456, 122};
+    p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
+    p.cached_journal_.profile = p.height_profile_.identity();
+    p.cached_journal_.original = 456; p.cached_journal_.temporary = 122;
     auto &t = p.target_move_;
     t.recover(456, 122); require(t.retry_restore(0), "prepare fallback restore");
     t.tick(2000, true, 2000, true);
@@ -249,7 +257,9 @@ class Probe : public esphome::desk_uart::DeskUART {
     require(p.recall_preset(1), "user yield accepted");
     require(p.soft_abort_error_, "yield must track restoration freshness");
     p.cached_journal_valid_ = true;
-    p.cached_journal_ = {0x44534B32, 456, 123};
+    p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
+    p.cached_journal_.profile = p.height_profile_.identity();
+    p.cached_journal_.original = 456; p.cached_journal_.temporary = 123;
     t.tick(base + 2590, true, 2000, true); take();
     t.accept(value(0x1F, 123), base + 2591); take();
     f = {}; f.size = 5; f.bytes[0] = 0x1A; f.bytes[1] = 0x1F;
@@ -275,7 +285,9 @@ class Probe : public esphome::desk_uart::DeskUART {
     t.abort_keep_awake(1004, false);
     p.soft_abort_error_ = p.last_target_error_ = t.error();
     p.cached_journal_valid_ = true;
-    p.cached_journal_ = {0x44534B32, 456, 123};
+    p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
+    p.cached_journal_.profile = p.height_profile_.identity();
+    p.cached_journal_.original = 456; p.cached_journal_.temporary = 123;
 
     frame = {};
     frame.size = 32; frame.bytes[0] = 5; frame.bytes[20] = 6;

@@ -15,6 +15,7 @@ import shutil
 import struct
 import subprocess
 import time
+import zlib
 
 from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
 
@@ -35,25 +36,35 @@ class Controller:
 
 
 def set_legacy_magic(preferences, magic):
-    """Convert one fixture-produced record to the previous 8-byte format.
+    """Replace the fixture's v4 backup with an original eight-byte record.
 
-    ESPHome host preferences store native uint32 key, uint8 length, then data.
-    Only the journal tag changes; the existing key and original/target survive.
+    Host preferences encode native uint32 key, uint8 length, then data. Use the
+    original component-ID key so the next process exercises actual migration.
     """
+    legacy_key = zlib.crc32(b"desk-preset-journal-v1:desk")
+    current_key = zlib.crc32(b"desk-preset-journal-v4:desk")
     changed = 0
     for path in preferences.rglob('*.prefs'):
-        data = bytearray(path.read_bytes())
+        data = path.read_bytes()
         offset = 0
+        records = []
         while offset < len(data):
             assert offset + 5 <= len(data)
-            length = data[offset + 4]
+            key, length = struct.unpack_from('=IB', data, offset)
             start = offset + 5
             assert start + length <= len(data)
-            if length == 8 and struct.unpack_from('=I', data, start)[0] == 0x44534B33:
-                struct.pack_into('=I', data, start, magic)
+            payload = data[start:start + length]
+            if key == current_key:
+                assert length == 64 and struct.unpack_from('<I', payload)[0] == 0x44534B34
+                assert payload[6] == 1, 'Fixture must have a retained v4 backup'
+                assert zlib.crc32(payload[:60]) == struct.unpack_from('<I', payload, 60)[0]
+                original, temporary = struct.unpack_from('<HH', payload, 56)
+                records.append((legacy_key, struct.pack('<IHH', magic, original, temporary)))
                 changed += 1
+            elif key != legacy_key:
+                records.append((key, payload))
             offset = start + length
-        path.write_bytes(data)
+        path.write_bytes(b''.join(struct.pack('=IB', key, len(value)) + value for key, value in records))
     assert changed == 1, ('Expected exactly one recovery record', changed)
 
 
