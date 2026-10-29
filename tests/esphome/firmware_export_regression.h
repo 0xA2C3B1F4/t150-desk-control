@@ -8,7 +8,7 @@
 namespace firmware_export_test {
 class Wire : public esphome::uart::UARTComponent {
  public:
-  size_t writes{0};
+  size_t writes{0}, read_bytes{0}, stall_at_byte{0};
   std::deque<uint8_t> incoming;
   void feed(const desk_protocol::Frame &frame) {
     desk_protocol::Packet packet;
@@ -23,7 +23,10 @@ class Wire : public esphome::uart::UARTComponent {
   }
   bool read_array(uint8_t *data, size_t size) override {
     if(size>incoming.size()) return false;
-    for(size_t i=0;i<size;++i){data[i]=incoming.front();incoming.pop_front();}
+    for(size_t i=0;i<size;++i){
+      if (++read_bytes==stall_at_byte) esphome::delay(550);
+      data[i]=incoming.front();incoming.pop_front();
+    }
     return true;
   }
   size_t available() override { return incoming.size(); }
@@ -79,6 +82,8 @@ class Probe : public esphome::desk_uart::DeskUART {
     sample(456,0);require(load->state==456,"fresh post-export sample restores load");
     callback_export_(false);callback_export_(true);
     callback_delay_(false);callback_delay_(true);
+    callback_direct_brake_();
+    byte_stall_timeout_();
     ESP_LOGI("fixture","FIRMWARE_HANDOFF=passed");
   }
  private:
@@ -95,6 +100,48 @@ class Probe : public esphome::desk_uart::DeskUART {
     require(p.monitor_.observe(frame_(0,0),now),"fresh telemetry");
     p.height_seen_=p.connected_=true;p.last_q_=6;
     p.last_height_received_=now;p.last_height_change_=now-2000;p.last_preset_recall_=now-4000;
+  }
+  static void byte_stall_timeout_() {
+    Wire wire;
+    esphome::sensor::Sensor height,load;
+    Probe p;ready_(p,wire,&height,&load);
+    wire.stall_at_byte=4;wire.feed(frame_(0,1));p.loop();
+    require(p.frame_errors_==1,"mid-frame stall timeout counted");
+    require(p.uart_observation_.snapshot().errors==1,"cumulative timeout counted");
+  }
+  static void callback_direct_brake_() {
+    Wire wire;
+    esphome::sensor::Sensor height,load;
+    Probe p;ready_(p,wire,&height,&load);p.direct_mode_=true;p.direct_probe_done_=true;
+    const uint32_t now=esphome::millis();
+    desk_protocol::Frame request, response;
+    auto respond=[&](const desk_protocol::Frame &r) {
+      response=desk_protocol::Frame{};response.size=37;
+      response.bytes[0]=0xD2;response.bytes[1]=1;response.bytes[2]=3;response.bytes[3]=r.bytes[2];
+      std::memcpy(response.bytes+5,"DT02",4);
+      response.bytes[9]=r.bytes[3];response.bytes[10]=r.bytes[4];
+      response.bytes[11]=r.bytes[5];response.bytes[12]=r.bytes[6];response.bytes[14]=100;
+      response.bytes[18]=r.bytes[2]?6:100;response.bytes[22]=6;
+      response.bytes[25]=2;response.bytes[26]=0xEB;response.bytes[28]=24;response.bytes[30]=39;
+      response.bytes[31]=r.bytes[2]?1:0;
+    };
+    require(p.direct_.begin(8,6,now-4),"begin direct fixture");
+    require(p.direct_.take_frame(request),"GET fixture");respond(request);p.direct_.accept(response,now-3);
+    require(p.direct_.take_frame(request),"SET fixture");respond(request);p.direct_.accept(response,now-2);
+    require(p.direct_.active(),"accepted direct fixture");
+    p.direct_.disconnect();require(p.direct_.brake_pending(),"uncertain active owner needs brake");
+    unsigned attempts=0;
+    height.add_on_state_callback([&](float) {
+      ++attempts;
+      require(!p.begin_firmware_export(),"callback cannot steal pending safety brake");
+      require(!p.recall_preset(1),"callback preset cannot discard pending safety brake");
+      require(!p.recovery_access_allowed_(esphome::millis()),"recovery waits for pending brake");
+      require(!p.preset_access_allowed_(esphome::millis()),"parameter access waits for pending brake");
+    });
+    wire.feed(frame_(0,1));p.loop();
+    require(attempts==1,"height callback exercised");
+    require(p.stop_latched_&&wire.writes>0,"pending brake reached real UART Stop path");
+    require(p.uart_observation_.snapshot().handoffs==0,"rejected handoff not counted");
   }
   static void callback_export_(bool from_load) {
     Wire wire;

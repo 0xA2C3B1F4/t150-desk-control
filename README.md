@@ -35,8 +35,8 @@ for model identifiers and sources.
 - Optionally exposes [raw load telemetry](docs/esphome.md#raw-load-telemetry).
 - Displays height, targets and preset settings in manually selected cm or inches.
 - Recalls three presets and edits their heights through Configuration entities.
-- Accepts a target height using a temporary preset-3 transaction with backup,
-  readback and restoration.
+- Accepts a target height using the default preset-3 backup/restoration path,
+  or an explicitly selected DT02 direct firmware backend.
 - Sends a controlled Stop, with visible reasons when further control is blocked.
 - Keeps an awake panel active through optional [idle keep-awake](docs/esphome.md#keep-awake).
 - Offers experimental timer buttons and optional raw load-limit settings.

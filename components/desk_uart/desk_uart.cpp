@@ -1,9 +1,11 @@
 #include "desk_uart.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
+#include "esphome/core/helpers.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cinttypes>
 
 namespace esphome { namespace desk_uart {
 static const char *const TAG = "desk_uart";
@@ -19,11 +21,14 @@ void DeskUART::invalidate_load_raw_() {
 
 bool DeskUART::begin_firmware_export() {
   const uint32_t now = millis();
-  if (this->firmware_export_active_ || !this->preset_access_allowed_(now) ||
+  if (this->firmware_export_active_ || this->direct_.busy() || this->direct_.set_sent() || !this->preset_access_allowed_(now) ||
       this->preset_settings_.busy() || this->target_move_.dirty() || this->keep_awake_active_ ||
       this->keep_awake_fault_ || this->recovery_check_active_ || this->accept_current_active_ ||
       this->restore_requested_ || this->identity_pending_ != 255) return false;
   this->invalidate_journal_session_();
+  this->uart_observation_.handoff();
+  this->direct_.disconnect();
+  this->direct_probe_done_ = false;
   this->firmware_export_active_ = true;
   this->parser_.reset();
   this->monitor_ = {};
@@ -51,7 +56,10 @@ void DeskUART::end_firmware_export() {
 void DeskUART::send_(const desk_protocol::Frame &frame) {
   if (this->firmware_export_active_) return;
   desk_protocol::Packet wire;
-  if (desk_protocol::encode(frame, wire)) this->write_array(wire.bytes, wire.size);
+  if (desk_protocol::encode(frame, wire)) {
+    this->uart_observation_.transmitted();
+    this->write_array(wire.bytes, wire.size);
+  }
 }
 // Optional, bounded background reads. No identity query participates in motion
 // interlocks, ACK trackers, preset recovery or the keep-awake mechanism.
@@ -103,6 +111,9 @@ void DeskUART::subscribe_(uint32_t now) {
   this->last_subscribe_ = now;
 }
 void DeskUART::setup() {
+  const uint32_t boot = random_uint32();
+  this->uart_observation_.reset(boot ? boot : 1, millis());
+  this->direct_.seed(static_cast<uint16_t>(boot));
   this->height_sensor_->publish_state(NAN);
   this->load_raw_valid_ = false;
   if (this->load_raw_sensor_) this->load_raw_sensor_->publish_state(NAN);
@@ -126,6 +137,7 @@ void DeskUART::release_(const desk_protocol::Frame &frame, uint32_t now) {
   this->send_(frame);
 }
 void DeskUART::loop() {
+  this->uart_observation_.tick(millis());
   if (this->firmware_export_active_) return;
   const uint32_t loop_start = millis();
   if (this->height_seen_ && !this->monitor_.fresh(loop_start)) this->invalidate_journal_session_();
@@ -134,18 +146,32 @@ void DeskUART::loop() {
   if (this->pulse_.poll(loop_start, frame)) this->release_(frame, loop_start);
   this->timer_.poll_release(loop_start);
   if (this->timer_.take_frame(frame)) this->send_(frame);
-  this->parser_.expire(loop_start);
+  if (this->parser_.expire(loop_start)) {
+    ++this->frame_errors_;
+    this->uart_observation_.frame_error();
+  }
   // Bound work per loop so an RX flood cannot starve the pulse timer.
   for (unsigned budget = 0; budget < 512 && this->available(); ++budget) {
     uint8_t byte;
     if (!this->read_byte(&byte)) break;
     const uint32_t now = millis();
+    if (this->direct_mode_ && this->height_seen_ && static_cast<uint32_t>(now - this->last_height_received_) > 750) {
+      this->direct_.disconnect();
+      this->direct_probe_done_ = false;
+    }
     if (this->height_seen_ && !this->monitor_.fresh(now)) this->invalidate_journal_session_();
+    if (this->parser_.expire(now)) {
+      ++this->frame_errors_;
+      this->uart_observation_.frame_error();
+    }
     const auto parsed = this->parser_.feed(byte, now, frame);
     if (parsed == desk_protocol::ParseResult::BadChecksum || parsed == desk_protocol::ParseResult::BadLength ||
-        parsed == desk_protocol::ParseResult::Overflow)
+        parsed == desk_protocol::ParseResult::Overflow) {
       ++this->frame_errors_;
+      this->uart_observation_.frame_error();
+    }
     if (parsed != desk_protocol::ParseResult::FrameReady) continue;
+    if (this->direct_mode_) this->direct_.accept(frame, now);
     this->identity_frame_(frame, now);
     this->limit_frame_(frame, now);
     this->preset_settings_.accept(frame, now);
@@ -160,6 +186,7 @@ void DeskUART::loop() {
     }
     if (this->monitor_.observe(frame, now)) {
       const uint16_t q = this->monitor_.height().q;
+      this->uart_observation_.observe_height(millis(), q, this->monitor_.height().sequence);
       if (this->height_seen_ && static_cast<uint32_t>(now - this->last_height_received_) > 750)
         this->discard_pending_preset_("Pending preset cancelled by telemetry gap; press again");
       if (this->height_seen_ && static_cast<uint32_t>(now - this->last_height_received_) > this->max_sample_gap_)
@@ -173,6 +200,7 @@ void DeskUART::loop() {
       this->height_seen_ = true;
       this->last_q_ = q;
       this->target_move_.observe_height(q);
+      if (this->direct_mode_) this->direct_.observe_q(q);
       const auto value = this->height_profile_.display(q);
       if (this->target_number_ && !this->target_initialized_) {
         this->target_initialized_ = true;
@@ -209,12 +237,14 @@ void DeskUART::loop() {
   }
   this->keep_awake_loop_(now);
   this->target_loop_(now);
+  this->direct_loop_(now);
   this->pending_preset_loop_(now);
   this->timer_loop_(now);
   this->preset_settings_loop_(now);
   this->limit_loop_(now);
   this->controls_loop_(now);
   this->identity_loop_(now);
+  this->uart_observation_log_();
   const bool fresh = this->monitor_.fresh(now);
   if (!fresh) this->invalidate_load_raw_();
   if (fresh != this->connected_) {
@@ -242,11 +272,18 @@ void DeskUART::loop() {
       static_cast<uint32_t>(now - this->last_subscribe_) >= 5000) this->subscribe_(now);
 }
 bool DeskUART::recall_preset(uint8_t slot) {
+  if (this->direct_mode_ && this->direct_.brake_pending())
+    return this->result_(false, "Direct safety brake pending; select preset again after settling");
   if (const char *error = this->journal_error_()) return this->result_(false, error);
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   const uint32_t now = millis();
   if (this->journal_recheck_pending_) return this->result_(false, "Preset backup needs a fresh read after connection loss");
   if (!this->motion_enabled_ || slot < 1 || slot > 3) return this->result_(false, "Preset controls disabled or invalid preset");
+  if (this->direct_mode_ && this->direct_.awaiting_set() && this->direct_.set_sent()) {
+    const bool stopped = this->stop();
+    return this->result_(false, stopped ? "SET admission uncertain; braking, press preset again after settling" :
+                         "SET admission uncertain; Stop request not sent, inspect Control status before pressing preset");
+  }
   this->last_keep_awake_ = now;
   if (this->keep_awake_active_ && !this->keep_awake_fault_ && !this->target_move_.failed() &&
       !this->stop_latched_ && !this->release_fault_ && this->monitor_.fresh(now) &&
@@ -271,6 +308,7 @@ bool DeskUART::recall_preset(uint8_t slot) {
   desk_protocol::Frame press;
   if (!this->pulse_.begin(static_cast<desk_protocol::Button>(slot + 5), now, press)) return this->result_(false, "Preset button pulse already active");
   this->last_preset_recall_ = now;
+  if (this->direct_mode_) this->direct_.cancel();  // Native preset button preempts our ownership; no second brake.
   this->send_(press);
   return this->result_(true, "Preset button sent");
 }
@@ -298,6 +336,7 @@ bool DeskUART::pending_preset_loop_(uint32_t now) {
 }
 bool DeskUART::stop() {
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
+  if (this->direct_mode_) this->direct_.cancel();
   this->discard_pending_preset_("Pending preset cancelled by Stop");
   // A user's Stop (and any fault brake) must never inherit quiet presentation.
   this->keep_awake_active_ = false;
@@ -448,7 +487,7 @@ void DeskUART::limit_loop_(uint32_t now) {
     }
     return;
   }
-  if (this->preset_settings_.busy() || this->retarget_pending_ || this->timer_.busy() || this->target_move_.busy() || !this->monitor_.fresh(now) || this->pulse_.active() || this->release_ack_.pending() || this->stop_ack_.pending()) return;
+  if (this->preset_settings_.busy() || this->retarget_pending_ || this->timer_.busy() || this->target_move_.busy() || this->direct_.busy() || !this->monitor_.fresh(now) || this->pulse_.active() || this->release_ack_.pending() || this->stop_ack_.pending()) return;
   for (uint8_t offset = 0; offset < 2; ++offset) {
     const uint8_t i = (this->next_limit_ + offset) % 2;
     if (this->limit_numbers_[i] && static_cast<uint32_t>(now - this->last_limit_poll_) >= (this->original_known_[i] ? 5000U : 1000U)) {
@@ -461,7 +500,7 @@ bool DeskUART::preset_access_allowed_(uint32_t now) const {
   return !this->journal_error_() && !this->journal_recheck_pending_ && !this->pending_preset_ && !this->firmware_export_active_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
          static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
          static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000 &&
-         !this->target_move_.busy() && !this->retarget_pending_ && !this->timer_.busy() &&
+         !this->target_move_.busy() && !this->direct_.busy() && !this->retarget_pending_ && !this->timer_.busy() &&
          !this->stop_latched_ && !this->release_fault_ && !this->pulse_.active() &&
          !this->release_ack_.pending() && !this->stop_ack_.pending() && this->limit_phase_ == LimitPhase::Idle;
 }
@@ -686,6 +725,7 @@ void DeskUART::keep_awake_loop_(uint32_t now) {
     this->keep_awake_recovery_ = false;
     this->recovery_check_active_ = this->target_move_.check_recovery(now);
   }
+  if (this->direct_mode_) return;  // Recovery above remains mandatory; direct never borrows a preset.
   if (this->keep_awake_active_) {
     const Phase phase = this->target_move_.phase();
     const bool before_or_during_recall = phase == Phase::CurrentRaw || phase == Phase::Original ||
@@ -715,6 +755,7 @@ bool DeskUART::move_to_height(float cm) {
   if (const char *error = this->journal_error_()) return this->result_(false, error);
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   const uint32_t now = millis();
+  if (this->direct_mode_) return this->direct_move_(cm, now);
   this->last_keep_awake_ = now;
   if (!this->target_enabled_ || !std::isfinite(cm) || cm < this->min_height_ || cm > this->max_height_)
     return this->result_(false, "Target outside configured range or target control disabled");
@@ -755,6 +796,80 @@ bool DeskUART::move_to_height(float cm) {
   this->target_loop_(now);
   return this->result_(true, "Target accepted");
 }
+
+bool DeskUART::direct_access_allowed_(uint32_t now) const {
+  return this->target_enabled_ && !this->journal_error_() && !this->journal_recheck_pending_ &&
+      !this->accept_current_active_ && !this->recovery_check_active_ && !this->restore_requested_ &&
+      !this->target_move_.dirty() && !this->target_move_.busy() && !this->firmware_export_active_ &&
+      this->monitor_.fresh(now) && this->height_seen_ &&
+      static_cast<uint32_t>(now - this->last_height_received_) <= 750 && this->stable_ms_(now) >= 1500 &&
+      !this->stop_latched_ && !this->release_fault_ && !this->timer_.busy() && !this->preset_settings_.busy() &&
+      !this->pulse_.active() && !this->release_ack_.pending() && !this->stop_ack_.pending() &&
+      !this->pending_preset_ && !this->retarget_pending_ && this->limit_phase_ == LimitPhase::Idle &&
+      this->identity_pending_ == 255 && static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000;
+}
+bool DeskUART::direct_move_(float cm, uint32_t now) {
+  uint16_t raw;
+  if (!this->target_enabled_ || !std::isfinite(cm) || cm < this->min_height_ || cm > this->max_height_ ||
+      !this->height_profile_.target_raw(static_cast<uint16_t>(std::lround(cm * 10)), raw))
+    return this->result_(false, "Target outside configured range or direct control disabled");
+  if (this->direct_.phase() == desk_protocol::DirectTarget::Phase::Probe)
+    return this->result_(false, "Checking DT02 capability; select target again when Ready");
+  if (this->direct_.active()) {
+    if (raw == this->direct_.requested()) return this->result_(true, "Direct target already active");
+    const bool stopped = this->stop();
+    return this->result_(false, stopped ? "Stopped; select target again after the desk settles" :
+                         "Stop request not sent; inspect Control status before another target");
+  }
+  if (this->direct_.waiting()) {
+    const bool uncertain = this->direct_.set_sent();
+    const bool stopped = uncertain && this->stop();
+    if (!uncertain) this->direct_.cancel();
+    return this->result_(false, uncertain ? (stopped ? "SET admission uncertain; braking, select target again after settling" :
+                         "SET admission uncertain; inspect Stop status before another target") :
+                         "Pending direct request cancelled; select target again");
+  }
+  if (!this->direct_access_allowed_(now)) return this->result_(false, this->control_reason_(now));
+  if (!this->direct_.begin(raw, this->last_q_, now)) return this->result_(false, "Direct request blocked");
+  this->direct_probe_done_ = true;
+  this->last_direct_error_ = nullptr;
+  this->direct_loop_(now);
+  return this->result_(true, "Direct target requested; checking DT02 capability and idle guards");
+}
+void DeskUART::direct_loop_(uint32_t now) {
+  if (!this->direct_mode_) return;
+  const bool fresh = this->height_seen_ && this->monitor_.fresh(now) &&
+      static_cast<uint32_t>(now - this->last_height_received_) <= 750;
+  this->direct_.tick(now, fresh, this->stable_ms_(now));
+  if (!fresh) this->direct_probe_done_ = false;
+  if (this->direct_.take_brake()) {
+    const char *error = this->direct_.error();
+    this->stop();
+    this->result_(false, error ? error : "Direct admission uncertain; braking");
+  }
+  if (this->direct_.take_accepted())
+    this->result_(true, "DT02 target accepted; physical target and standstill unverified");
+  if (fresh && !this->direct_probe_done_ && !this->direct_.busy() && this->direct_access_allowed_(now)) {
+    this->direct_probe_done_ = this->direct_.probe(now);
+  }
+  if (this->direct_.awaiting_set() && !this->direct_.set_sent() && !this->direct_access_allowed_(now)) {
+    this->direct_.cancel();
+    this->result_(false, "Direct request cancelled before SET by changed interlock");
+  }
+  desk_protocol::Frame frame;
+  if (this->direct_.take_frame(frame)) this->send_(frame);
+  if (this->direct_.error() && this->direct_.error() != this->last_direct_error_) {
+    this->last_direct_error_ = this->direct_.error();
+    this->result_(false, this->last_direct_error_);
+  }
+  const auto phase = static_cast<uint8_t>(this->direct_.phase());
+  if (phase != this->direct_last_phase_) {
+    this->direct_last_phase_ = phase;
+    ESP_LOGD(TAG, "Direct DT02 phase=%u verified=%d sleep_wrap=%d guards=0x%04x",
+             unsigned(phase), this->direct_.known(), this->direct_.sleep_wrap(), this->direct_.reply().guards);
+  }
+}
+
 bool DeskUART::step_height(bool up) {
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   const uint32_t now = millis();
@@ -796,7 +911,7 @@ bool DeskUART::restore_temporary_preset() {
   return this->result_(retried, retried ? "Preset restoration requested; waiting for readback" : "No failed preset transaction to restore");
 }
 bool DeskUART::recovery_access_allowed_(uint32_t now) const {
-  return !this->journal_error_() && !this->firmware_export_active_ && !this->preset_settings_.busy() && !this->timer_.busy() && !this->retarget_pending_ &&
+  return !this->journal_error_() && !this->direct_.busy() && !this->firmware_export_active_ && !this->preset_settings_.busy() && !this->timer_.busy() && !this->retarget_pending_ &&
       !this->release_fault_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
       static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
       static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000 && !this->pulse_.active() &&
@@ -925,7 +1040,7 @@ bool DeskUART::set_timer(uint16_t minutes) {
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   const uint32_t now = millis();
   this->last_keep_awake_ = now;
-  if (!this->timer_enabled_ || this->preset_settings_.busy() || this->retarget_pending_ || this->stop_latched_ || this->release_fault_ ||
+  if (!this->timer_enabled_ || this->direct_.busy() || this->preset_settings_.busy() || this->retarget_pending_ || this->stop_latched_ || this->release_fault_ ||
       this->target_move_.busy() || this->limit_phase_ != LimitPhase::Idle ||
       this->pulse_.active() || this->release_ack_.pending() || this->stop_ack_.pending() ||
       !this->monitor_.fresh(now) || this->stable_ms_(now) < 1500 || !this->timer_.begin(minutes, now)) {
@@ -977,6 +1092,14 @@ const char *DeskUART::control_reason_(uint32_t now) const {
   if (this->stop_latched_ && !this->stop_acknowledged_) return "Brake ACK missing or pending; movement blocked";
   if (this->retarget_pending_) return "Changing target: braking, settling and restoring preset";
   if (this->stop_latched_) return "Stop: waiting for settled height and preset cleanup";
+  if (this->direct_mode_) {
+    if (this->direct_.error()) return this->direct_.error();
+    if (this->direct_.awaiting_set()) return "Waiting for DT02 SET acknowledgement";
+    if (this->direct_.active()) return "Direct target active; physical keys may preempt";
+    if (this->direct_.waiting()) return "Checking DT02 capability and guards";
+    if (!this->direct_.known()) return "DT02 capability unverified";
+    if (this->direct_.reply().guards) return "DT02 controller inhibited; select target to recheck";
+  }
   if (this->keep_awake_fault_) return "Keep-awake failed; inspect last command result, restore preset or restart ESP";
   if (this->timer_.busy()) return "Timer button sequence active; leave physical keys untouched";
   if (this->preset_settings_.busy()) return "Reading or updating preset height";
@@ -1039,7 +1162,24 @@ void DeskUART::controls_loop_(uint32_t now) {
     if (this->stop_locked_sensor_) this->stop_locked_sensor_->publish_state(this->stop_latched_);
   }
 }
+void DeskUART::uart_observation_log_() {
+  const uint32_t now = millis();
+  this->uart_observation_.tick(now);
+  if (!this->uart_observation_enabled_ || static_cast<uint32_t>(now - this->last_uart_observation_log_) < 5000) return;
+  this->last_uart_observation_log_ = now;
+  const auto &s = this->uart_observation_.snapshot();
+  char age[16];
+  if (s.seen) std::snprintf(age, sizeof(age), "%" PRIu32, s.age);
+  else std::snprintf(age, sizeof(age), "null");
+  ESP_LOGD(TAG, "UART observation: {\"v\":1,\"boot\":%" PRIu32 ",\"ms\":%" PRIu64
+           ",\"samples\":%" PRIu64 ",\"age\":%s,\"seq\":%u,\"q\":%u,\"gaps\":%" PRIu64
+           ",\"errors\":%" PRIu64 ",\"tx\":%" PRIu64 ",\"changes\":%" PRIu64 ",\"handoffs\":%" PRIu64 "}",
+           s.boot, s.ms, s.samples, age, unsigned(s.sequence), unsigned(s.q),
+           s.gaps, s.errors, s.tx, s.changes, s.handoffs);
+}
+
 void DeskUART::on_shutdown() {
+  if (this->direct_mode_ && (this->direct_.active() || this->direct_.set_sent() || this->direct_.brake_pending())) this->stop();
   desk_protocol::Frame frame;
   this->timer_.cancel(millis());
   if (this->timer_.take_frame(frame)) this->send_(frame);
@@ -1052,6 +1192,8 @@ void DeskUART::dump_config() {
   ESP_LOGCONFIG(TAG, "Desk UART: T150-PJ-V1.5 experimental metric profile");
   ESP_LOGCONFIG(TAG, "Display unit: %s (independent of panel setting)", this->display_inches_ ? "in" : "cm");
   ESP_LOGCONFIG(TAG, "  Telemetry: channel 2, 500 ticks; stale after 3000 ms");
+  ESP_LOGCONFIG(TAG, "  Target height mode: %s", this->direct_mode_ ? "direct DT02 (runtime handshake)" : "preset 3");
+  ESP_LOGCONFIG(TAG, "  Keep-awake policy: %s", this->keep_awake_auto_ ? "auto (direct: sleep feature; preset: legacy workaround)" : this->keep_awake_enabled_ ? "true (legacy preset)" : "false");
   ESP_LOGCONFIG(TAG, "  Experimental preset buttons: %s", this->motion_enabled_ ? "enabled" : "disabled");
   ESP_LOGCONFIG(TAG, "  Experimental T-key timer: %s", this->timer_enabled_ ? "enabled" : "disabled");
   ESP_LOGCONFIG(TAG, "  Keep-awake via preset 3 after 30 s of inactivity: %s", this->keep_awake_enabled_ ? "enabled" : "disabled");
