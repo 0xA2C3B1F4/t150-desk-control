@@ -142,6 +142,50 @@ static void typed_messages_and_timing() {
   CHECK(metric_display(65535).before_rounding_tenths_cm==66260);
 }
 
+static void raw_load_samples() {
+  Height h;
+  CHECK(h.q==0 && h.sequence==0 && h.load_raw==0);
+  Frame f;
+  // Exact saved channel-2 UART frames.
+  // Source: firmware/2026-10-25/uart-load-no-extra-01/received.bin, offsets 16 and 1345.
+  // SHA-256: 17dfe24a56c15d1cd17609fa64a8141fd701ef7a20e99aa4d982e1ee219d8257.
+  f = parse({0xFA,0x05,0x0B,0x54,0x00,0x0E,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x06,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x15,0x00,0x02,0x15,0x50,0xFD});
+  CHECK(decode_height(f,h));
+  CHECK(h.load_raw==14 && h.q==6 && h.sequence==533);
+  f = parse({0xFA,0x05,0x0B,0x54,0x09,0x56,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x28,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x16,0x00,0x02,0x3E,0x07,0xFD});
+  CHECK(decode_height(f,h));
+  CHECK(h.load_raw==2390 && h.q==40 && h.sequence==574);
+  // Synthetic extrema and sentinels distinguish load, Q, sequence and neighbors.
+  f=Frame{};f.size=32;f.bytes[0]=5;f.bytes[2]=0xA5;f.bytes[5]=0x5A;
+  f.bytes[19]=0x23;f.bytes[20]=0x45;f.bytes[30]=0x67;f.bytes[31]=0x89;
+  for (uint16_t raw : std::vector<uint16_t>{0,65535,0xFEFE}) {
+    f.bytes[3]=static_cast<uint8_t>(raw>>8);f.bytes[4]=static_cast<uint8_t>(raw);
+    CHECK(decode_height(f,h));
+    CHECK(h.load_raw==raw && h.q==0x2345 && h.sequence==0x6789);
+  }
+  HeightMonitor monitor;
+  f.bytes[3]=0;f.bytes[4]=0;f.bytes[30]=0;f.bytes[31]=1;
+  CHECK(monitor.observe(f,100));CHECK(monitor.height().load_raw==0);
+  f.bytes[3]=0xFF;f.bytes[4]=0xFF;f.bytes[31]=2;
+  CHECK(monitor.observe(f,200));CHECK(monitor.height().load_raw==65535);
+  f.bytes[3]=0;f.bytes[4]=42;
+  CHECK(!monitor.observe(f,2900));CHECK(monitor.height().load_raw==65535);
+  f.bytes[31]=1;
+  CHECK(!monitor.observe(f,3000));CHECK(monitor.height().sequence==2);
+  for (std::size_t bad_size : std::vector<std::size_t>{31,33}) {
+    f.size=bad_size;
+    CHECK(!decode_height(f,h));CHECK(!monitor.observe(f,3100));
+    CHECK(monitor.height().load_raw==65535);
+  }
+  f.size=32;f.bytes[0]=6;
+  CHECK(!decode_height(f,h));CHECK(!monitor.observe(f,3100));
+  CHECK(monitor.fresh(3199));CHECK(!monitor.fresh(3200));
+  // The existing monitor allows a controller's new sequence epoch once stale.
+  f.bytes[0]=5;
+  CHECK(monitor.observe(f,3200));CHECK(monitor.height().load_raw==42);
+  CHECK(monitor.height().q==0x2345 && monitor.height().sequence==1);
+}
+
 static void replay(const char *name,unsigned expected_frames,unsigned expected_heights,bool stable) {
   std::ifstream file(std::string(DESK_FIXTURES)+"/"+name,std::ios::binary);CHECK(file.good());
   std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)),{});
@@ -170,7 +214,7 @@ static void replay(const char *name,unsigned expected_frames,unsigned expected_h
 }
 
 int main() {
-  golden_commands();parser_edges();typed_messages_and_timing();
+  golden_commands();parser_edges();typed_messages_and_timing();raw_load_samples();
   replay("channel2-120s.bin",241,239,true);
   replay("preset3-73.bin",21,15,false);
   std::cout << "Protocol, parser recovery, wraparound, ACK, pulse and live-capture replay tests passed.\n";

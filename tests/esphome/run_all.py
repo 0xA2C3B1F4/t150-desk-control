@@ -27,6 +27,7 @@ TESTS = [
     "integration",
     "stop_integration",
     "load_limits_integration",
+    "load_raw_integration",
     "target_integration",
     "retarget_integration",
     "preset_settings_integration",

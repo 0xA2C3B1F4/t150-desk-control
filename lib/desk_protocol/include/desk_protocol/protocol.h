@@ -170,10 +170,12 @@ inline uint32_t downward_motion_cutoff(uint16_t base) {
   return static_cast<uint32_t>(base) + 1200;
 }
 
-struct Height { uint16_t q{0}, sequence{0}; };
+// Channel-2 load is filtered by the controller; physical units are unknown.
+struct Height { uint16_t q{0}, sequence{0}, load_raw{0}; };
 inline bool decode_height(const Frame &f, Height &out) {
   if (f.size != 32 || f.bytes[0] != 0x05) return false;
-  out.q = be16(f.bytes + 19); out.sequence = be16(f.bytes + 30); return true;
+  out.q = be16(f.bytes + 19); out.sequence = be16(f.bytes + 30);
+  out.load_raw = be16(f.bytes + 3); return true;
 }
 struct Status { uint8_t coarse_state{0}; uint16_t sequence{0}; };
 inline bool decode_status(const Frame &f, Status &out) {

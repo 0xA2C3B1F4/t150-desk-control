@@ -4,6 +4,8 @@
 import json
 import subprocess
 
+import yaml
+
 from desk_test_support import ROOT, parse_args, test_env
 
 work = parse_args(__doc__).work_dir
@@ -42,6 +44,8 @@ cases = [
     ("keep_awake_requires_backup", base + "  keep_awake: true\n", False),
     ("keep_awake_opt_in", base + "  keep_awake: true\n  experimental_target_height: true\n", True),
     ("default_monitoring", base, True),
+    ("raw_load_monitoring", base + "  load_raw:\n    name: Raw load\n", True),
+    ("raw_load_inch_monitoring", base + "  display_unit: in\n  load_raw:\n    name: Raw load\n", True),
     ("inch_monitoring", base + "  display_unit: in\n", True),
     ("invalid_display_unit", base + "  display_unit: metres\n", False),
     (
@@ -99,6 +103,12 @@ for name, text, expected in cases:
     (work / (name + ".log")).write_text(result.stdout + result.stderr)
     passed = result.returncode == 0
     assert passed == expected, f"{name}: unexpected result, see log"
+    if name in ("raw_load_monitoring", "raw_load_inch_monitoring"):
+        raw = yaml.safe_load(result.stdout)["desk_uart"][0]["load_raw"]
+        assert raw["accuracy_decimals"] == 0, raw
+        assert raw["state_class"] == "measurement", raw
+        assert raw["entity_category"] == "diagnostic", raw
+        assert not raw.get("unit_of_measurement") and not raw.get("device_class"), raw
     results.append({"case": name, "accepted": passed, "expected": expected})
 (work / "summary.json").write_text(json.dumps(results, indent=2) + "\n")
 print(json.dumps(results, indent=2))

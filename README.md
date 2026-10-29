@@ -32,6 +32,7 @@ for model identifiers and sources.
 ## What it does
 
 - Reads height and reports whether desk UART telemetry is fresh.
+- Optionally exposes [raw load telemetry](docs/esphome.md#raw-load-telemetry).
 - Displays height, targets and preset settings in manually selected cm or inches.
 - Recalls three presets and edits their heights through Configuration entities.
 - Accepts a target height using a temporary preset-3 transaction with backup,

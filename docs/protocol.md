@@ -69,7 +69,7 @@ lengths, button numbers and timing values are decimal unless marked otherwise.
 | Status response | A2 | 4 | coarse state, sequence BE16 |
 | Schedule telemetry | 13 | 7 | channel, zero, period BE16, auxiliary zeros |
 | Schedule acknowledgment | 14 | 6 | auxiliary echo, reserved byte, sequence |
-| Height response on channel 2 | 05 | 32 | Q at offsets 19–20, sequence at 30–31 |
+| Height/load response on channel 2 | 05 | 32 | Load at offsets 3–4, Q at 19–20, sequence at 30–31; all BE16 |
 | Parameter read | 15 | 4 | selector, two zero bytes |
 | Parameter value | 16 | 6 | selector, value BE16, sequence BE16 |
 | Button override | 17 | 3 | selector, 1 pressed / 0 released |
@@ -77,6 +77,10 @@ lengths, button numbers and timing values are decimal unless marked otherwise.
 | Button acknowledgment | 18 | 6 | selector, value, reserved byte, sequence |
 | Parameter write | 19 | 4 | selector, value BE16 |
 | Parameter acknowledgment | 1A | 5 | selector, result byte, sequence BE16; no extra reserved byte |
+
+`decode_height()` returns the filtered load field as `Height.load_raw`, without
+scaling. Offsets above start at the decoded kind byte and exclude framing and
+checksum bytes. Physical load units are unknown.
 
 Builders expose telemetry channels 2 and 3. Period FFFF disables a channel;
 period 0 is rejected. The ESPHome adapter uses only channel 2 at 500 ticks.

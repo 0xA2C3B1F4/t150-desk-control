@@ -173,6 +173,7 @@ rejects conflicting `unit_of_measurement` values.
 | Configuration key | Meaning |
 |---|---|
 | `height` | Height in the selected display unit; mandatory |
+| `load_raw` | Optional filtered raw load telemetry |
 | `connected` | Fresh UART height within three seconds, independent of Wi-Fi |
 | `uart_frame_errors` / `height_sample_gap` | Link diagnostics: rejected frames and the longest gap between height samples |
 | `control_status` | Current operation or reason control is blocked |
@@ -199,6 +200,25 @@ If an original preset-3 backup is retained, first use **Accept current preset 3*
 to discard it before deliberately editing preset 3. Accept is available while
 idle even when no restoration is pending.
 
+### Raw load telemetry
+
+Add `load_raw` inside your existing `desk_uart:` block to expose the controller's
+filtered 16-bit load value as a diagnostic sensor:
+
+```yaml
+  load_raw:
+    name: Load (raw)
+```
+
+It uses the existing height telemetry stream and sends no additional UART
+requests. It follows the same sequence checks as height and becomes unknown
+after three seconds without an accepted sample, or while the firmware reader
+owns the UART. A new sample restores the value.
+
+The value has no established conversion to kilograms, amperes or force. Its
+filtering delays load changes; the component does not use it for movement or
+obstruction detection.
+
 ## Configuration reference
 
 Options specific to `desk_uart` are grouped below. Entity entries also accept
@@ -215,13 +235,14 @@ Configuration validation checks the listed dependencies. Keep the component
 | `id` | ID | generated | Keep it stable: it derives the flash key of the preset recovery journal |
 | `uart_id` | UART ID | the default UART bus | UART at 115200 baud, 8N1, with both TX and RX |
 | `height` | sensor | **required** | — |
+| `load_raw` | sensor | — | Diagnostic; integer raw value with no unit. See [raw load telemetry](#raw-load-telemetry) |
 | `display_unit` | `cm` or `in` | `cm` | Sets height entity units, input conversion and number limits; independent of panel units |
 | `connected` | binary sensor | — | — |
 | `control_status` / `command_result` | text sensor | — | — |
 | `uart_frame_errors` | sensor | — | Diagnostic. Frames rejected for checksum, length or overflow since boot; published at most once per second |
 | `height_sample_gap` | sensor | — | Diagnostic. Longest interval in ms between accepted height samples while connected, per 60-second window; unknown when no samples arrived |
 
-Neither diagnostic sensor feeds an interlock.
+These diagnostic sensors do not feed an interlock.
 
 ### Movement and stop
 

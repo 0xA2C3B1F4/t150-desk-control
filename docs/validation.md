@@ -15,6 +15,7 @@ for identification, the WT95 white variant and the scope of controller testing.
 | Retargeting | Brakes, restores the borrowed preset, then starts the latest target | Covered by simulated-peer tests; physical retarget behavior still needs testing |
 | Keep-awake | Uses the current raw position for an idle-only preset recall after 30 seconds of inactivity | Cannot wake an already sleeping UART |
 | Recovery | Preserves ambiguous preset values until the user chooses how to proceed | Pending recovery blocks new movement |
+| Raw load telemetry | Optional filtered value from the existing height stream | Captured-frame and simulated-peer coverage; ESPHome sensor hardware check pending |
 | Load settings | Reads and writes raw protection thresholds | No conversion to kilograms or amperes; downward adjustment needs hardware testing |
 | Timers | Sends T-key sequences for 30–120 minutes or cancellation | No timer-state readback; the full ESP-driven sequence needs hardware testing |
 
@@ -60,7 +61,9 @@ Release with ASan/UBSan. It uses synthetic bytes; recognized profile metadata
 is seeded explicitly for retention checks, without claiming image recognition.
 
 Coverage includes framing, height units, presets, Stop, retargeting, recovery,
-keep-awake, timers, load settings and controller identity. Simulated-peer tests
+keep-awake, timers, raw load telemetry, load settings and controller identity.
+Raw-load tests cover saved UART frames, malformed input, sequence handling,
+stale values, firmware-reader handoff and unchanged UART subscriptions. Simulated-peer tests
 check timeouts, malformed replies and interrupted operations without a desk.
 The [fixture manifest](../tests/fixtures/manifest.json) records UART fixture
 provenance and checksums.

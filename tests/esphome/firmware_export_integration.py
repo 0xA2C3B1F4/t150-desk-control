@@ -18,7 +18,7 @@ try:
     priority: -100
     then:
       - lambda: |-
-          firmware_export_test::Probe::run(id(height));
+          firmware_export_test::Probe::run(id(height), id(load_raw));
           exit(0);
 host:
 external_components:
@@ -37,6 +37,9 @@ desk_uart:
   height:
     id: height
     name: Height
+  load_raw:
+    id: load_raw
+    name: Raw load
 """)
     with (w/'build.log').open('w') as log:
         build_host(cfg, w, env, log, uart_port=os.ttyname(slave))
@@ -44,7 +47,7 @@ desk_uart:
         result = subprocess.run([str(w/'build/.pioenvs/firmware-export-handoff/program')], env=env, stdout=log, stderr=subprocess.STDOUT, timeout=15)
     assert result.returncode == 0, (w/'runtime.log').read_text()
     assert 'FIRMWARE_HANDOFF=passed' in (w/'runtime.log').read_text()
-    summary = {'passed': True, 'transport': 'synthetic host only', 'checks': ['stale plus nine busy cases rejected', 'idle ownership accepted once', 'all public controls blocked without TX or stop mutation', 'loop and shutdown emit no normal UART during ownership', 'release resumes subscription but requires fresh telemetry for motion']}
+    summary = {'passed': True, 'transport': 'synthetic host only', 'checks': ['stale plus nine busy cases rejected', 'idle ownership accepted once', 'all public controls blocked without TX or stop mutation', 'loop and shutdown emit no normal UART during ownership', 'release resumes subscription but requires fresh telemetry for motion', 'load invalidates once at export handoff, remains unknown through release and recovers on accepted telemetry', 'height and load callbacks hand off UART before consuming the queued next frame', 'height and load callback delays respect freshness before a connected edge']}
     (w/'summary.json').write_text(json.dumps(summary, indent=2)+'\n')
     print(json.dumps(summary, indent=2))
 finally:
