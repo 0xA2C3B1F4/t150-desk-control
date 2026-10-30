@@ -22,13 +22,15 @@ Use this package instead of `firmware-export.yaml`; both cannot own UART. The re
 
 ## Read, patch and verify
 
+A highlighted instruction stays at the top of the viewport as you scroll. It tells you when to turn controller power **OFF, then ON**, when to leave power connected, and which action comes next. The current confirmations, controls, transfer progress, timeout and feedback are shown in the same panel. Long receipt identifiers wrap within it. Each new power instruction is brought into view. Keep the ESP32 powered throughout. If status cannot be read, the panel marks the state as unknown and disables actions until it reconnects; keep both devices powered.
+
 1. With controller power off, disconnect the motor cable. Keep the ESP32 powered and UART connected. Confirm motor isolation and enter maintenance.
 2. Select **Read controller firmware**, then power-cycle only the controller once. Wait for `read complete`.
 3. Download the original backup and confirm that it is saved on your computer. Browser memory does not survive closing the page.
 4. Select **Prepare DT02 patch**, or select a saved application file and **Prepare selected file**. You can download the prepared image too.
 5. Confirm installation, select **Arm installation**, then power-cycle only the controller once. Leave power connected throughout writing.
 6. At `readback required`, select **Verify by full readback** and power-cycle the controller once more. Only `verified` means all application bytes and the closing handshake matched.
-7. Select **Finish maintenance** after verification. Normal UART operation resumes. Reconnect the motor only with controller power off.
+7. Select **Finish maintenance** after verification, or after saving a read without installing anything. UART ownership is released. Turn only the controller off and on once more to start its application. Reconnect the motor only with controller power off.
 
 Maintenance keeps UART ownership through browser disconnects. A new, duplicated, or reloaded tab must explicitly take over an idle session. After reloading during a transfer, wait until it finishes or times out before taking over; the new tab cannot cancel that transfer. There are no automatic write retries, abort bytes, software resets or resumed movement requests.
 
@@ -40,6 +42,8 @@ Reads use the loader's header length, bounded to 128 KiB and available RAM. Writ
 | --- | --- |
 | Original | `bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf` |
 | DT02 | `e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff` |
+
+A fresh read matching DT02 is labelled **DT02 is already installed**, and **Prepare DT02 patch** stays disabled. This label is not used merely because a DT02 image has been prepared for installation.
 
 The ESP32 independently checks hashes. It patches one buffer in place after backup confirmation, or receives a complete selected file in bounded chunks before arming a write. Allocation requires a contiguous block and retains 48 KiB of free heap. Verification compares against the staged buffer without a second image allocation. The browser holds temporary copies and saves downloads to the computer. No controller firmware image is distributed here.
 
@@ -64,3 +68,5 @@ python3 tools/verify_dt02_assembly.py --llvm-bin /path/to/llvm/bin
 ```
 
 Set `TMPDIR` to a writable temporary directory. This rebuilds only our hook and replacement code, and checks their bytes against the embedded patch. It neither needs nor distributes a controller image. The separate sleep fix replaces the four bytes at application offset `0x1656`; the complete patched application must still match the DT02 hash above.
+
+UI state checks can be run from the checkout root with `node tests/esphome/firmware_ui_test.cjs` (Node.js 18 or later). They simulate status and HTTP responses without contacting a device.
