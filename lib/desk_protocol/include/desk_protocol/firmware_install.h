@@ -41,6 +41,10 @@ class FirmwareInstall {
       matched_=byte==boot[matched_] ? matched_+1 : (byte==boot[0] ? 1 : 0);
       if (matched_==sizeof(boot)) {
         const uint8_t request[]={0xfa,0x31,1,0x5b,0x3e,0,0,0x55,0xfd};
+        if (before_erase_ && !before_erase_(context_)) { fail("Cannot persist erase-attempt evidence"); return; }
+        // Conservatively retain recovery from the first write request, even
+        // if the loader never ACKs it or the UART write is only partial.
+        erase_possible_=true;
         transition_(State::InitialAck,now); send_(request,sizeof(request));
       }
       return;
@@ -54,8 +58,6 @@ class FirmwareInstall {
         const char name[]="t150-application.bin";
         std::memcpy(header,name,sizeof(name));
         std::memcpy(header+sizeof(name),"25600 ",6);
-        if (before_erase_ && !before_erase_(context_)) { fail("Cannot persist erase-attempt evidence"); return; }
-        erase_possible_=true;  // Before the first byte of the destructive header.
         transition_(State::HeaderAck,now); send_packet_(0,header,128); break;
       }
       case State::HeaderAck: transition_(State::HeaderC,now); break;

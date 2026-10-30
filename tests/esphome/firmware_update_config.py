@@ -6,6 +6,8 @@ import shutil
 import subprocess
 import sys
 from desk_test_support import ROOT, parse_args
+subprocess.run([sys.executable, str(ROOT / 'tests/esphome/firmware_web_layout_test.py')], check=True)
+subprocess.run([sys.executable, str(ROOT / 'tools/embed_firmware_ui.py'), '--check'], check=True)
 args=parse_args()
 w=args.work_dir
 (w/'packages').mkdir()
@@ -27,6 +29,12 @@ for name,packages,valid in [('normal',[],True),('reader',['firmware-export'],Tru
     if valid:
         generated=(w/'build/src/main.cpp').read_text()
         assert ('desk_firmware_update::FirmwareUpdate' in generated)==(name=='updater')
+        pio=(w/'build/platformio.ini').read_text()
+        assert ('pre:desk_web_layout.py' in pio)==(name=='updater')
+        if name=='updater':
+            defines=(w/'build/src/esphome/core/defines.h').read_text()
+            assert '#define USE_WEBSERVER_GZIP' in defines
+            assert '#define USE_WEBSERVER_LOCAL' in defines
     results.append(dict(configuration=name,expected_valid=valid,passed=True))
 (w/'summary.json').write_text(json.dumps(results,indent=2)+'\n')
 print(json.dumps(results))

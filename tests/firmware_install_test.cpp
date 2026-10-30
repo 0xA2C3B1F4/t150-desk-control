@@ -24,10 +24,11 @@ int main(){
    for(size_t i=2;i<27;++i){auto &p=r.writes[i];CHECK(p.size()==1029);CHECK(p[1]==i-1);CHECK((p[1]^p[2])==255);CHECK(std::equal(p.begin()+3,p.begin()+1027,r.image.begin()+(i-2)*1024));CHECK(desk_protocol::FirmwareExport::crc(p.data()+3,1024)==(unsigned(p[1027])<<8|p[1028]));}}
   // Every response timeout stops once, even after erase or a data ACK.
   for(unsigned stop=0;stop<31;++stop){Rig r;r.begin();r.boot();std::vector<uint8_t> replies{6,0x43,6,0x43};replies.insert(replies.end(),27,6);for(unsigned i=0;i<stop;++i)r.feed(replies[i]);const size_t before=r.writes.size();r.sender.tick(r.now+5001);CHECK(!r.sender.active());r.feed(6);r.sender.tick(r.now+10000);CHECK(r.writes.size()==before);}
-  for(uint8_t bad:{0x15,0x18,0x43,0xff}){Rig r;r.begin();r.boot();r.feed(bad);CHECK(!r.sender.active());CHECK(!r.sender.erase_possible());CHECK(r.writes.size()==1);}
+  for(uint8_t bad:{0x15,0x18,0x43,0xff}){Rig r;r.begin();r.boot();r.feed(bad);CHECK(!r.sender.active());CHECK(r.sender.erase_possible());CHECK(r.writes.size()==1);}
   {Rig r;r.begin();r.sender.tick(r.now+120000);CHECK(!r.sender.active());CHECK(r.writes.empty());}
-  {Rig r;r.sender.set_before_erase([](void *){return false;});r.begin();r.boot();r.feed(6);r.feed(0x43);CHECK(!r.sender.active());CHECK(!r.sender.erase_possible());CHECK(r.writes.size()==1);}
+  {Rig r;r.sender.set_before_erase([](void *){return false;});r.begin();r.boot();r.feed(6);r.feed(0x43);CHECK(!r.sender.active());CHECK(!r.sender.erase_possible());CHECK(r.writes.empty());}
   {Rig r;r.begin();r.boot();r.feed(6);r.fail=true;r.feed(0x43);CHECK(r.sender.erase_possible());CHECK(!r.sender.active());CHECK(r.writes.size()==2);}
+  {Rig r;r.begin();r.fail=true;r.boot();CHECK(r.sender.erase_possible());CHECK(!r.sender.active());CHECK(r.writes.size()==1);}
   {Rig r;r.image.back()=0;CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now));CHECK(r.writes.empty());}
   {Rig r;r.now=0xfffffff0;r.begin();r.sender.tick(r.now+120000);CHECK(!r.sender.active());}
   {Rig r;r.begin();CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now));}

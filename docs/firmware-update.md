@@ -12,7 +12,9 @@ Run from the checkout root, with `secrets.yaml` beside the example YAML files:
 esphome run examples/esphome/stamp-c3-firmware-update.yaml
 ```
 
-Open `http://<device-address>/desk-firmware`. It uses the normal web-server authentication. `web_server.auth` is required. Open the device IP address or its `.local` name. Use a trusted local network.
+Open **Firmware maintenance** from the device's main page, or go directly to `http://<device-address>/desk-firmware`. It uses the normal web-server authentication. `web_server.auth` is required. Open the device IP address or its `.local` name. Use a trusted local network.
+
+Both pages use a left-aligned layout. With local ESPHome v3 and gzip compression (tested with 2026.4.2), the maintenance build adds the main-page link without external assets or new browser libraries. Other configurations or an unrecognized ESPHome page format keep the standard main page; use the direct maintenance URL. Reload the page after updating the ESP32.
 
 The example includes `stamp-c3.yaml` and `packages/firmware-update.yaml`. For Device Builder, copy these files and `secrets.yaml` together, preserving the package subdirectory. Replace both local external-component sources with the same GitHub revision, listing `desk_uart` in the base YAML and `desk_firmware_export, desk_firmware_update` in the maintenance package. For a relocated local checkout, change the base YAML's source path and override `firmware_components_path` in the main YAML. Both paths resolve from the main device YAML, not the package.
 
@@ -28,7 +30,7 @@ Use this package instead of `firmware-export.yaml`; both cannot own UART. The re
 6. At `readback required`, select **Verify by full readback** and power-cycle the controller once more. Only `verified` means all application bytes and the closing handshake matched.
 7. Select **Finish maintenance** after verification. Normal UART operation resumes. Reconnect the motor only with controller power off.
 
-Maintenance keeps UART ownership through browser disconnects. A second tab must explicitly take over an idle session. There are no automatic write retries, abort bytes, software resets or resumed movement requests.
+Maintenance keeps UART ownership through browser disconnects. A new, duplicated, or reloaded tab must explicitly take over an idle session. After reloading during a transfer, wait until it finishes or times out before taking over; the new tab cannot cancel that transfer. There are no automatic write retries, abort bytes, software resets or resumed movement requests.
 
 ## Accepted images and storage
 

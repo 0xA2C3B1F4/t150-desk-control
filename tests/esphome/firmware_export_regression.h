@@ -116,6 +116,9 @@ class Probe : public esphome::desk_uart::DeskUART {
     p.pending_preset_=1; p.retarget_pending_=true;
     require(p.begin_firmware_export(true),"isolated maintenance admitted without live application");
     require(!p.pending_preset_ && !p.retarget_pending_,"queued motion discarded");
+    p.setup();
+    require(p.firmware_export_active(),"setup preserves reboot-recovery ownership");
+    require(wire.writes==0,"setup subscription cannot reach loader during recovery");
     p.loop();p.on_shutdown();require(wire.writes==0,"isolated ownership sends no application traffic");
     p.end_firmware_export();
     require(!p.pending_preset_ && !p.retarget_pending_,"no delayed target after maintenance");

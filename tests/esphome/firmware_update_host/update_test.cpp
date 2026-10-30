@@ -50,6 +50,17 @@ int main(int argc,char **argv){
  export_host::reset();
  if(argc==3){
   auto stock=load(argv[1]),patched=load(argv[2]);
+  // Once the loader write request is attempted, failures keep durable recovery.
+  for(int failure=0;failure<3;++failure){
+   Rig r;r.claim();r.read(stock);r.backup();r.post("patch");r.install();
+   r.feed({0xfa,0x30,0,1,0x31,0xfd});
+   if(failure==0){export_host::now+=5001;r.tick();}
+   else if(failure==1)r.feed({0x15});
+   else r.post("cancel");
+   CHECK(r.state()=="error");CHECK(esphome::saved_recovery!=0);
+   r.read(stock);CHECK(r.state()=="read_complete");CHECK(esphome::saved_recovery==0);
+  }
+  export_host::reset();
   {Rig r;r.claim();r.read(stock);CHECK(r.hash()==fw::STOCK_SHA);r.post("exit");CHECK(r.state()=="read_complete");r.backup();r.post("patch");CHECK(r.hash()==fw::DT02_SHA);CHECK(r.download()==patched);CHECK(export_host::live_allocations()==1);
    esphome::fail_preferences=true;r.post("install",{{"confirmed","yes"}});CHECK(r.state()=="error");CHECK(esphome::saved_recovery==0);esphome::fail_preferences=false;
    r.read(stock);r.backup();r.post("patch");r.install();r.post("cancel");CHECK(esphome::saved_recovery==0);
