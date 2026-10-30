@@ -264,7 +264,7 @@ bool FirmwareUpdate::canHandle(AsyncWebServerRequest *request) const {
          url=="/desk-firmware/download" || url=="/desk-firmware/action";
 }
 void FirmwareUpdate::handleRequest(AsyncWebServerRequest *request) {
-  if (is_failed()) { request->send(503,"text/plain","Maintenance UART unavailable; requires 115200 baud and 4096-byte RX buffer"); return; }
+  if (is_failed()) { request->send(500,"text/plain","Maintenance UART unavailable; requires 115200 baud and 4096-byte RX buffer"); return; }
   const auto origin=request->get_header("Origin"), host=request->get_header("Host");
   std::string authority=host ? *host : "";
   const auto port=web_server_base::global_web_server_base->get_port();
@@ -277,11 +277,11 @@ void FirmwareUpdate::handleRequest(AsyncWebServerRequest *request) {
     char ip[64]; address.str_to(ip);
     if (authority==ip || authority=="["+std::string(ip)+"]") local_host=true;
   }
-  if (!local_host) { request->send(403,"text/plain","Use the device IP address or its .local name"); return; }
+  if (!local_host) { request->send(409,"text/plain","Use the device IP address or its .local name"); return; }
   // ESPHome adds permissive CORS headers. Reject foreign origins here before
   // exposing the CSRF token or accepting authenticated maintenance actions.
   if (origin && (!host || (*origin!="http://"+*host && *origin!="https://"+*host))) {
-    request->send(403,"text/plain","Same-origin access required"); return;
+    request->send(409,"text/plain","Same-origin access required"); return;
   }
   char path[AsyncWebServerRequest::URL_BUF_SIZE]; const auto url=request->url_to(path);
   std::unique_lock<std::mutex> lock(mutex_);
@@ -291,6 +291,8 @@ void FirmwareUpdate::handleRequest(AsyncWebServerRequest *request) {
         (unsigned long)esp_random(),(unsigned long)esp_random(),(unsigned long)esp_random());
     csrf_=token;
   }
+  // ESPHome IDF maps unsupported response codes (including 202) to 500.
+  // Use 200 for accepted requests and 409 for rejected maintenance actions.
   auto send=[&](int code,const char *type,const char *body) {
     lock.unlock();
     auto *response=request->beginResponse(code,type,std::string(body));
@@ -331,9 +333,9 @@ void FirmwareUpdate::handleRequest(AsyncWebServerRequest *request) {
     response->addHeader("Content-Disposition","attachment; filename=t150-application.bin");
     response->addHeader("Cache-Control","no-store"); request->send(response); return;
   }
-  if (request->method()!=HTTP_POST || url!="/desk-firmware/action") { send(405,"text/plain","Use GET or POST"); return; }
+  if (request->method()!=HTTP_POST || url!="/desk-firmware/action") { send(409,"text/plain","Use GET or POST"); return; }
   const auto csrf=request->get_header("X-Desk-CSRF");
-  if (!csrf || *csrf!=csrf_) { send(403,"text/plain","Invalid request token"); return; }
+  if (!csrf || *csrf!=csrf_) { send(409,"text/plain","Invalid request token"); return; }
   const auto owner=request->arg("owner"), action=request->arg("action");
   if (!hex_string(owner,32) || request->arg("revision")!=std::to_string(revision_) || !pending_.empty()) {
     send(409,"text/plain","Stale or concurrent request; refresh status"); return;
@@ -343,7 +345,7 @@ void FirmwareUpdate::handleRequest(AsyncWebServerRequest *request) {
         request->arg("motor_isolated")!="yes") { send(409,"text/plain","Confirm motor isolation and session ownership"); return; }
     // Claim is queued indirectly: UART ownership is acquired by the loop below.
     pending_="claim";
-    owner_=owner; ++revision_; send(202,"text/plain","Claim queued"); return;
+    owner_=owner; ++revision_; send(200,"text/plain","Claim queued"); return;
   }
   if (owner_!=owner || !owned_) { send(409,"text/plain","This tab does not own maintenance"); return; }
   if (active_() && action!="cancel") { send(409,"text/plain","Transfer active"); return; }
@@ -358,10 +360,10 @@ void FirmwareUpdate::handleRequest(AsyncWebServerRequest *request) {
     send(200,"application/json",accepted); return;
   }
   if (action!="read" && action!="backup" && action!="patch" && action!="stage" && action!="seal" &&
-      action!="install" && action!="verify" && action!="cancel" && action!="exit") { send(400,"text/plain","Unknown action"); return; }
+      action!="install" && action!="verify" && action!="cancel" && action!="exit") { send(409,"text/plain","Unknown action"); return; }
   if ((action=="install" || action=="backup") && request->arg("confirmed")!="yes") {
-    send(400,"text/plain","Explicit confirmation required"); return;
+    send(409,"text/plain","Explicit confirmation required"); return;
   }
-  pending_=action; ++revision_; send(202,"text/plain","Action queued");
+  pending_=action; ++revision_; send(200,"text/plain","Action queued");
 }
 }  // namespace esphome::desk_firmware_update

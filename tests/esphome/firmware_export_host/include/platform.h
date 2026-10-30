@@ -256,7 +256,9 @@ class AsyncWebServerRequest {
   std::function<void()> before_copy;
  private:
   void initialize_(int code, const char *type) {
-    response_code = code; content_type = type ? type : "";
+    // Match ESPHome 2026.4.2 web_server_idf::init_response_, not generic HTTP.
+    response_code = (code == 200 || code == 404 || code == 409) ? code : 500;
+    content_type = type ? type : "";
     response_ = std::make_unique<AsyncWebServerResponse>();
   }
   std::string path_;

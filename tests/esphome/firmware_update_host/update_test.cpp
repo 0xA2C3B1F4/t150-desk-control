@@ -18,8 +18,8 @@ struct Rig:fw::FirmwareUpdate {
     if(foreign)req.request_headers["Origin"]="https://untrusted.example";
     handleRequest(&req);tick();return req.response_code;
   }
-  void rebind(){AsyncWebServerRequest req("/desk-firmware/status");req.request_headers={{"Host","evil.example"},{"Origin","http://evil.example"}};handleRequest(&req);CHECK(req.response_code==403);}
-  void claim(){CHECK(post("claim",{{"motor_isolated","yes"}})==202);CHECK(owned_);}
+  void rebind(){AsyncWebServerRequest req("/desk-firmware/status");req.request_headers={{"Host","evil.example"},{"Origin","http://evil.example"}};handleRequest(&req);CHECK(req.response_code==409);}
+  void claim(){CHECK(post("claim",{{"motor_isolated","yes"}})==200);CHECK(owned_);}
   std::string state(){return phase_name_();}
   std::string hash(){return hash_;}
   void feed(const std::vector<uint8_t> &p){export_host::rx.insert(export_host::rx.end(),p.begin(),p.end());tick();}
@@ -33,16 +33,16 @@ struct Rig:fw::FirmwareUpdate {
     for(size_t offset=0;offset<image.size()&&receiver_.active();offset+=1024){std::vector<uint8_t> block(1024,0);std::copy(image.begin()+offset,image.begin()+std::min(offset+1024,image.size()),block.begin());feed(packet(offset/1024+1,block));}
     if(receiver_.active()){feed({4});feed(packet(0,std::vector<uint8_t>(128,0)));feed({4});}
   }
-  void read(const std::vector<uint8_t> &image){CHECK(post("read")==202);export_image(image);}
-  void backup(){CHECK(post("backup",{{"confirmed","yes"}})==202);CHECK(error_==nullptr);}
-  void upload(const std::vector<uint8_t> &image){CHECK(post("stage")==202);CHECK(state()=="uploading");const char *hex="0123456789abcdef";for(size_t i=0;i<image.size();i+=128){std::string data;for(size_t j=i;j<std::min(i+128,image.size());++j){data+=hex[image[j]>>4];data+=hex[image[j]&15];}CHECK(post("chunk",{{"offset",std::to_string(i)},{"data",data}})==200);}CHECK(post("seal")==202);}
-  void install(){CHECK(post("install",{{"confirmed","yes"}})==202);CHECK(state()=="installing");CHECK(esphome::saved_recovery!=0);}
+  void read(const std::vector<uint8_t> &image){CHECK(post("read")==200);export_image(image);}
+  void backup(){CHECK(post("backup",{{"confirmed","yes"}})==200);CHECK(error_==nullptr);}
+  void upload(const std::vector<uint8_t> &image){CHECK(post("stage")==200);CHECK(state()=="uploading");const char *hex="0123456789abcdef";for(size_t i=0;i<image.size();i+=128){std::string data;for(size_t j=i;j<std::min(i+128,image.size());++j){data+=hex[image[j]>>4];data+=hex[image[j]&15];}CHECK(post("chunk",{{"offset",std::to_string(i)},{"data",data}})==200);}CHECK(post("seal")==200);}
+  void install(){CHECK(post("install",{{"confirmed","yes"}})==200);CHECK(state()=="installing");CHECK(esphome::saved_recovery!=0);}
   void complete_write(){feed({0xfa,0x30,0,1,0x31,0xfd});feed({6,0x43,6,0x43});for(int i=0;i<27;++i)feed({6});CHECK(state()=="readback_required");}
   std::vector<uint8_t> download(){AsyncWebServerRequest req("/desk-firmware/download");req.request_headers["Host"]="desk.local";handleRequest(&req);CHECK(req.response_code==200);return req.body;}
 };
 std::vector<uint8_t> load(const char *path){std::ifstream f(path,std::ios::binary);CHECK(f.good());std::vector<uint8_t> b{std::istreambuf_iterator<char>(f),{}};if(b.size()==65536)b.erase(b.begin(),b.begin()+0x2800);CHECK(b.size()==55296);return b;}
 int main(int argc,char **argv){
- {Rig r;r.rebind();CHECK(r.post("claim",{{"motor_isolated","yes"}},std::string(32,'a'),true)==403);CHECK(r.post("claim",{{"motor_isolated","yes"}},std::string(32,'a'),false,false)==403);CHECK(r.post("claim")==409);r.claim();CHECK(r.post("read",{},std::string(32,'b'))==409);CHECK(r.post("read",{},std::string(32,'a'),false,true,true)==409);r.read(std::vector<uint8_t>(55296,255));CHECK(r.state()=="read_complete");CHECK(export_host::live_allocations()==1);r.backup();r.post("stage");CHECK(r.state()=="error");CHECK(esphome::saved_recovery==0);}
+ {Rig r;r.rebind();CHECK(r.post("claim",{{"motor_isolated","yes"}},std::string(32,'a'),true)==409);CHECK(r.post("claim",{{"motor_isolated","yes"}},std::string(32,'a'),false,false)==409);CHECK(r.post("claim")==409);r.claim();CHECK(r.post("read",{},std::string(32,'b'))==409);CHECK(r.post("read",{},std::string(32,'a'),false,true,true)==409);r.read(std::vector<uint8_t>(55296,255));CHECK(r.state()=="read_complete");CHECK(export_host::live_allocations()==1);r.backup();r.post("stage");CHECK(r.state()=="error");CHECK(esphome::saved_recovery==0);}
  export_host::reset();
  {Rig r;r.claim();export_host::fail_malloc=true;r.read(std::vector<uint8_t>(55296,255));CHECK(r.state()=="error");CHECK(export_host::live_allocations()==0);}
  export_host::reset();
@@ -54,7 +54,7 @@ int main(int argc,char **argv){
    esphome::fail_preferences=true;r.post("install",{{"confirmed","yes"}});CHECK(r.state()=="error");CHECK(esphome::saved_recovery==0);esphome::fail_preferences=false;
    r.read(stock);r.backup();r.post("patch");r.install();r.post("cancel");CHECK(esphome::saved_recovery==0);
    r.read(stock);r.backup();r.post("patch");r.install();export_host::now+=120001;r.tick();CHECK(r.state()=="error");CHECK(esphome::saved_recovery==0);
-   r.read(stock);r.backup();r.post("patch");r.install();r.complete_write();CHECK(r.post("exit")==202);CHECK(r.state()=="readback_required");
+   r.read(stock);r.backup();r.post("patch");r.install();r.complete_write();CHECK(r.post("exit")==200);CHECK(r.state()=="readback_required");
    r.post("verify");r.export_image(patched);CHECK(r.state()=="verified");CHECK(esphome::saved_recovery==0);CHECK(export_host::live_allocations()==1);
    export_host::now+=3000;r.post("exit");CHECK(r.desk.end_count==1);CHECK(export_host::live_allocations()==0);
   }
