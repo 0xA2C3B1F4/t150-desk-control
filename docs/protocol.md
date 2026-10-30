@@ -30,6 +30,8 @@ Each header includes the one it builds on, so including `presets.h` also makes
 | `desk_protocol/height_profile.h` | standard headers only | Shared display/position conversions, mathematical profile checks and the existing T150 control policy |
 | `desk_protocol/protocol.h` | `height_profile.h` | Framing (`encode`, `Parser`), command builders, typed decoders, `metric_display`, and the small helpers `HeightMonitor`, `AckTracker` and `ButtonPulse` |
 | `desk_protocol/target.h` | `protocol.h` | Metric target conversion (`metric_target_raw`), typed parameter reads, and the `TemporaryPreset` transaction used for target height and keep-awake |
+| `desk_protocol/direct_target.h` | `protocol.h` | Strict DT02 GET/SET with pending-brake output |
+| `desk_protocol/uart_observation.h` | standard headers only | Cumulative diagnostics; no motion decisions |
 | `desk_protocol/presets.h` | `target.h` | Preset height conversion (`preset_height`), preset reads, and the `PresetSettings` read/write transaction |
 | `desk_protocol/timer.h` | `protocol.h` | The `TimerSequence` T-key transaction |
 | `desk_protocol/identity.h` | `protocol.h` | Bounded text-identity query builder and fixed-width ASCII decoder |
@@ -526,3 +528,22 @@ second while idle, at most three attempts per field per ESP32 boot. It accepts
 a reply only for its current selector within 700 ms. Identity reads do not
 block user controls, reset link freshness, acknowledge motion commands, write
 presets or keep the controller awake.
+
+## DT02 direct target extension
+
+`direct_target.h` implements the optional ABI v1 D1 request/D2 response used
+only by explicitly selected direct mode. Requests contain operation, nonce and
+native preset coordinate S; replies have exactly 37 body bytes. Binding requires
+build DT02, feature bitmap 3, A/B 24/39 and raw limits L=6/U=747. Feature bit 0
+advertises direct targeting; bit 1 separately advertises the sleep-wrap fix.
+GET reports guards even when motion is inhibited. Successful SET echoes S,
+pre-commit current C and committed T, with post-commit mode 1/previous mode 0.
+T is S+7 above C+4, S-6 below C-4, otherwise S, saturated to L/U. The host does
+not precompensate S. Runtime advertisement does not attest installed flash.
+
+`DirectTarget` uses one bounded GET/SET sequence, strict nonce/op/S correlation,
+unsigned-clock deadlines and an explicit pending-brake event on uncertain SET.
+The transport must not grant UART ownership elsewhere until that brake is
+handled. It never creates preset writes, EEPROM saves, retries or a retarget
+queue. A known stock image rejects D1 with EE/03; this is not a safe-opcode
+reservation across unknown firmware revisions.

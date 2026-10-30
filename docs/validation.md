@@ -10,10 +10,10 @@ for identification, the WT95 white variant and the scope of controller testing.
 |---|---|---|
 | Height | Reads channel-2 telemetry; displays cm or inches selected in YAML | Uses the same position profile in either unit |
 | Presets | Recalls and edits three stored heights | Local buttons and controller autosave can conflict with remote edits |
-| Target height | Borrows preset 3, restores RAM and retains its original backup | Uses a profile-specific 73–118 cm range; EEPROM restoration is unverified |
+| Target height | Default preset backend preserves its backup; optional DT02 direct backend does not borrow presets | Uses a profile-specific 73–118 cm range; preset-path EEPROM restoration is unverified |
 | Stop | Requests controlled deceleration | Not an emergency stop; UART failure can prevent delivery |
-| Retargeting | Brakes, restores the borrowed preset, then starts the latest target | Covered by simulated-peer tests; physical retarget behavior still needs testing |
-| Keep-awake | Uses the current raw position for an idle-only preset recall after 30 seconds of inactivity | Cannot wake an already sleeping UART |
+| Retargeting | Preset mode queues the latest target through restoration; direct mode Stops and requires a new explicit request | Simulated-peer coverage; physical behavior remains a separate check |
+| Keep-awake | Preset workaround or verified DT02 sleep-wrap feature with telemetry | Cannot wake an already sleeping UART |
 | Recovery | Preserves ambiguous preset values until the user chooses how to proceed | Pending recovery blocks new movement |
 | Raw load telemetry | Optional filtered value from the existing height stream | Physical units are uncalibrated |
 | Load settings | Reads and writes raw protection thresholds | No conversion to kilograms or amperes; downward adjustment needs hardware testing |
@@ -64,6 +64,13 @@ is seeded explicitly for retention checks, without claiming image recognition.
 
 Coverage includes framing, height units, presets, Stop, retargeting, recovery,
 keep-awake, timers, raw load telemetry, load settings and controller identity.
+DT02 native tests cover strict build/profile/nonce/echo binding, compensation,
+clock wrap, timeouts, cancellation and pending-brake occupancy. The real host
+PTY test starts with an old journal, verifies explicit acceptance, Stop without
+a queued replacement, preset preemption, lost-ACK braking and no stale SET replay.
+It rejects preset/EEPROM/reset writes and checks all preset values unchanged.
+Callback tests prevent export or preset requests from stealing a pending brake.
+These host checks do not prove physical accuracy, standstill or an RTC-hour wrap.
 Raw-load tests cover saved UART frames, malformed input, sequence handling,
 stale values, firmware-reader handoff and unchanged UART subscriptions. Simulated-peer tests
 check timeouts, malformed replies and interrupted operations without a desk.

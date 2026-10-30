@@ -3,6 +3,8 @@
 #include "desk_protocol/protocol.h"
 #include "desk_protocol/identity.h"
 #include "desk_protocol/target.h"
+#include "desk_protocol/direct_target.h"
+#include "desk_protocol/uart_observation.h"
 #include "desk_protocol/timer.h"
 #include "desk_protocol/presets.h"
 #include "desk_protocol/preset_journal.h"
@@ -49,6 +51,9 @@ class DeskUART : public Component, public uart::UARTDevice {
   void set_target_number(number::Number *n) { target_number_ = n; }
   void set_target_range(float low, float high) { min_height_ = low; max_height_ = high; }
   void set_keep_awake_enabled(bool enabled) { keep_awake_enabled_ = enabled; }
+  void set_direct_mode(bool enabled) { direct_mode_ = enabled; }
+  void set_uart_observation_enabled(bool enabled) { uart_observation_enabled_ = enabled; }
+  void set_keep_awake_auto(bool enabled) { keep_awake_auto_ = enabled; }
   void set_target_enabled(bool enabled) { target_enabled_ = enabled; }
   void set_preference_key(uint32_t key) { preference_key_ = key; }
   void set_v4_preference_key(uint32_t key) { v4_preference_key_ = key; }
@@ -113,6 +118,17 @@ class DeskUART : public Component, public uart::UARTDevice {
   bool timer_enabled_{false}, last_timer_pending_{false};
   const char *last_timer_error_{nullptr};
   void target_loop_(uint32_t now);
+  void direct_loop_(uint32_t now);
+  void uart_observation_log_();
+  desk_protocol::UARTObservation uart_observation_{};
+  bool uart_observation_enabled_{false};
+  uint32_t last_uart_observation_log_{0};
+  bool direct_access_allowed_(uint32_t now) const;
+  bool direct_move_(float cm, uint32_t now);
+  desk_protocol::DirectTarget direct_{};
+  bool direct_mode_{false}, direct_probe_done_{false}, keep_awake_auto_{false};
+  uint8_t direct_last_phase_{255};
+  const char *last_direct_error_{nullptr};
   void load_journal_();
   const char *journal_error_() const;
   virtual JournalLoad read_journal_storage_(uint32_t key, uint8_t *data, size_t length) {

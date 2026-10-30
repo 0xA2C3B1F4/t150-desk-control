@@ -140,7 +140,8 @@ desk_uart:
   # User controls plus an automatic preset-3 keep-awake after 30 s of inactivity.
   experimental_preset_buttons: true
   experimental_target_height: true
-  keep_awake: true
+  target_height_mode: preset
+  keep_awake: auto
   min_height: 73.0
   max_height: 118.0
   target_height:

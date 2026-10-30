@@ -239,10 +239,14 @@ Configuration validation checks the listed dependencies. Keep the component
 | `display_unit` | `cm` or `in` | `cm` | Sets height entity units, input conversion and number limits; independent of panel units |
 | `connected` | binary sensor | — | — |
 | `control_status` / `command_result` | text sensor | — | — |
-| `uart_frame_errors` | sensor | — | Diagnostic. Frames rejected for checksum, length or overflow since boot; published at most once per second |
+| `uart_frame_errors` | sensor | — | Diagnostic. Checksum, length, overflow and incomplete-frame timeout errors since boot; published at most once per second |
 | `height_sample_gap` | sensor | — | Diagnostic. Longest interval in ms between accepted height samples while connected, per 60-second window; unknown when no samples arrived |
+| `uart_observation` | boolean | `false` | Cumulative DEBUG log every five seconds; no entity or UART commands |
 
-These diagnostic sensors do not feed an interlock.
+These diagnostic sensors do not feed an interlock. Optional `uart_observation`
+adds cumulative accepted-height, gap, parser-error, TX and UART-handoff counters
+to DEBUG logs. Counters survive reconnects, with a boot identifier; they describe
+observation continuity, not physical standstill or firmware attestation.
 
 ### Movement and stop
 
@@ -251,6 +255,7 @@ These diagnostic sensors do not feed an interlock.
 | `experimental_preset_buttons` | boolean | `false` | — |
 | `preset_1` / `preset_2` / `preset_3` | button | — | `experimental_preset_buttons: true` |
 | `experimental_target_height` | boolean | `false` | — |
+| `target_height_mode` | `preset` or `direct` | `preset` | Direct requires experimental target opt-in and reviewed DT02 firmware |
 | `target_height` | number, 0.1 selected-unit steps | — | `experimental_target_height: true` |
 | `up` / `down` | button, 1 cm target step | — | `experimental_target_height: true` |
 | `min_height` / `max_height` | float, 73.0–118.0 cm | `73.0` / `118.0` | `min_height` below `max_height`; also bounds the height numbers |
@@ -275,7 +280,7 @@ decides how that press affects movement. During automatic keep-awake, see
 
 | Key | Type | Default | Requirements and notes |
 |---|---|---|---|
-| `keep_awake` | boolean | `false` | `experimental_target_height: true` |
+| `keep_awake` | `auto` or boolean | `false` | Experimental target opt-in; direct rejects `true` |
 
 ### Timer sequences
 
@@ -300,6 +305,10 @@ The component also registers the `desk_uart.stop` action described under
 The metric target range is 73–118 cm and can be narrowed in configuration.
 Input steps are 0.1 cm or 0.1 in. Metric panel displays above 100 cm can omit
 the decimal even though UART coordinates retain it.
+
+The default `target_height_mode: preset` uses the sequence below.
+
+### Preset backend
 
 Before movement the adapter reads scaling and preset 3, durably records the
 original value on the ESP, writes a temporary target and verifies it. It then
@@ -329,6 +338,32 @@ Use a Home Assistant number slider that sends its value on release. Custom
 cards may send intermediate values; the ESP cannot observe pointer release.
 Optional `up`/`down` component buttons request 1 cm targets, not held direction
 keys. The Stamp example intentionally omits them.
+
+### Direct backend
+
+Select `target_height_mode: direct` only for reviewed custom DT02 controller
+firmware; this repository does not distribute controller firmware images:
+
+```yaml
+  experimental_target_height: true
+  target_height_mode: direct
+  keep_awake: auto
+```
+
+The existing target, 1 cm step and Stop controls use this backend. A runtime
+capability/idle handshake precedes each SET; this advertisement is not flash
+readback. Direct requests never borrow presets or fall back to that path.
+Missing or inconsistent SET acknowledgement requests one controlled Stop;
+there is no SET retry. A target selected during the startup capability check is
+rejected without cancelling that check; select it again once ready. A preset
+press while SET admission is uncertain requests Stop and must also be repeated
+after settling; only an acknowledged active direct move permits native preset
+preemption. A new target while direct control is active sends Stop
+and returns `Stopped; select target again after the desk settles`. Wait for
+settling, then make a new request; no replacement is queued or resumed after a
+lost connection. Native preset buttons cancel direct ownership. Physical keys
+remain authoritative, and telemetry cannot identify every physical preemption.
+An unresolved older preset backup still requires the usual recovery decision.
 
 ## Stop and recovery
 
@@ -404,13 +439,26 @@ connecting the ESP to another desk.
 
 ### Enabling it
 
-`keep_awake: true` requires `experimental_target_height: true`. It defaults to
-false in the component and is enabled in the full Stamp profile. A local wake
-is needed if the panel is already asleep.
+`keep_awake` defaults to `false`. Values other than `false` require
+`experimental_target_height: true`. The full examples explicitly select preset
+mode and `auto`:
+
+| Value | Preset mode | Direct mode |
+|---|---|---|
+| `false` | Workaround disabled | Workaround disabled |
+| `true` | Existing preset-3 workaround | Configuration error |
+| `auto` | Permission to use the existing preset workaround | Use the verified DT02 sleep-wrap feature; never borrow presets |
+
+No extra keep-awake entity is created. Logs and existing Control status and
+UART connected diagnostics show readiness. The sleep-wrap feature is separate
+from direct targeting and requires the normal channel-2 subscription. It does
+not force wakefulness without telemetry or wake an already sleeping UART; wake
+locally before requesting control. Unknown firmware is never privately probed
+in preset mode.
 
 ### Normal operation
 
-After 30 seconds without user commands or height changes, with fresh settled
+In preset mode, after 30 seconds without user commands or height changes, with fresh settled
 height and no other transaction active, it reads the integer position and
 original preset 3. It backs up, temporarily writes the
 exact raw position, verifies it, rereads position to exclude a change, pulses

@@ -44,7 +44,12 @@ def validate_motion(config):
     target_controls = ("target_height", "up", "down")
     if any(k in config for k in target_controls) and not config["experimental_target_height"]:
         raise cv.Invalid("Target controls require experimental_target_height: true")
-    if config["keep_awake"] and not config["experimental_target_height"]:
+    if config["target_height_mode"] == "direct":
+        if not config["experimental_target_height"]:
+            raise cv.Invalid("Direct target mode requires experimental_target_height: true")
+        if config["keep_awake"] is True:
+            raise cv.Invalid("Direct target mode permits keep_awake: auto or false; true borrows preset 3")
+    if config["keep_awake"] is not False and not config["experimental_target_height"]:
         raise cv.Invalid("keep_awake requires experimental_target_height: true for preset backup and recovery")
     if config["min_height"] >= config["max_height"]:
         raise cv.Invalid("min_height must be less than max_height")
@@ -113,7 +118,9 @@ CONFIG_SCHEMA = cv.All(
         **{cv.Optional(f"timer_{m}min"): button.button_schema(TimerButton, icon="mdi:timer-outline") for m in (30, 60, 90, 120)},
         cv.Optional("cancel_timer"): button.button_schema(TimerButton, icon="mdi:timer-off-outline"),
         cv.Optional("timer_command_pending"): binary_sensor.binary_sensor_schema(entity_category="diagnostic"),
-        cv.Optional("keep_awake", default=False): cv.boolean,
+        cv.Optional("keep_awake", default=False): cv.Any(cv.boolean, cv.one_of("auto", lower=True)),
+        cv.Optional("uart_observation", default=False): cv.boolean,
+        cv.Optional("target_height_mode", default="preset"): cv.one_of("preset", "direct", lower=True),
         cv.Optional("experimental_target_height", default=False): cv.boolean,
         cv.Optional("min_height", default=73.0): cv.float_range(min=73.0, max=118.0),
         cv.Optional("max_height", default=118.0): cv.float_range(min=73.0, max=118.0),
@@ -166,7 +173,11 @@ async def to_code(config):
     if "stop_locked" in config:
         cg.add(var.set_stop_locked_sensor(await binary_sensor.new_binary_sensor(config["stop_locked"])))
     cg.add(var.set_motion_enabled(config["experimental_preset_buttons"]))
-    cg.add(var.set_keep_awake_enabled(config["keep_awake"]))
+    cg.add(var.set_uart_observation_enabled(config["uart_observation"]))
+    cg.add(var.set_direct_mode(config["target_height_mode"] == "direct"))
+    cg.add(var.set_keep_awake_auto(config["keep_awake"] == "auto"))
+    cg.add(var.set_keep_awake_enabled(config["keep_awake"] is True or
+                                    (config["keep_awake"] == "auto" and config["target_height_mode"] == "preset")))
     cg.add(var.set_target_enabled(config["experimental_target_height"]))
     cg.add(var.set_timer_enabled(config["experimental_timer_buttons"]))
     for minutes in (0, 30, 60, 90, 120):
