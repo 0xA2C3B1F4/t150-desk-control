@@ -12,9 +12,9 @@ Run from the checkout root, with `secrets.yaml` beside the example YAML files:
 esphome run examples/esphome/stamp-c3-firmware-update.yaml
 ```
 
-Open **Firmware maintenance** from the device's main page, or go directly to `http://<device-address>/desk-firmware`. It uses the normal web-server authentication. `web_server.auth` is required. Open the device IP address or its `.local` name. Use a trusted local network.
+Use the **Open firmware maintenance** link in the main page's **Firmware** group, or go directly to `http://<device-address>/desk-firmware`. It uses the normal web-server authentication. `web_server.auth` is required. Open the device IP address or its `.local` name. Use a trusted local network.
 
-Both pages use a left-aligned layout. With local ESPHome v3 and gzip compression (tested with 2026.4.2), the maintenance build adds the main-page link without external assets or new browser libraries. Other configurations or an unrecognized ESPHome page format keep the standard main page; use the direct maintenance URL. Reload the page after updating the ESP32.
+Both pages use a left-aligned layout and expand to the available width at 1024 px and below. With local ESPHome v3 and gzip compression (tested with 2026.4.2), a small local script places the link in the package's **Firmware** group. It stays at the bottom of the page if the group is unavailable. No external assets or new browser libraries are needed. Other web-server configurations keep the standard main page; use the direct maintenance URL. Reload the page after updating the ESP32.
 
 The example includes `stamp-c3.yaml` and `packages/firmware-update.yaml`. For Device Builder, copy these files and `secrets.yaml` together, preserving the package subdirectory. Replace both local external-component sources with the same GitHub revision, listing `desk_uart` in the base YAML and `desk_firmware_export, desk_firmware_update` in the maintenance package. For a relocated local checkout, change the base YAML's source path and override `firmware_components_path` in the main YAML. Both paths resolve from the main device YAML, not the package.
 

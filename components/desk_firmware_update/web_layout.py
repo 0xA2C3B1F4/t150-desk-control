@@ -7,15 +7,41 @@ import re
 import warnings
 import zlib
 
-MARKER = '<!-- desk-maintenance-layout-v1 -->'
-PAYLOAD = '''<!-- desk-maintenance-layout-v1 -->
-<style>
-.desk-maintenance-nav{margin:1rem 8px;font:16px ui-monospace,system-ui,Helvetica,Roboto,sans-serif}.desk-maintenance-nav a{color:#03a9f4;text-underline-offset:.2em}
-@media(max-width:1024px){.desk-maintenance-nav{margin:1rem 0}}
-</style>
-<nav class="desk-maintenance-nav" aria-label="Desk pages"><a href="/desk-firmware">Firmware maintenance</a></nav>
+MARKER = '<!-- desk-maintenance-layout-v2 -->'
+PAYLOAD = '''<!-- desk-maintenance-layout-v2 -->
+<nav id="desk-firmware-nav" aria-label="Firmware tools" style="margin:.5rem 1rem;font:inherit">
+<a href="/desk-firmware" style="display:inline-block;padding:.5rem 0;color:#03a9f4;text-underline-offset:.2em">Open firmware maintenance</a>
+</nav>
+<script type="module">
+// Move the ordinary link into the optional Firmware group. No device commands.
+const navigation=document.getElementById('desk-firmware-nav');
+customElements.whenDefined('esp-app').then(async()=>{
+  const app=document.querySelector('esp-app');
+  await app.updateComplete;
+  await customElements.whenDefined('esp-entity-table');
+  const appRoot=app.shadowRoot;
+  if(!appRoot)return;
+  let watched;
+  const options={childList:true,subtree:true};
+  const place=()=>{
+    const root=appRoot.querySelector('esp-entity-table')?.shadowRoot;
+    if(root!==watched){
+      observer.disconnect();observer.observe(appRoot,options);
+      if(root)observer.observe(root,options);
+      watched=root;
+    }
+    const heading=root&&[...root.querySelectorAll('.tab-header')].find(node=>node.textContent.trim()==='Firmware');
+    const group=heading?.nextElementSibling;
+    if(group?.classList.contains('tab-container')){
+      if(group.lastChild!==navigation)group.append(navigation);
+    }else if(navigation.parentNode!==document.body){document.body.append(navigation);}
+  };
+  const observer=new MutationObserver(place);
+  observer.observe(appRoot,options);
+  place();
+}).catch(()=>{if(!navigation.isConnected)document.body.append(navigation);});
+</script>
 '''
-
 
 
 def decorate_header(source):
@@ -33,9 +59,11 @@ def decorate_header(source):
     html = gzip.decompress(data).decode('utf-8')
     if MARKER in html:
         return source
+    if '<!-- desk-maintenance-layout-' in html:
+        raise ValueError('older navigation addition; regenerate the upstream index first')
     if html.count('<esp-app>') != 1 or html.count('</body>') != 1:
         raise ValueError('unrecognized ESPHome v3 HTML anchors')
-    html = html.replace('<esp-app>', PAYLOAD + '<esp-app>')
+    html = html.replace('</body>', PAYLOAD + '</body>')
     compressed = gzip.compress(html.encode(), compresslevel=9, mtime=0)
     lines = ['    ' + ', '.join(f'0x{x:02x}' for x in compressed[i:i+16]) + ','
              for i in range(0, len(compressed), 16)]

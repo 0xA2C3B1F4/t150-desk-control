@@ -30,9 +30,16 @@ class LayoutTest(unittest.TestCase):
         patched = layout.decorate_header(header(html))
         self.assertEqual(layout.decorate_header(patched), patched)
         self.assertEqual(decode(patched).replace(layout.PAYLOAD, ''), html)
-        self.assertNotIn('<script', layout.PAYLOAD)
         self.assertEqual(patched.split('#else')[1], header(html).split('#else')[1])
         self.assertLess(len(patched) - len(header(html)), 8000)  # < 1.3 KiB compressed payload
+
+    def test_navigation_only_and_footer_fallback(self):
+        for forbidden in ['fetch', 'XMLHttpRequest', 'EventSource', 'WebSocket', 'innerHTML', '/desk-firmware/']:
+            self.assertNotIn(forbidden, layout.PAYLOAD)
+        patched = layout.decorate_header(header('<body><esp-app></esp-app></body>'))
+        self.assertIn(layout.PAYLOAD + '</body>', decode(patched))
+        with self.assertRaises(ValueError):
+            layout.decorate_header(header('<body><!-- desk-maintenance-layout-v1 --><esp-app></esp-app></body>'))
 
     def test_rejects_unknown_anchors_and_array(self):
         for text in [header('<body></body>'), header('<body><esp-app><esp-app></body>'), 'unknown header']:
@@ -80,7 +87,7 @@ class LayoutTest(unittest.TestCase):
         from esphome.components import web_server
         source = Path(web_server.__file__).with_name('server_index_v3.h').read_text()
         patched = layout.decorate_header(source)
-        self.assertIn('<a href="/desk-firmware">Firmware maintenance</a>', decode(patched))
+        self.assertIn('Open firmware maintenance</a>', decode(patched))
         self.assertEqual(decode(patched).replace(layout.PAYLOAD, ''), decode(source))
         self.assertEqual(layout.decorate_header(patched), patched)
         print('Compressed index growth:', len(re.findall(r'0x[0-9a-fA-F]{2}', patched)) - len(re.findall(r'0x[0-9a-fA-F]{2}', source)), 'bytes')
