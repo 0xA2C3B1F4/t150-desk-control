@@ -2,7 +2,7 @@
 
 The optional maintenance build serves `/desk-firmware` on the ESPHome device. It reads the controller application, prepares DT02, installs a validated image, and verifies every application byte by a separate UART readback. It is not part of the normal desk configuration.
 
-The interface has host simulation and Stamp-C3 build coverage. Its complete browser-to-controller workflow still needs supervised hardware validation. Keep an ST-Link recovery route available when testing it.
+The maintenance HTTP endpoints have been tested on Stamp-C3 for original-image restoration, on-device DT02 patching, installation and complete readback. Browser interaction has separate simulation coverage; interrupted-write recovery still needs hardware validation. Keep an ST-Link recovery route available when testing it.
 
 ## Build and open
 
