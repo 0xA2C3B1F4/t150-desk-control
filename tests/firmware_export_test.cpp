@@ -15,6 +15,7 @@ struct Rig {
   unsigned allocations{0};
   size_t requested{0};
   bool fail_allocation{false};
+  bool compare{false};
   std::vector<uint8_t> transmitted;
   uint32_t now{100};
   bool fail_write{false};
@@ -24,6 +25,7 @@ struct Rig {
     auto *r = static_cast<Rig *>(context);
     ++r->allocations; r->requested = size;
     if (r->fail_allocation) return nullptr;
+    if (r->compare) return size == r->image.size() ? r->image.data() : nullptr;
     r->image.assign(size, 0);
     return r->image.data();
   }
@@ -64,6 +66,16 @@ struct Rig {
   void close() { feed({4});feed(packet(0,std::vector<uint8_t>(128,0)));feed({4}); }
 };
 int main(int argc,char **argv) {
+  for (bool mismatch : {false,true}) {
+    Rig r; r.compare=true; r.image=Rig::block(1); const auto before=r.image;
+    r.receiver.compare_only(); r.begin_data(1024);
+    auto data=before; if(mismatch)data[97]^=1;
+    r.feed(Rig::packet(1,data));
+    if(mismatch) { CHECK(!r.receiver.active()); CHECK(!r.receiver.data_complete()); }
+    else { r.feed({4}); r.feed(Rig::packet(0,std::vector<uint8_t>(128,0)));r.feed({4});CHECK(r.receiver.termination_complete()); }
+    CHECK(r.image==before); CHECK(r.allocations==1);
+  }
+
   unsigned passed=0;
   { Rig r;r.begin_data();r.data();r.close();CHECK(r.receiver.termination_complete());CHECK(r.receiver.size()==55296);CHECK(r.transmitted.size()==68);CHECK(r.transmitted[9]=='C');for(size_t i=10;i<68;++i)CHECK(r.transmitted[i]==6);for(unsigned i=1;i<=54;++i){auto b=Rig::block(i);CHECK(std::equal(b.begin(),b.end(),r.image.begin()+(i-1)*1024));}++passed; }
   { Rig r;r.feed({0xFA,0x30,0,0,0x31,0xFD});r.receiver.tick(r.now+120000);CHECK(r.transmitted.empty());CHECK(!r.receiver.active());++passed; }

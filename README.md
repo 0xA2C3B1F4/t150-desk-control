@@ -165,6 +165,7 @@ Paths relative to the repository root:
 lib/desk_protocol/                portable header-only C++11 library
 components/desk_uart/             ESPHome adapter
 components/desk_firmware_export/  optional firmware reader
+components/desk_firmware_update/  optional patch and recovery interface
 examples/esphome/                 monitoring and ESP32 control configurations
 tests/                            native tests and UART fixtures
 tests/esphome/                    host/PTY integration tests
@@ -185,3 +186,5 @@ firmware profile diagnostics. It requires a physical desk
 power cycle while the ESP32 stays powered. The normal examples exclude it.
 Use [stamp-c3-firmware-export.yaml](examples/esphome/stamp-c3-firmware-export.yaml)
 only when the reader is needed.
+
+Optional [firmware maintenance](docs/firmware-update.md) provides backup, DT02 patch preparation, installation and complete application readback from the device web page.
