@@ -84,6 +84,7 @@ class Probe : public esphome::desk_uart::DeskUART {
     callback_delay_(false);callback_delay_(true);
     callback_direct_brake_();
     byte_stall_timeout_();
+    isolated_maintenance_();
     ESP_LOGI("fixture","FIRMWARE_HANDOFF=passed");
   }
  private:
@@ -100,6 +101,27 @@ class Probe : public esphome::desk_uart::DeskUART {
     require(p.monitor_.observe(frame_(0,0),now),"fresh telemetry");
     p.height_seen_=p.connected_=true;p.last_q_=6;
     p.last_height_received_=now;p.last_height_change_=now-2000;p.last_preset_recall_=now-4000;
+  }
+  static void isolated_maintenance_() {
+    Wire wire;
+    esphome::sensor::Sensor height,load;
+    Probe p;ready_(p,wire,&height,&load);
+    p.pending_preset_=1;
+    desk_protocol::Frame press;
+    require(p.pulse_.begin(desk_protocol::Button::Preset1,esphome::millis(),press),"fixture active pulse");
+    require(!p.begin_firmware_export(true),"fresh pending release cannot be discarded for maintenance");
+    p.connected_=p.height_seen_=false; p.monitor_={};
+    require(!p.begin_firmware_export(true),"local pending release blocks even stale telemetry");
+    p.pulse_={};
+    p.pending_preset_=1; p.retarget_pending_=true;
+    require(p.begin_firmware_export(true),"isolated maintenance admitted without live application");
+    require(!p.pending_preset_ && !p.retarget_pending_,"queued motion discarded");
+    p.setup();
+    require(p.firmware_export_active(),"setup preserves reboot-recovery ownership");
+    require(wire.writes==0,"setup subscription cannot reach loader during recovery");
+    p.loop();p.on_shutdown();require(wire.writes==0,"isolated ownership sends no application traffic");
+    p.end_firmware_export();
+    require(!p.pending_preset_ && !p.retarget_pending_,"no delayed target after maintenance");
   }
   static void byte_stall_timeout_() {
     Wire wire;

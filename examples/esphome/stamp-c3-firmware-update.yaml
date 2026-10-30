@@ -1,0 +1,6 @@
+# Keep this file, stamp-c3.yaml and secrets.yaml in examples/esphome/.
+# Commands in docs/firmware-update.md run from the checkout root.
+# For relocated YAML files, override both local component source paths.
+packages:
+  desk: !include stamp-c3.yaml
+  maintenance: !include packages/firmware-update.yaml

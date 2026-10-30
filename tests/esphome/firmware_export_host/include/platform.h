@@ -13,6 +13,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -122,7 +123,7 @@ inline int uart_read_bytes(uart_port_t, void *buffer, size_t size, unsigned) {
 
 namespace esphome {
 inline uint32_t millis() { return export_host::now; }
-namespace setup_priority { constexpr float WIFI = 250.0f; }
+namespace setup_priority { constexpr float WIFI = 250.0f, DATA=600.0f; }
 class Component {
  public:
   virtual ~Component() = default;
@@ -143,7 +144,9 @@ class HighFrequencyLoopRequester {
 class Application {
  public:
   static void wake_loop_isrsafe(BaseType_t *) {}
+  const std::string &get_name() const { static const std::string name="desk";return name; }
 };
+inline Application App;
 // HashBase's formatting helpers are independent of its actual SHA algorithm.
 inline void format_hex_to(char *out, size_t capacity, const uint8_t *data, size_t size) {
   if (capacity < size * 2 + 1) throw std::runtime_error("Hex output buffer too small");
@@ -181,7 +184,7 @@ namespace desk_uart {
 class DeskUART {
  public:
   uart::IDFUARTComponent *firmware_export_uart() { return &uart; }
-  bool begin_firmware_export() { ++begin_count; return allow_begin; }
+  bool begin_firmware_export(bool = false) { ++begin_count; return allow_begin; }
   void end_firmware_export() { ++end_count; }
   bool allow_begin{true};
   unsigned begin_count{0}, end_count{0};
@@ -207,6 +210,11 @@ class AsyncWebServerRequest {
   explicit AsyncWebServerRequest(std::string path, int method = HTTP_GET)
       : path_(std::move(path)), method_(method) {}
   int method() const { return method_; }
+  std::map<std::string,std::string> request_headers,params;
+  std::optional<std::string> get_header(const char *name) const {
+    auto i=request_headers.find(name); if(i==request_headers.end())return {}; return i->second;
+  }
+  std::string arg(const char *name) { return params[name]; }
   std::string url_to(char (&buffer)[URL_BUF_SIZE]) const {
     if (path_.size() >= URL_BUF_SIZE) throw std::runtime_error("Fixture URL too long");
     std::memcpy(buffer, path_.c_str(), path_.size() + 1);
@@ -248,7 +256,9 @@ class AsyncWebServerRequest {
   std::function<void()> before_copy;
  private:
   void initialize_(int code, const char *type) {
-    response_code = code; content_type = type ? type : "";
+    // Match ESPHome 2026.4.2 web_server_idf::init_response_, not generic HTTP.
+    response_code = (code == 200 || code == 404 || code == 409) ? code : 500;
+    content_type = type ? type : "";
     response_ = std::make_unique<AsyncWebServerResponse>();
   }
   std::string path_;
@@ -264,6 +274,7 @@ class AsyncWebHandler {
 namespace esphome::web_server_base {
 class WebServerBase {
  public:
+  uint16_t get_port() const { return 80; }
   void add_handler(AsyncWebHandler *handler) { handlers.push_back(handler); }
   std::vector<AsyncWebHandler *> handlers;
 };

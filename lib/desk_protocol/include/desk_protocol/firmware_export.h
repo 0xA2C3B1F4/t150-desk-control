@@ -15,12 +15,15 @@ class FirmwareExport {
   // exactly size bytes, or nullptr to reject the transfer without a data ACK.
   using Allocate = uint8_t *(*)(void *, size_t);
   void begin(Allocate allocate, Write write, void *context, uint32_t now) {
-    image_ = nullptr; allocate_ = allocate; write_ = write; context_ = context;
+    compare_ = false; image_ = nullptr; allocate_ = allocate; write_ = write; context_ = context;
     size_ = expected_size_ = previous_size_ = used_ = packet_size_ = matched_ = skipped_ = rx_count_ = 0;
     expected_ = 1; bad_ = duplicates_ = eots_ = closing_duplicates_ = 0;
     error_ = nullptr; started_ = now;
     transition_(State::Boot, now);
   }
+  // Compare a complete export against caller-owned staged bytes, without
+  // allocating another image. Allocate must reject a different header size.
+  void compare_only() { compare_ = true; }
   bool active() const { return state_ >= State::Boot && state_ <= State::FinalEot; }
   bool data_complete() const { return expected_size_ != 0 && size_ == expected_size_; }
   bool termination_complete() const { return state_ == State::Complete; }
@@ -152,7 +155,10 @@ class FirmwareExport {
       const size_t remaining = expected_size_ - size_;
       const size_t count = length < remaining ? length : remaining;
       // CRC covers the entire packet; only advertised file bytes are retained.
-      std::memcpy(image_+size_, p, count); size_ += count;
+      if (compare_) {
+        if (std::memcmp(image_+size_, p, count)) { fail("Readback differs from staged image"); return; }
+      } else std::memcpy(image_+size_, p, count);
+      size_ += count;
       expected_ = static_cast<uint8_t>(expected_+1);
       remember_packet_(p, length);  // Includes final padding for duplicate checks.
       transition_(data_complete() ? State::FirstEot : State::Data, now);
@@ -175,6 +181,7 @@ class FirmwareExport {
     } else fail("EOT before complete image");
   }
   State state_{State::Idle};
+  bool compare_{false};
   uint8_t *image_{nullptr};
   Allocate allocate_{nullptr};
   Write write_{nullptr};

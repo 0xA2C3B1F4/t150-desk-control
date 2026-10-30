@@ -84,8 +84,9 @@ the Home Assistant API. The monitoring profile shows telemetry only.
 
 Home Assistant and an internet connection are not required during use.
 `api.reboot_timeout: 0s` keeps the device running without an API client.
-Firmware updates use the configured ESPHome OTA password; browser firmware
-upload is not enabled. Browser login, live telemetry and preset-height writing
+ESP32 firmware updates use the configured ESPHome OTA password; browser OTA
+upload is not enabled. The separate optional [desk maintenance package](firmware-update.md)
+updates the controller application through UART. Browser login, live telemetry and preset-height writing
 have been tested on Stamp-C3. The WROOM profile has build coverage only.
 The version-3 interface groups daily controls first, followed by presets, timers,
 load settings, recovery and diagnostics. The optional firmware reader adds a

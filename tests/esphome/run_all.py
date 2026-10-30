@@ -22,6 +22,8 @@ TESTS = [
     "firmware_export_config",
     "firmware_export_integration",
     "firmware_export_lifecycle",
+    "firmware_update_lifecycle",
+    "firmware_update_config",
     "firmware_profile_integration",
     "display_units_integration",
     "integration",

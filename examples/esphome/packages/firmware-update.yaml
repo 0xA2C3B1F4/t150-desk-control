@@ -1,0 +1,36 @@
+# Optional maintenance build. Use instead of firmware-export.yaml.
+# Open http://<device-address>/desk-firmware after installation.
+# Return to normal ESPHome firmware over USB after maintenance.
+ota: !remove
+substitutions:
+  # Relative to the main device YAML. Override when copying it elsewhere.
+  firmware_components_path: ../../components
+external_components:
+  - source:
+      type: local
+      path: ${firmware_components_path}
+    components: [desk_firmware_export, desk_firmware_update]
+web_server:
+  version: 3
+  sorting_groups:
+    - id: desk_group_firmware
+      name: Firmware
+      sorting_weight: 70
+uart:
+  id: desk_serial
+  rx_buffer_size: 4096
+  rx_full_threshold: 64
+  rx_timeout: 2
+desk_firmware_update:
+  id: firmware_maintenance
+  desk_id: desk
+  # Optional private inbox. Files are sent only after consent in the browser.
+  research_url: https://t150-firmware-inbox.m5vysvgv2h.workers.dev/api/firmware
+text_sensor:
+  - platform: template
+    name: Firmware maintenance
+    entity_category: diagnostic
+    update_interval: 1s
+    web_server:
+      sorting_group_id: desk_group_firmware
+    lambda: return id(firmware_maintenance).maintenance_status();

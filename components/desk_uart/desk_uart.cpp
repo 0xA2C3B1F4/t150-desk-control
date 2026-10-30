@@ -19,12 +19,36 @@ void DeskUART::invalidate_load_raw_() {
   if (this->load_raw_sensor_) this->load_raw_sensor_->publish_state(NAN);
 }
 
-bool DeskUART::begin_firmware_export() {
+bool DeskUART::begin_firmware_export(bool motor_isolated) {
   const uint32_t now = millis();
-  if (this->firmware_export_active_ || this->direct_.busy() || this->direct_.set_sent() || !this->preset_access_allowed_(now) ||
+  if (this->firmware_export_active_ || (!motor_isolated && (this->direct_.busy() || this->direct_.set_sent() || !this->preset_access_allowed_(now) ||
       this->preset_settings_.busy() || this->target_move_.dirty() || this->keep_awake_active_ ||
       this->keep_awake_fault_ || this->recovery_check_active_ || this->accept_current_active_ ||
-      this->restore_requested_ || this->identity_pending_ != 255) return false;
+      this->restore_requested_ || this->identity_pending_ != 255))) return false;
+  if (motor_isolated && (this->pulse_.active() || this->timer_.busy() ||
+      this->release_ack_.pending() || this->stop_ack_.pending())) return false;
+  if (motor_isolated && this->monitor_.fresh(now) &&
+      (this->stable_ms_(now)<1500 || this->direct_.busy() || this->direct_.set_sent() ||
+       this->target_move_.busy() || this->pulse_.active() || this->timer_.busy() ||
+       this->release_ack_.pending() || this->stop_ack_.pending() || this->preset_settings_.busy())) return false;
+  // Isolated maintenance may start while the application is absent. Drop
+  // queued work without transmitting anything; never replay it on exit.
+  this->firmware_export_active_ = true;
+  if (motor_isolated) {
+    this->discard_pending_preset_("Pending preset cancelled by firmware maintenance");
+    this->discard_retarget_("Pending target cancelled by firmware maintenance");
+    this->target_move_.connection_lost(now);
+    this->preset_settings_.cancel("Firmware maintenance; refresh presets later");
+    this->timer_ = {};
+    this->pulse_ = {};
+    this->release_ack_ = {};
+    this->stop_ack_ = {};
+    this->keep_awake_active_ = false;
+    this->keep_awake_recovery_ = false;
+    this->restore_requested_ = this->accept_current_active_ = this->recovery_check_active_ = false;
+    this->identity_pending_ = 255;
+    this->limit_phase_ = LimitPhase::Idle;
+  }
   this->invalidate_journal_session_();
   this->uart_observation_.handoff();
   this->direct_.disconnect();
@@ -47,6 +71,11 @@ void DeskUART::end_firmware_export() {
   this->monitor_ = {};
   this->height_seen_ = this->connected_ = false;
   this->invalidate_load_raw_();
+  this->identity_received_ = 0;
+  this->identity_pending_ = 255;
+  std::memset(this->identity_attempts_, 0, sizeof(this->identity_attempts_));
+  std::memset(this->identity_values_, 0, sizeof(this->identity_values_));
+  for (auto *sensor : this->identity_sensors_) if (sensor) sensor->publish_state("Unavailable");
   this->last_keep_awake_ = millis();
   this->last_subscribe_ = millis() - 5000;
   this->last_control_status_ = nullptr;

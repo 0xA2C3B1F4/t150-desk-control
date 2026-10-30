@@ -22,9 +22,9 @@ namespace esphome { namespace desk_uart {
 
 class DeskUART : public Component, public uart::UARTDevice {
  public:
-  // Exclusive read-only bootloader session, callable only on the main loop.
+  // Exclusive bootloader session, callable only on the main loop.
   uart::UARTComponent *firmware_export_uart() const { return this->parent_; }
-  bool begin_firmware_export();
+  bool begin_firmware_export(bool motor_isolated = false);
   void end_firmware_export();
   bool firmware_export_active() const { return firmware_export_active_; }
   void setup() override;

@@ -152,3 +152,5 @@ A separate [host lifecycle test](validation.md#automated-tests) executes the
 reader adapter through failed transfers and a blocked download concurrent with
 Clear, checking image bytes, metadata, and buffer release after sending.
 Physical results and proprietary firmware images stay in the research project.
+
+For the optional write-and-verify workflow, see [Firmware maintenance](firmware-update.md). Use its package instead of this read-only package.
