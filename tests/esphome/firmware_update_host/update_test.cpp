@@ -1,5 +1,6 @@
 #include "desk_firmware_update.h"
 #include "dt02_patch.h"
+#include "partial_recovery.h"
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -48,7 +49,7 @@ int main(int argc,char **argv){
  export_host::reset();
  {Rig r;r.claim();r.post("read");CHECK(r.post("claim",{{"motor_isolated","yes"},{"takeover","yes"}},std::string(32,'b'))==409);auto tx=export_host::tx.size();r.post("cancel");r.tick();CHECK(export_host::tx.size()==tx);CHECK(r.state()=="error");CHECK(r.desk.end_count==0);r.post("exit");CHECK(r.desk.end_count==0);export_host::now+=3000;r.post("exit");CHECK(r.desk.end_count==1);}
  export_host::reset();
- if(argc==3){
+ if(argc>=3){
   auto stock=load(argv[1]),patched=load(argv[2]);
   // Once the loader write request is attempted, failures keep durable recovery.
   for(int failure=0;failure<3;++failure){
@@ -75,7 +76,7 @@ int main(int argc,char **argv){
    r.post("stage");CHECK(r.state()=="error");
   }
   export_host::reset();
-  {Rig r;CHECK(r.state()=="error");CHECK(r.desk.begin_count==1);r.claim();auto unsupported=patched;unsupported[5]^=1;r.read(unsupported);r.backup();r.post("stage");CHECK(r.state()=="error");
+  {Rig r;CHECK(r.state()=="error");CHECK(r.desk.begin_count==1);r.claim();auto unsupported=patched;unsupported[5]^=1;r.read(unsupported);r.backup();r.upload(stock);CHECK(r.state()=="error");
    auto damaged=patched;std::fill(damaged.begin()+2048,damaged.begin()+3072,255);r.read(damaged);r.backup();r.upload(stock);CHECK(r.state()=="staged");r.install();r.complete_write();r.post("verify");r.export_image(damaged);CHECK(r.state()=="error");CHECK(esphome::saved_recovery!=0);
    r.read(damaged);r.backup();r.upload(stock);r.install();r.complete_write();r.post("verify");r.export_image(stock);CHECK(r.state()=="verified");CHECK(esphome::saved_recovery==0);
   }
@@ -83,6 +84,39 @@ int main(int argc,char **argv){
   {Rig r;r.claim();r.read(stock);r.backup();r.post("patch");r.install();}
   export_host::reset();
   {Rig r;CHECK(r.desk.begin_count==1);r.claim();esphome::fail_preferences=true;r.read(stock);CHECK(r.state()=="error");CHECK(esphome::saved_recovery!=0);esphome::fail_preferences=false;r.read(stock);CHECK(r.state()=="read_complete");CHECK(esphome::saved_recovery==0);}
+  // The real power-cut image and synthetic torn stock/DT02 targets use the
+  // actual adapter, pinned SHA checks, persisted attempt and UART readback.
+  for(int target=0;target<2;++target) for(size_t cut : {size_t(18*1024+128),size_t(0x1658),size_t(0x53b0),size_t(0x6010)}) {
+   if(!target && cut==0x6010) continue; // stock tail is already erased, not a torn image
+   export_host::reset();
+   {Rig r;r.claim();r.read(target?stock:patched);r.backup();if(target)r.post("patch");else r.upload(stock);r.install();r.feed({0xfa,0x30,0,1,0x31,0xfd});r.post("cancel");}
+   export_host::reset();
+   {Rig r;r.claim();auto torn=target?patched:stock;std::fill(torn.begin()+cut,torn.end(),255);
+    if(!target && cut==18*1024+128 && argc==4) torn=load(argv[3]);
+    r.read(torn);r.backup();r.upload(patched);CHECK(r.state()=="error"); // original-only recovery
+    r.read(torn);r.backup();r.upload(stock);CHECK(r.state()=="staged");
+    export_host::now+=300001;r.post("install",{{"confirmed","yes"}});CHECK(r.state()=="error");
+    r.read(torn);r.backup();r.upload(stock);r.install();r.complete_write();r.post("verify");r.export_image(stock);CHECK(r.state()=="verified");CHECK(esphome::saved_recovery==0);
+   }
+  }
+  for(int damage=0;damage<3;++damage) {
+   export_host::reset();
+   {Rig r;r.claim();r.read(patched);r.backup();r.upload(stock);r.install();r.feed({0xfa,0x30,0,1,0x31,0xfd});r.post("cancel");
+    auto torn=stock;std::fill(torn.begin()+18*1024+128,torn.end(),255);
+    if(damage==0) torn[18*1024+4]^=1; // unexpected programmed byte
+    if(damage==1) torn[19*1024]=0; // second partial block
+    if(damage==2) torn.back()=0; // untouched page damage
+    r.read(torn);r.backup();
+    if(damage==0) r.upload(stock);else r.post("stage");
+    CHECK(r.state()=="error");CHECK(esphome::saved_recovery!=0);
+    r.read(stock);CHECK(esphome::saved_recovery==0);
+   }
+  }
+  // No history: even a plausible torn stock image must not become writable.
+  export_host::reset();
+  {Rig r;r.claim();auto torn=stock;std::fill(torn.begin()+18*1024+128,torn.end(),255);r.read(torn);r.backup();r.post("stage");CHECK(r.state()=="error");}
+  for(size_t i=0;i<stock.size();++i) CHECK(fw::dt02_byte(i,stock[i])==patched[i]);
+  std::cout<<"Torn stock/DT02 blocks, saved power-cut image, reboot, original-only recovery, stale preflight and malformed images passed\n";
   std::cout<<"Private stock/DT02 full flow, flash preference refusal, interrupted write, reboot recovery and mismatching readback passed\n";
  }
  std::cout<<"HTTP ownership, CSRF, unknown image, RAM refusal and cancellation passed\n";

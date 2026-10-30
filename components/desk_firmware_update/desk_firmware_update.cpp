@@ -1,5 +1,6 @@
 #include "desk_firmware_update.h"
 #include "dt02_patch.h"
+#include "partial_recovery.h"
 #include "ui.h"
 #include <cstdio>
 #include <cstring>
@@ -63,14 +64,36 @@ void FirmwareUpdate::block_hashes_(uint8_t output[54][32]) {
     hash.calculate(); hash.get_bytes(output[block]);
   }
 }
-bool FirmwareUpdate::recovery_source_matches_() const {
+bool FirmwareUpdate::recovery_source_matches_() {
+  partial_block_=-1;
   if (!recovery_ || recovery_record_.phase!=2 || size_!=IMAGE_SIZE) return false;
   for (size_t block=0;block<54;++block) {
     if (!std::memcmp(preflight_blocks_[block],recovery_record_.source_blocks[block],32) ||
         !std::memcmp(preflight_blocks_[block],recovery_record_.target_blocks[block],32)) continue;
-    for (size_t i=0;i<1024;++i) if (buffer_.get()[block*1024+i]!=255) return false;
+    bool erased=true;
+    for (size_t i=0;i<1024;++i) if (buffer_.get()[block*1024+i]!=255) { erased=false; break; }
+    if (erased) continue;
+    // Retain at most one torn programmed block. Its contents are NOT admitted
+    // until the user supplies the exact stock image at seal/install time.
+    if (block>=PAYLOAD_SIZE/1024 || partial_block_>=0) { partial_block_=-1; return false; }
+    partial_block_=int(block);
+    std::memcpy(partial_image_,buffer_.get()+block*1024,1024);
   }
-  return true;
+  return partial_block_<0;
+}
+bool FirmwareUpdate::validate_partial_recovery_() const {
+  if (!recovery_ || recovery_record_.phase!=2 || partial_block_<0 ||
+      partial_block_>=int(PAYLOAD_SIZE/1024) || std::strcmp(hash_,STOCK_SHA) || !buffer_) return false;
+  uint8_t expected[1024], digest[32];
+  const size_t base=size_t(partial_block_)*1024;
+  const bool patched=!std::strcmp(recovery_record_.write_target,DT02_SHA);
+  for (size_t i=0;i<1024;++i) expected[i]=patched ? dt02_byte(base+i,buffer_.get()[base+i]) : buffer_.get()[base+i];
+  sha256::SHA256 sha; sha.init(); sha.add(expected,sizeof(expected)); sha.calculate(); sha.get_bytes(digest);
+  // Bind the expected bytes to the existing persistent attempt, not just to
+  // the newly uploaded file. No preference layout or recovery key changes.
+  const auto *recorded=!std::strcmp(recovery_record_.write_target,recovery_record_.source)
+      ? recovery_record_.source_blocks[partial_block_] : recovery_record_.target_blocks[partial_block_];
+  return !std::memcmp(digest,recorded,32) && partial_prefix_matches(partial_image_,expected);
 }
 bool FirmwareUpdate::active_() const {
   return phase_==Phase::Reading || phase_==Phase::Writing || phase_==Phase::Verifying;
@@ -111,7 +134,7 @@ uint8_t *FirmwareUpdate::allocate_image_(void *context,size_t size) {
 void FirmwareUpdate::read_(bool verify) {
   if (!owned_) { fail_("Claim maintenance with the motor disconnected first"); return; }
   if (!verify) {
-    buffer_.reset(); size_=0; hash_[0]=0; preflight_=false; backup_=false;
+    buffer_.reset(); size_=0; hash_[0]=0; preflight_=false; backup_=false; partial_block_=-1;
   }
   phase_=verify ? Phase::Verifying : Phase::Reading; error_=nullptr;
   receiver_.begin(allocate_image_,transmit_,this,millis());
@@ -124,7 +147,7 @@ bool FirmwareUpdate::admit_() const {
   if (!preflight_ || !tail_erased_ || uint32_t(millis()-preflight_at_)>300000 ||
       size_!=IMAGE_SIZE || !known(hash_) || !backup_) return false;
   // Recovery after a failed attempt is deliberately limited to the original.
-  return known(source_hash_) || (recovery_source_valid_ && !std::strcmp(hash_,STOCK_SHA));
+  return known(source_hash_) || ((recovery_source_valid_ || validate_partial_recovery_()) && !std::strcmp(hash_,STOCK_SHA));
 }
 void FirmwareUpdate::execute_(const std::string &action) {
   error_=nullptr;
@@ -150,7 +173,7 @@ void FirmwareUpdate::execute_(const std::string &action) {
     phase_=Phase::Staged; return;
   }
   if (action=="stage") {
-    if (!preflight_ || !tail_erased_ || !backup_ || (!known(source_hash_) && !recovery_source_valid_)) {
+    if (!preflight_ || !tail_erased_ || !backup_ || (!known(source_hash_) && !recovery_source_valid_ && partial_block_<0)) {
       fail_("Read this controller and confirm the backup before selecting an image"); return;
     }
     // Admission guarantees a full-sized buffer; reuse it after the saved backup.
@@ -195,7 +218,7 @@ void FirmwareUpdate::execute_(const std::string &action) {
   }
   if (action=="exit") {
     if (active_() || recovery_ || uint32_t(millis()-finished_at_)<3000) { error_="Cannot exit with an active or unverified installation"; return; }
-    buffer_.reset(); size_=0; hash_[0]=0; preflight_=false; backup_=false;
+    buffer_.reset(); size_=0; hash_[0]=0; preflight_=false; backup_=false; partial_block_=-1;
     uart_flush_input(port_); desk_->end_firmware_export(); owned_=false;
     owner_.clear(); phase_=Phase::Idle; error_=nullptr; return;
   }

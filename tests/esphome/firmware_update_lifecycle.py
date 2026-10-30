@@ -16,7 +16,10 @@ from desk_test_support import ROOT, parse_args
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--original', type=Path)
 parser.add_argument('--patched', type=Path)
+parser.add_argument('--interrupted', type=Path)
 args = parse_args(parser=parser)
+if args.interrupted and not args.original:
+    parser.error('--interrupted requires both private images')
 if bool(args.original) != bool(args.patched):
     parser.error('Provide both private images or neither')
 work = args.work_dir
@@ -42,6 +45,8 @@ with (work/'build.log').open('w') as log:
 command = [str(work/'update-test')]
 if args.original:
     command += [str(args.original.resolve()),str(args.patched.resolve())]
+if args.interrupted:
+    command += [str(args.interrupted.resolve())]
 with (work/'run.log').open('w') as log:
     subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,check=True,timeout=60)
 summary = dict(passed=True,private_images=bool(args.original),hardware_access=False,
