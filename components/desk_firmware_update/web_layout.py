@@ -7,10 +7,11 @@ import re
 import warnings
 import zlib
 
-MARKER = '<!-- desk-maintenance-layout-v2 -->'
-PAYLOAD = '''<!-- desk-maintenance-layout-v2 -->
+MARKER = '<!-- desk-maintenance-layout-v3 -->'
+PAYLOAD = '''<!-- desk-maintenance-layout-v3 -->
 <nav id="desk-firmware-nav" aria-label="Firmware tools" style="margin:.5rem 1rem;font:inherit">
-<a href="/desk-firmware" style="display:inline-block;padding:.5rem 0;color:#03a9f4;text-underline-offset:.2em">Open firmware maintenance</a>
+<div aria-hidden="true" hidden></div>
+<div><a href="/desk-firmware" style="color:#03a9f4;text-underline-offset:.2em">Open firmware maintenance</a></div>
 </nav>
 <script type="module">
 // Move the ordinary link into the optional Firmware group. No device commands.
@@ -32,7 +33,11 @@ customElements.whenDefined('esp-app').then(async()=>{
     }
     const heading=root&&[...root.querySelectorAll('.tab-header')].find(node=>node.textContent.trim()==='Firmware');
     const group=heading?.nextElementSibling;
-    if(group?.classList.contains('tab-container')){
+    const grouped=!!group?.classList.contains('tab-container');
+    navigation.classList.toggle('entity-row',grouped);
+    navigation.style.margin=grouped?'0':'.5rem 1rem';
+    navigation.firstElementChild.hidden=!grouped;
+    if(grouped){
       if(group.lastChild!==navigation)group.append(navigation);
     }else if(navigation.parentNode!==document.body){document.body.append(navigation);}
   };
