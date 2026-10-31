@@ -11,6 +11,9 @@ jobs:
         build_type: [Debug, Release]
     steps:
       - uses: actions/checkout@v6
+      - name: Firmware UI state transitions
+        if: matrix.build_type == 'Debug'
+        run: node tests/esphome/firmware_ui_test.cjs
       - name: C++11 ${{ matrix.build_type }} with ASan and UBSan
         run: |
           cmake -S . -B "$RUNNER_TEMP/native" -DDESK_SANITIZERS=ON -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}

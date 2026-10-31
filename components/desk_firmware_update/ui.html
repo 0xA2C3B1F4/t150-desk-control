@@ -3,51 +3,82 @@
 <title>Desk firmware maintenance</title>
 <style>
 :root{color-scheme:light dark;font:16px ui-monospace,system-ui,Helvetica,Roboto,sans-serif;--primary-color:#03a9f4}
-*{box-sizing:border-box}body{max-width:684px;margin:1rem;line-height:1.5}@media(max-width:1024px){body{max-width:none;margin:1rem 8px}}h1{font-size:1.6rem;line-height:1.2}h2{font-size:1.2rem;margin-top:0}section{border:2px solid #7f7f7f4d;border-radius:12px;padding:1rem;margin:1rem 0}button,input{font:inherit;max-width:100%}button{border:1px solid #7f7f7f4d;border-radius:4px;background:transparent;color:var(--primary-color);padding:.65rem .9rem;margin:.25rem .2rem .25rem 0;cursor:pointer}button:hover:not(:disabled){background:#7f7f7f26}button:disabled{opacity:.5;cursor:default}label{display:block;margin:.8rem 0}code{overflow-wrap:anywhere;font-size:.85rem}#message{white-space:pre-wrap;overflow-wrap:anywhere}progress{width:100%;accent-color:var(--primary-color)}.note{font-size:.9rem}a{color:var(--primary-color);text-underline-offset:.2em}nav{margin-bottom:1rem}:focus-visible{outline:2px solid var(--primary-color);outline-offset:3px}
+*{box-sizing:border-box}[hidden]{display:none!important}body{max-width:684px;margin:1rem;line-height:1.5}@media(max-width:1024px){body{max-width:none;margin:1rem 8px}}h1{font-size:1.6rem;line-height:1.2}h2{font-size:1.2rem;margin-top:0}section{border:2px solid #7f7f7f4d;border-radius:12px;padding:1rem;margin:1rem 0}button,input{font:inherit;max-width:100%}button{border:1px solid #7f7f7f4d;border-radius:4px;background:transparent;color:var(--primary-color);padding:.65rem .9rem;margin:.25rem .2rem .25rem 0;cursor:pointer}button:hover:not(:disabled){background:#7f7f7f26}button:disabled{opacity:.5;cursor:default}label{display:block;margin:.8rem 0}code{overflow-wrap:anywhere;font-size:.85rem}#message{white-space:pre-wrap;overflow-wrap:anywhere}#guidance{overflow-wrap:anywhere;position:sticky;top:.5rem;z-index:2;border:2px solid var(--primary-color);border-radius:8px;background:Canvas;padding:1rem;margin:1rem 0;box-shadow:0 3px 12px #0003;max-height:80vh;overflow:auto}body:has(>details:focus-within,#researchSection:focus-within) #guidance{position:static}#guidance strong{display:block;font-size:1.1rem}#guidance p{margin:.5rem 0}#guidance:focus{outline:3px solid var(--primary-color);outline-offset:3px}progress{width:100%;accent-color:var(--primary-color)}.note{font-size:.9rem}a{color:var(--primary-color);text-underline-offset:.2em}nav{margin-bottom:1rem}:focus-visible{outline:2px solid var(--primary-color);outline-offset:3px}
 </style>
 <nav aria-label="Desk pages"><a href="/">Back to desk controls</a></nav>
 <h1>Desk firmware maintenance</h1>
-<p>Read the controller application, save a backup, then install the supported DT02 patch or restore an original file. Normal desk controls stay paused throughout maintenance.</p>
-<section><h2>1. Prepare and read</h2>
-<p>Disconnect the motor cable with the controller powered off. Keep the ESP32 and UART cable connected. Power the controller on when the reader asks for it.</p>
+<p>Follow the current step below to read the controller, save a backup, and install or restore a supported image.</p>
+<aside id="guidance" role="region" aria-label="Current maintenance step" tabindex="-1">
+<div role="status" aria-live="polite" aria-atomic="true"><strong id="guidanceTitle">Connecting…</strong><p id="guidanceDetail"></p></div>
+<p id="message" role="alert"></p><p id="freshness"></p>
+<div id="transferProgress" hidden><progress id="progress" max="55296" value="0" aria-label="Firmware transfer progress"></progress><p id="progressText"></p></div>
+<div id="sessionControls">
 <label><input type="checkbox" id="isolated"> The motor is disconnected.</label>
-<label><input type="checkbox" id="takeover"> Take over an idle maintenance session from another tab or after reloading.</label>
-<button disabled id="claim">Enter maintenance</button><button disabled id="read">Read controller firmware</button>
-<p id="boot" role="status"></p>
-</section>
-<section><h2>2. Save and prepare</h2>
+<label id="takeoverLabel"><input type="checkbox" id="takeover"> Take over an idle maintenance session from another tab or after reloading.</label>
+<button disabled id="claim">Enter maintenance</button>
+</div>
+<button disabled id="read" hidden>Read controller firmware</button>
+<div id="backupControls" hidden>
 <button disabled id="backupDownload">Download original backup</button>
 <label><input type="checkbox" id="saved"> I have saved the backup file on my computer and can select it again.</label>
+<div id="prepareControls" hidden>
 <button disabled id="patch">Prepare DT02 patch</button>
-<p>Only the exact supported original is patchable. An unknown image can still be saved for research. Sending a file for research is a separate, optional step below.</p>
-<label>Or select a previously saved original or DT02 application file:
+<label>Or select a saved original or DT02 application file:
 <input type="file" id="file" accept=".bin,application/octet-stream"></label>
-<button disabled id="stage">Prepare selected file</button><button disabled id="preparedDownload">Download prepared firmware</button>
-<p class="note">Files in this tab are temporary. The computer download is your persistent backup. Only 55,296-byte application files are accepted for installation.</p>
-</section>
+<button disabled id="stage">Prepare selected file</button>
+</div>
+</div>
+<button disabled id="preparedDownload" hidden>Download prepared firmware</button>
+<div id="installControls" hidden>
+<label><input type="checkbox" id="installConsent"> I want to install the prepared image and will keep power connected during writing.</label>
+<button disabled id="install">Arm installation</button>
+</div>
+<button disabled id="verify" hidden>Verify by full readback</button>
+<button disabled id="cancel" hidden>Cancel waiting or transfer</button>
+<button disabled id="exit" hidden>Finish maintenance</button>
+<p id="receipt" role="status"></p>
+<details><summary>Firmware details</summary><p>State: <span id="state">Connecting…</span></p><p>Application SHA-256: <code id="hash">Unavailable</code></p><p id="heap"></p></details>
+</aside>
+<details><summary>Maintenance steps and image requirements</summary>
+<p>With controller power off, disconnect the motor cable. Keep the ESP32 powered and UART connected throughout maintenance.</p>
+<ol><li>Enter maintenance and select Read controller firmware. Turn only the controller off and on when the current step asks for it.</li>
+<li>Download the backup and confirm that it is saved on your computer. Prepare DT02 or select a saved application file.</li>
+<li>Confirm and arm installation. Restart the controller when instructed, then leave power connected throughout writing.</li>
+<li>Select Verify by full readback after writing. Restart the controller again when instructed. Only a complete readback verifies the installation.</li>
+<li>Finish maintenance, then restart the controller for normal operation. Reconnect the motor only with controller power off.</li></ol>
+<p>Installation erases application flash. A failed transfer may require restoring the original file or ST-Link recovery. Only exact supported 55,296-byte original or DT02 application files can be installed. Unknown versions can be saved for research.</p>
+<p>Files in this page are temporary. The computer download is your persistent backup.</p>
+</details>
 <section id="researchSection" hidden><h2>Send an unknown version for research</h2>
 <p>The operator stores this file privately until manually removed. Sending it does not approve a patch or install anything.</p>
 <label><input type="checkbox" id="researchConsent"> I agree to send my downloaded controller image to <span id="researchHost"></span> for analysis.</label>
-<button disabled id="research">Send firmware for research</button><p id="receipt"></p>
+<button disabled id="research">Send firmware for research</button>
 </section>
-<section><h2>3. Install and check</h2>
-<p>Installation erases application flash. Keep power connected during the transfer. A failed transfer may require restoring the original file or ST-Link recovery.</p>
-<label><input type="checkbox" id="installConsent"> I want to install the prepared image and will keep power connected during writing.</label>
-<button disabled id="install">Arm installation</button><button disabled id="verify">Verify by full readback</button>
-<button disabled id="cancel">Cancel waiting or transfer</button><button disabled id="exit">Finish maintenance</button>
-<p>After installation, select Verify and power-cycle the controller once when prompted. A transfer ACK is not verification.</p>
-</section>
-<section aria-live="polite"><strong id="state">Connecting…</strong><progress id="progress" max="55296" value="0"></progress>
-<p id="message"></p><p>Application SHA-256: <code id="hash">Unavailable</code></p><p id="heap"></p><p id="freshness"></p></section>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
-let status=null,locked=false,original=null,originalHash=null,selected=null,cancelUpload=false;
+let status=null,locked=false,original=null,originalHash=null,selected=null,cancelUpload=false,guidanceKey=null,normalBootNeeded=false,sessionOwned=false,connectionError='',clientError='',pendingAction='',lastPhase='',finishedAt=0;
 // Each document owns a distinct session, including duplicated or reloaded tabs.
 const ownerBytes=new Uint8Array(16);crypto.getRandomValues(ownerBytes);
 const owner=Array.from(ownerBytes,x=>x.toString(16).padStart(2,'0')).join('');
-async function refresh(){const r=await fetch('/desk-firmware/status',{cache:'no-store'});if(!r.ok)throw Error(await r.text());status=await r.json();render();return status;}
+async function refresh(){
+ try{const r=await fetch('/desk-firmware/status',{cache:'no-store'});if(!r.ok)throw Error(await r.text());status=await r.json();connectionError='';render();return status;}
+ catch(e){connectionError='Status unavailable: '+e.message;render();throw e;}
+}
+function text(id,value){if($(id).textContent!==value)$(id).textContent=value;}
 function render(){
+ if(!status||connectionError){
+  for(const button of document.querySelectorAll('button'))button.disabled=true;
+  const newlyOffline=$('guidanceTitle').textContent!=='Connection unavailable';
+  text('guidanceTitle','Connection unavailable');
+  text('guidanceDetail','The current transfer state is unknown. Keep controller and ESP32 power connected while the page reconnects.');
+  text('message',connectionError||'Waiting for device status.');$('message').hidden=false;
+  if(newlyOffline)$('guidance').scrollIntoView({block:'nearest'});
+  return;
+ }
+ if(status.state!==lastPhase){lastPhase=status.state;if(['read_complete','verified','error'].includes(lastPhase))finishedAt=Date.now();}
+ if(!status.claimed)sessionOwned=false;
+ if(sessionOwned&&['reading','installing','verifying','read_complete','readback_required','verified'].includes(status.state))normalBootNeeded=true;
  $('researchSection').hidden=!status.research_url;
  if(status.research_url)$('researchHost').textContent=new URL(status.research_url).hostname;
  $('research').disabled=locked||!original;
@@ -55,38 +86,137 @@ function render(){
  $('hash').textContent=status.sha256||'Unavailable';
  $('progress').max=status.progress_max||55296;$('progress').value=status.progress;
  $('heap').textContent=`Free RAM: ${status.free_heap} bytes; largest block: ${status.largest_block} bytes.`;
- $('freshness').textContent=status.preflight_seconds ? `Prepare and arm within ${status.preflight_seconds} seconds, or read again.` : '';
- if(status.error)$('message').textContent=status.error;
- $('boot').textContent=status.waiting_for_power_cycle ? 'Armed. Power-cycle only the controller once now. Keep the ESP32 powered and the motor disconnected.' : status.active ? 'Transfer running. Leave controller power connected.' : status.state==='readback_required' ? 'Transfer ended. Select Verify by full readback before the next power cycle.' : status.state==='verified' ? 'All application bytes verified. You can finish maintenance.' : '';
+ $('freshness').textContent=['read_complete','staged'].includes(status.state)&&status.preflight_seconds ? `Prepare and arm within ${status.preflight_seconds} seconds, or read again.` : '';
+ text('message',status.error||clientError);
+ const phase=status.state, available=sessionOwned&&!status.active&&!status.pending;
+ $('sessionControls').hidden=sessionOwned||status.active;
+ $('takeoverLabel').hidden=!status.claimed;
+ $('read').hidden=!available||!(['idle','verified','error'].includes(phase)||(status.preflight_seconds===0&&['read_complete','staged'].includes(phase))||(status.recovery_required&&!['readback_required','staged'].includes(phase)));
+ $('backupControls').hidden=!sessionOwned||phase!=='read_complete';
+ $('prepareControls').hidden=!original||!$('saved').checked;
+ $('preparedDownload').hidden=!available||!['staged','verified'].includes(phase);
+ $('installControls').hidden=!sessionOwned||phase!=='staged';
+ $('verify').hidden=!available||!status.recovery_required||!['readback_required','staged'].includes(phase);
+ $('cancel').hidden=!sessionOwned||(!status.active&&phase!=='uploading');
+ $('exit').hidden=!available||status.recovery_required;
+ $('transferProgress').hidden=!status.active&&phase!=='uploading';
+ $('progressText').textContent=`${status.progress} / ${status.progress_max||status.size||55296} bytes`;
+ renderGuidance();
  for(const id of ['claim','read','patch','stage','install','verify','exit','backupDownload','preparedDownload'])$(id).disabled=locked||status.pending||status.active;
- $('cancel').disabled=status.pending||(!status.active&&status.state!=='uploading');
+ $('cancel').disabled=(locked&&phase!=='uploading')||status.pending||(!status.active&&status.state!=='uploading');
  $('backupDownload').disabled=locked||status.state!=='read_complete';
  $('preparedDownload').disabled=locked||!['staged','verified'].includes(status.state);
- $('patch').disabled=locked||status.state!=='read_complete'||status.sha256!=='bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf';
- $('install').disabled=locked||status.state!=='staged';
+ $('patch').disabled=locked||status.pending||!status.preflight_seconds||status.state!=='read_complete'||status.sha256!=='bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf';
+ $('install').disabled=locked||status.pending||!status.preflight_seconds||status.state!=='staged';
  $('verify').disabled=locked||!['readback_required','staged'].includes(status.state)||!status.recovery_required;
- $('exit').disabled=locked||status.active||status.recovery_required;
+ $('exit').disabled=locked||status.pending||status.active||status.recovery_required||Date.now()-finishedAt<3000;
+ $('stage').disabled=locked||status.pending||status.active||!status.preflight_seconds;
+}
+function renderGuidance(){
+ let title='',detail='',attention=false;
+ const error=$('message').textContent;
+ const expired=['read_complete','staged'].includes(status.state)&&status.preflight_seconds===0;
+ const key=expired+':'+status.state+':'+status.waiting_for_power_cycle+':'+normalBootNeeded+':'+status.claimed+':'+sessionOwned+':'+error;
+ if(pendingAction==='claim'||pendingAction==='exit'){
+  title=pendingAction==='claim'?'Entering maintenance…':'Finishing maintenance…';
+  detail='Keep controller and ESP32 power connected while this action completes.';
+ }else if(status.waiting_for_power_cycle){
+  title='Turn controller power OFF, then ON now';
+  const operation=status.state==='installing'?'Writing':status.state==='verifying'?'Verification':'Reading';
+  detail=`Switch off only the desk controller. Wait until it is fully off, then switch it on once. Keep the ESP32 powered and the motor disconnected. ${operation} starts automatically when controller power returns. Then leave controller power on.`;
+  attention=true;
+ }else if(status.state==='uploading'&&sessionOwned&&locked){
+  title='Preparing selected file';
+  detail='Keep the ESP32 powered while the selected file is prepared. The controller is not being written yet.';
+ }else if(status.active){
+  title=status.state==='installing'?'Writing firmware: keep controller power ON':status.state==='verifying'?'Verifying firmware: keep controller power ON':'Reading firmware: keep controller power ON';
+  detail='Transfer is running. Leave the controller and ESP32 powered. Wait for the next instruction.';
+ }else if(status.claimed&&!sessionOwned){
+  title='Take over maintenance to continue';
+  detail='Maintenance is already active. Confirm motor isolation and the takeover checkbox, then select Enter maintenance to use this page. Keep controller power on until this page asks for a restart.';
+  attention=true;
+ }else if(status.state==='uploading'){
+  title='File preparation is not running in this page';
+  detail='If file preparation stopped, select Cancel waiting or transfer, then read the controller again. Keep controller power on.';
+  attention=true;
+ }else if(status.state==='readback_required'){
+  title='Writing finished. Select Verify by full readback';
+  detail='Keep controller power on for now. Select Verify by full readback first. Then wait for the instruction to turn controller power off and on for verification.';
+  attention=true;
+ }else if(status.state==='verified'){
+  title='All application bytes verified';
+  detail='Select Finish maintenance to release UART and return to normal desk operation. Reconnect the motor only with controller power off.';
+  attention=true;
+ }else if(expired){
+  title='Preflight expired. Read the controller again';
+  detail='Save any backup you still need, then select Read controller firmware to obtain a fresh preflight before preparing or installing an image.';
+  attention=true;
+ }else if(status.state==='read_complete'){
+  const alreadyPatched=status.sha256==='e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff';
+  const known=alreadyPatched||status.sha256==='bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf';
+  title=alreadyPatched?'DT02 is already installed':'Read complete. Save the controller backup';
+  detail=alreadyPatched?'The controller read matches DT02. You can save this backup; preparing DT02 again is not needed. Leave controller power on.':'Download the original backup and save it on your computer before preparing an image. Leave controller power on.';
+  if(!known){
+   title=status.recovery_required?'Recovery read complete. Save this read':'Unknown firmware. Save the backup';
+   detail=status.recovery_required?'Save this read, then select your saved original application file and prepare it for restoration. Desk controls remain paused.':
+    'This version cannot be patched automatically. Save the backup'+(status.research_url?'; you may send it using the optional research section below':'')+', then finish maintenance.';
+  }
+ }else if(status.state==='staged'){
+  title='Image prepared. Confirm and arm installation';
+  detail='Installation erases application flash; a failed transfer may need restoration or ST-Link recovery. Confirm installation below and select Arm installation. Leave controller power on until the instruction changes to OFF, then ON.';
+ }else if(normalBootNeeded&&status.state==='idle'&&!status.claimed){
+  title='Maintenance finished. Restart the controller for normal use';
+  detail='Turn only the controller off and on once more to start its application. Keep the ESP32 powered. Reconnect the motor only while controller power is off.';
+  attention=true;
+ }else if(status.recovery_required){
+  title='Recovery required. Desk controls remain paused';
+  detail=(sessionOwned?'Read the controller firmware':'Enter maintenance, then read the controller firmware')+' and save that read before preparing a known backup for restoration. Follow each power instruction separately.';
+ }else if(status.state==='error'){
+  title='Maintenance stopped';
+  detail='Review the error below. Read the controller again to retry, or finish maintenance and restart the controller for normal use.';
+  attention=true;
+ }else if(status.state==='idle'&&status.claimed){
+  title='Maintenance is active. Ready to read firmware';
+  detail='Normal desk controls are paused. Select Read controller firmware to continue. Leave controller power on until the instruction asks you to turn it off and on.';
+  attention=true;
+ }else if(status.state==='idle'){
+  title='Enter maintenance to start';
+  detail='Confirm that the motor is disconnected, then select Enter maintenance. This pauses normal desk controls. Firmware reading starts only after you select Read controller firmware.';
+ }
+ if(error)attention=true;
+ $('message').hidden=false;
+ $('guidance').hidden=false;
+ if($('guidanceTitle').textContent!==title)$('guidanceTitle').textContent=title;
+ if($('guidanceDetail').textContent!==detail)$('guidanceDetail').textContent=detail;
+ if(!locked&&key!==guidanceKey){
+  guidanceKey=key;
+  if(attention){$('guidance').scrollIntoView({block:'start'});$('guidance').focus({preventScroll:true});}
+ }
 }
 async function action(action,extra={}){
+ pendingAction=action;
+ try{
  await refresh();
  const r=await fetch('/desk-firmware/action',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Desk-CSRF':status.csrf},body:new URLSearchParams({owner,revision:String(status.revision),action,...extra})});
- if(!r.ok)throw Error(await r.text());
+ if(!r.ok){const error=await r.text();if(error.includes('This tab does not own maintenance'))sessionOwned=false;throw Error(error);}
  for(let i=0;i<100;i++){await new Promise(r=>setTimeout(r,30));await refresh();if(!status.pending)break;}
  if(status.pending)throw Error('Action is still pending. Refresh status before continuing.');
  if(status.error)throw Error(status.error);
+ }finally{pendingAction='';}
 }
-async function task(fn){if(locked)return;locked=true;render();$('message').textContent='';try{await fn();}catch(e){$('message').textContent=e.message;}finally{locked=false;await refresh().catch(()=>{});}}
+async function task(fn){if(locked)return;locked=true;clientError='';render();try{await fn();}catch(e){clientError=e.message;}finally{locked=false;await refresh().catch(()=>{});}}
 function save(bytes,name){const url=URL.createObjectURL(new Blob([bytes],{type:'application/octet-stream'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
 async function download(){const r=await fetch('/desk-firmware/download',{cache:'no-store'});if(!r.ok)throw Error(await r.text());return new Uint8Array(await r.arrayBuffer());}
 async function confirmBackup(){if(!$('saved').checked||!original||original.length!==status.size||originalHash!==status.source_sha256)throw Error('Download this controller read and confirm the saved backup first.');if(status.state==='read_complete')await action('backup',{confirmed:'yes'});}
-$('claim').onclick=()=>task(async()=>{if(!$('isolated').checked)throw Error('Disconnect the motor with controller power off first.');await action('claim',{motor_isolated:'yes',takeover:$('takeover').checked?'yes':'no'});});
+$('claim').onclick=()=>task(async()=>{if(!$('isolated').checked)throw Error('Disconnect the motor with controller power off first.');await action('claim',{motor_isolated:'yes',takeover:$('takeover').checked?'yes':'no'});normalBootNeeded=false;sessionOwned=true;});
+$('saved').onchange=()=>render();
 $('read').onclick=()=>task(async()=>{original=null;$('saved').checked=false;await action('read');});
 $('backupDownload').onclick=()=>task(async()=>{original=await download();originalHash=status.sha256;save(original,`t150-backup-${status.sha256.slice(0,12)}.bin`);});
 $('patch').onclick=()=>task(async()=>{await confirmBackup();await action('patch');});
-$('file').onchange=async()=>{const f=$('file').files[0];selected=null;if(f){if(f.size!==55296){$('message').textContent='Select a 55,296-byte application file.';return;}selected=new Uint8Array(await f.arrayBuffer());}};
+$('file').onchange=async()=>{const f=$('file').files[0];selected=null;clientError='';if(f){if(f.size!==55296){clientError='Select a 55,296-byte application file.';render();return;}selected=new Uint8Array(await f.arrayBuffer());}render();};
 $('stage').onclick=()=>task(async()=>{if(!selected)throw Error('Select an application file first.');await confirmBackup();await action('stage');cancelUpload=false;for(let offset=0;offset<selected.length;offset+=128){const data=Array.from(selected.slice(offset,offset+128),x=>x.toString(16).padStart(2,'0')).join('');if(cancelUpload){await action('cancel');throw Error('File preparation cancelled.');}
  const r=await fetch('/desk-firmware/action',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Desk-CSRF':status.csrf},body:new URLSearchParams({owner,revision:String(status.revision),action:'chunk',offset:String(offset),data})});
- if(!r.ok)throw Error(await r.text());status.revision=(await r.json()).revision;status.progress=offset+data.length/2;render();}await action('seal');});
+ if(!r.ok){const error=await r.text();if(error.includes('This tab does not own maintenance'))sessionOwned=false;throw Error(error);}status.revision=(await r.json()).revision;status.progress=offset+data.length/2;render();}await action('seal');});
 $('preparedDownload').onclick=()=>task(async()=>save(await download(),`t150-prepared-${status.sha256.slice(0,12)}.bin`));
 $('install').onclick=()=>task(async()=>{if(!$('isolated').checked||!$('installConsent').checked)throw Error('Confirm motor isolation and installation first.');await action('install',{confirmed:'yes'});});
 $('verify').onclick=()=>task(async()=>{await action('verify');});
@@ -97,7 +227,7 @@ $('research').onclick=()=>task(async()=>{
  $('receipt').textContent='Stored for research. Receipt: '+receipt.slice(0,1000);
 });
 $('cancel').onclick=()=>{if(locked&&status.state==='uploading'){cancelUpload=true;return;}task(()=>action('cancel'));};
-$('exit').onclick=()=>task(()=>action('exit'));
-refresh().catch(e=>$('message').textContent=e.message);
-setInterval(()=>{if(!locked)refresh().catch(e=>$('message').textContent='Status unavailable: '+e.message);},1000);
+$('exit').onclick=()=>task(async()=>{const restartNeeded=normalBootNeeded||status.state!=='idle';await action('exit');normalBootNeeded=restartNeeded;sessionOwned=false;});
+refresh().catch(()=>{});
+setInterval(()=>{if(!locked)refresh().catch(()=>{});},1000);
 </script></html>
