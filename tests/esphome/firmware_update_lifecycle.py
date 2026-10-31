@@ -5,6 +5,7 @@ Optional private image arguments exercise the complete hash-bound workflow.
 The repository contains no controller firmware. No network or device access.
 """
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -16,7 +17,10 @@ from desk_test_support import ROOT, parse_args
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--original', type=Path)
 parser.add_argument('--patched', type=Path)
+parser.add_argument('--interrupted', type=Path)
 args = parse_args(parser=parser)
+if args.interrupted and not args.original:
+    parser.error('--interrupted requires both private images')
 if bool(args.original) != bool(args.patched):
     parser.error('Provide both private images or neither')
 work = args.work_dir
@@ -42,9 +46,18 @@ with (work/'build.log').open('w') as log:
 command = [str(work/'update-test')]
 if args.original:
     command += [str(args.original.resolve()),str(args.patched.resolve())]
+if args.interrupted:
+    command += [str(args.interrupted.resolve())]
 with (work/'run.log').open('w') as log:
     subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,check=True,timeout=60)
-summary = dict(passed=True,private_images=bool(args.original),hardware_access=False,
+interrupted = None
+if args.interrupted:
+    # The test strips a 0x2800 loader prefix from full-flash dumps; hash the same bytes.
+    image = args.interrupted.read_bytes()
+    interrupted = hashlib.sha256(image[0x2800:] if len(image) == 65536 else image).hexdigest()
+    if f'Saved power-cut image {interrupted} recovery passed' not in (work/'run.log').read_text():
+        raise SystemExit('Interrupted image was not exercised')
+summary = dict(passed=True,private_images=bool(args.original),interrupted_image=interrupted,hardware_access=False,
                boundary='Real adapter and SHA; host stand-ins for IDF, HTTP transport, UART, heap and preferences')
 (work/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
 print((work/'run.log').read_text())

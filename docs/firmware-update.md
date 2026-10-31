@@ -2,7 +2,7 @@
 
 The optional maintenance build serves `/desk-firmware` on the ESPHome device. It reads the controller application, prepares DT02, installs a validated image, and verifies every application byte by a separate UART readback. It is not part of the normal desk configuration.
 
-The maintenance HTTP endpoints have been tested on Stamp-C3 for original-image restoration, on-device DT02 patching, installation and complete readback. Browser interaction has separate simulation coverage; interrupted-write recovery still needs hardware validation. Keep an ST-Link recovery route available when testing it.
+Original-image restoration, DT02 patching, installation and full readback have been tested through the browser on Stamp-C3. A power-interrupted write with a partially programmed block was recovered over UART and verified by full readback. Partial-block recovery was tested through the maintenance API. Browser tests also verified recovery and retry after cancelling a write.
 
 ## Build and open
 
@@ -51,7 +51,7 @@ The pinned loader erases 53 application pages, writes 25 blocks, and leaves the 
 
 ## Interrupted installation
 
-A recovery record containing source and target block fingerprints is saved on the ESP32 before installation. After failure or ESP32 restart, desk commands remain paused. Read the controller again, save that read, select the known original backup, prepare it, and explicitly arm restoration. A partial image is accepted only after installation was armed, the final page is erased, and every 1 KiB block matches the recorded source, target, or an erased block. Other partial blocks require external recovery. Unknown images without that history cannot be written. A clean read matching the recorded original or intended complete target also clears the recovery requirement without another write.
+A recovery record containing source and target block fingerprints is saved on the ESP32 before installation. After failure or ESP32 restart, desk commands remain paused. Read the controller again, save that read, select the known original backup, prepare it, and explicitly arm restoration. A partial image is accepted only after installation was armed, the final page is erased, and every 1 KiB block matches the recorded source, target, or an erased block. One partially programmed block within the 25-block write payload can also be recovered. The updater retains that block until the exact original file has been uploaded and hashed. It reconstructs the original and DT02 candidates from that file, checks each candidate against its recorded identity and block hash, and requires a matching halfword-aligned prefix followed by erased bytes. Only the original image can be installed through this path. More than one partial block, unexpected programmed bytes, a partially programmed halfword or damage to the untouched last page still requires external recovery. Unknown images without that history cannot be written. A full read matching a complete image recorded for the attempt also clears the recovery requirement without another write.
 
 Do not clear ESP32 preferences or replace its firmware during unresolved installation: that can lose the recovery marker. Keep the computer backup; external recovery may be necessary. The UI shows the five-minute preflight countdown; expiration requires another read before preparing a write.
 

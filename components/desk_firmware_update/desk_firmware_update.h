@@ -24,7 +24,8 @@ class FirmwareUpdate : public desk_firmware_export::FirmwareExport {
   void read_(bool verify);
   void digest_();
   void block_hashes_(uint8_t output[54][32]);
-  bool recovery_source_matches_() const;
+  bool recovery_source_matches_();
+  bool validate_partial_recovery_() const;
   void fail_(const char *reason);
   bool active_() const;
   bool admit_() const;
@@ -37,6 +38,8 @@ class FirmwareUpdate : public desk_firmware_export::FirmwareExport {
     uint8_t source_blocks[54][32]{}, target_blocks[54][32]{};
   } recovery_record_;
   uint8_t preflight_blocks_[54][32]{};
+  int partial_block_{-1};
+  uint8_t partial_image_[1024]{};
   bool recovery_source_valid_{false}, attempt_had_recovery_{false};
   ESPPreferenceObject recovery_preference_;
   Phase phase_{Phase::Idle};
