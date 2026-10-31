@@ -43,6 +43,8 @@ class DirectTarget {
  public:
   enum class Phase { Unknown, Probe, Ready, Check, SetAck, Active, Fault };
   void seed(uint16_t nonce) { next_nonce_ = nonce; }
+  uint16_t next_nonce() const { return next_nonce_; }
+  uint16_t pending_nonce() const { return nonce_; }
   bool probe(uint32_t now) {
     if (busy()) return false;
     error_ = nullptr; request_(0, 0, Phase::Probe, now); return true;

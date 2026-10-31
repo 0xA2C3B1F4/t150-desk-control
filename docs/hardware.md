@@ -2,27 +2,18 @@
 
 ## Desk and controller compatibility
 
-The development desk is a **Deltaco Gaming DT410**, also identified as
-**GAM-140** in Deltaco's documentation. Its controller enclosure is marked
-**T150-22-03-PJ** on the back. The investigated PCB is marked **T150-PJ-V1.5**
-and uses an **STM32F030C8T6** MCU.
-The enclosure identifier and PCB revision are different markings on the same
-tested unit.
-
-| Desk or identifier | Status | Evidence and scope |
+| Desk or identifier | Status | Details |
 |---|---|---|
-| Deltaco Gaming DT410 / GAM-140, black | Tested unit | Project development and desk tests used this unit in metric mode. Feature-specific limits are listed in [validation](validation.md). |
-| T150-22-03-PJ enclosure, T150-PJ-V1.5 PCB | Tested controller combination | Enclosure and PCB markings of the development unit. |
-| Deltaco Gaming WT95 / GAM-140-W, white | White variant; controller untested | Same desk family, shared manual and matching published specifications. |
+| Deltaco Gaming DT410 / GAM-140, black | Tested desk | Development and desk tests used metric mode. |
+| T150-22-03-PJ enclosure, T150-PJ-V1.5 PCB | Tested controller | STM32F030C8T6 MCU; UART reports model `T150-22-03`. |
+| Deltaco Gaming WT95 / GAM-140-W, white | Related model; controller untested | Shared manual and matching published specifications. |
 
-Deltaco's [DT410 product sheet](https://asset.conrad.com/media10/add/160267/c1/-/en/002749663DS00/fiche-technique-2749663-deltaco-gaming-dt410-table-de-gaming-noir.pdf)
-and [WT95 product sheet](https://www.electroland.gr/media/productattachment/0/14965/GAM140W.pdf)
-identify the article numbers GAM-140 and GAM-140-W. Both list a 140 × 75 cm
-desktop, 73–118 cm height range, one motor and a 50 kg load capacity. The cover of their
-[shared instruction manual](https://www.electroland.gr/media/productattachment/0/14965/GAM140GAM140Wmanual.pdf)
-lists both models. These are manufacturer documents hosted by retailers.
-The retailer listings identify [DT410 / GAM-140 as black](https://www.multitronic.fi/en/products/3031488)
-and [WT95 / GAM-140-W as white](https://www.multitronic.fi/en/products/3031489/deltaco-gaming-wt95-white-line-motorized--pelipoyta--sahkopoyta--valkoinen).
+Sources: [DT410 product sheet](https://asset.conrad.com/media10/add/160267/c1/-/en/002749663DS00/fiche-technique-2749663-deltaco-gaming-dt410-table-de-gaming-noir.pdf),
+[WT95 product sheet](https://www.electroland.gr/media/productattachment/0/14965/GAM140W.pdf),
+[shared manual](https://www.electroland.gr/media/productattachment/0/14965/GAM140GAM140Wmanual.pdf)
+and retailer listings for [DT410](https://www.multitronic.fi/en/products/3031488)
+and [WT95](https://www.multitronic.fi/en/products/3031489/deltaco-gaming-wt95-white-line-motorized--pelipoyta--sahkopoyta--valkoinen).
+See [validation](validation.md) for feature-specific test coverage.
 
 ### Untested T150 and C150 compatibility candidates
 

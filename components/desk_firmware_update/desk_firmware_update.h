@@ -26,16 +26,24 @@ class FirmwareUpdate : public desk_firmware_export::FirmwareExport {
   void block_hashes_(uint8_t output[54][32]);
   bool recovery_source_matches_();
   bool validate_partial_recovery_() const;
+  size_t recovery_payload_size_() const;
+  size_t payload_size_() const;
   void fail_(const char *reason);
   bool active_() const;
   bool admit_() const;
   bool save_recovery_(bool value);
   const char *phase_name_() const;
   desk_protocol::FirmwareInstall sender_;
-  struct RecoveryRecord {
+  // Keep the previous serialized size available at the same preference key.
+  // Loading it never rewrites an unresolved installation record.
+  struct LegacyRecoveryRecord {
     uint32_t magic{0}, phase{0}, attempt{0};
     char source[65]{}, target[65]{}, write_target[65]{};
     uint8_t source_blocks[54][32]{}, target_blocks[54][32]{};
+  };
+  struct RecoveryRecord : LegacyRecoveryRecord {
+    uint32_t original_blocks_valid{0};
+    uint8_t original_blocks[54][32]{};
   } recovery_record_;
   uint8_t preflight_blocks_[54][32]{};
   int partial_block_{-1};

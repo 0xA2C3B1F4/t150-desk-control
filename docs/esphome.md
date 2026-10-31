@@ -1,224 +1,103 @@
-# ESPHome setup and behavior
+# ESPHome setup and controls
 
-Tested with ESPHome 2026.4.2. Code generation copies the portable headers from
-`lib/desk_protocol` through ESPHome's includes helper.
+The examples use ESPHome 2026.4.2. Choose a board configuration from the
+[README](../README.md#install); `desk.yaml` is the monitoring-only alternative.
 
 ## Setup
 
-`stamp-c3.yaml` and `esp32.yaml` are full control profiles for
-Stamp-C3 and ESP32-WROOM-32 development boards respectively. Both provide browser controls plus the Home Assistant API.
-The WROOM profile assumes 4 MB flash and GPIO17 TX / GPIO16 RX; it is build-tested
-only. The Stamp-C3 wiring and desk controls have been tested on hardware.
-`desk.yaml` enables monitoring only.
-
 ### Configuration paths
 
-The main YAML is the file passed to `esphome` or opened as a device in Device
-Builder. Choose the source according to where that file lives:
+The main YAML is the file passed to `esphome` or opened in Device Builder.
 
-| Workflow | YAML and secrets location | Component source |
+| Workflow | YAML and secrets | Component source |
 |---|---|---|
-| Local checkout | `examples/esphome/` in the complete repo, with `secrets.yaml` beside the device YAML | Leave the default local source enabled |
-| ESPHome Device Builder | Device YAML and `secrets.yaml` in Device Builder's configuration directory | Uncomment the `source: github://...` line in the device YAML |
-| Standalone downloaded YAML | Board YAML and `secrets.yaml` together in a directory of your choice | Uncomment the same GitHub source line |
+| Local checkout | Keep files in `examples/esphome/`, with `secrets.yaml` beside the device YAML | Default local source |
+| Device Builder | Device YAML and `secrets.yaml` in its configuration directory | Uncomment `source: github://...` |
+| Downloaded YAML | Board YAML and `secrets.yaml` together in your chosen directory | Uncomment `source: github://...` |
 
-`external_components.source.path` is relative to the main YAML's directory,
-not the terminal's working directory. Thus `../../components` works for the
-supplied `examples/esphome/*.yaml` layout. If you move a YAML and keep a local
-source, change that path to the checkout's `components/` directory, using an
-absolute path or a path relative to the new YAML location. Keep `lib/desk_protocol`
-in the same checkout; copying only `components/` is insufficient.
+Copy the keys from `secrets.example.yaml` and fill in your credentials.
+Generate an API encryption key with `openssl rand -base64 32` if needed.
 
-The GitHub override replaces the local source through the YAML merge (`<<`),
-so the unused local path needs no edit. ESPHome downloads the component and
-portable headers on the machine running the build, including the Device Builder
-host when applicable.
+Local component paths resolve from the main YAML's directory. The examples'
+`../../components` points to the checkout's `components/`. If you move the YAML,
+change that path or use an absolute path. Keep `lib/desk_protocol` in the same
+checkout; copying only `components/` is insufficient. The GitHub source overrides
+the local entry and downloads both the component and its headers.
 
-Use the keys from `secrets.example.yaml` in the adjacent `secrets.yaml`. Keep
-`device_name` unchanged when updating an existing device unless you intend to
-rename it.
+`!include` paths resolve from the YAML containing the include. When copying
+optional packages, preserve their `packages/` subdirectory or adjust the includes.
+Package files are not downloaded by `external_components`.
 
-`build_directory` sets ESPHome's `build_path`. In ESPHome 2026.4.2, relative build
-paths start from its data directory: `.esphome/` beside the main YAML by default,
-`ESPHOME_DATA_DIR` when set, or `/data` in the Home Assistant add-on. The examples'
-current `.esphome/build/<device-name>` values therefore create
-`.esphome/.esphome/build/<device-name>` beside the YAML in a default CLI setup.
-Set `build_directory` to an absolute path to choose an exact output location.
+`build_directory` sets ESPHome's build path, relative to its data directory.
+For CLI use this defaults to `.esphome/` beside the YAML; the Home Assistant
+add-on uses `/data`. The examples' `.esphome/build/...` values therefore create
+`.esphome/.esphome/build/...` in a default CLI setup. Use an absolute
+`build_directory` to choose an exact location.
 
 ### Standalone install
 
-Create a directory for the device and save your board's YAML and
-`secrets.example.yaml` there. Enable the GitHub source as described above,
-rename the secrets example to `secrets.yaml`, and replace every placeholder.
-Generate the API key with `openssl rand -base64 32`.
-
-From that device directory, set up ESPHome with Python 3.11–3.14:
+Save the board YAML and secrets file together and enable the GitHub source.
+From that directory, install ESPHome with Python 3.11–3.14:
 
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
 pip install esphome==2026.4.2
-```
-
-Run these commands from the same directory. For ESP32-WROOM-32, replace
-`stamp-c3.yaml` with `esp32.yaml`:
-
-```sh
 esphome config stamp-c3.yaml
 esphome compile stamp-c3.yaml
 esphome upload stamp-c3.yaml
 ```
 
-Connect the ESP32 by USB for the first upload and choose its serial port when
-prompted. Later uploads can use the device's network address. The build/upload
-output identifies the device name and address; your router also lists its IP.
-Open `http://<device_name>.local/` or `http://<device-IP>/` on the same network.
-
-### Browser controls
-
-All examples enable [ESPHome's web server](https://esphome.io/components/web_server/)
-on port 80, with the version-3 interface and locally stored JavaScript.
-Sign in using `web_username` and `web_password` from `secrets.yaml`. The control
-profiles expose the same height, preset, Stop, timer and recovery entities as
-the Home Assistant API. The monitoring profile shows telemetry only.
-
-Home Assistant and an internet connection are not required during use.
-`api.reboot_timeout: 0s` keeps the device running without an API client.
-ESP32 firmware updates use the configured ESPHome OTA password; browser OTA
-upload is not enabled. The separate optional [desk maintenance package](firmware-update.md)
-updates the controller application through UART. Browser login, live telemetry and preset-height writing
-have been tested on Stamp-C3. The WROOM profile has build coverage only.
-The version-3 interface groups daily controls first, followed by presets, timers,
-load settings, recovery and diagnostics. The optional firmware reader adds a
-separate Firmware group. Sensor history graphs open when a sensor is clicked.
-Grouping changes only the web interface, not Home Assistant entity categories.
-Core interface files are embedded locally; icon fonts load externally.
-
-### Other ESP32 boards
-
-The adapter uses ESPHome's `UARTDevice` and preferences APIs. It contains no
-Stamp-C3 pin assignments or M5Stack library dependency. The portable protocol
-library has no ESPHome, Arduino or ESP-IDF dependency.
-
-Start from the closest example and adjust:
-
-- `esp32.variant` and `flash_size` to match the chip and flash capacity. Keep
-  `framework.type: esp-idf`, as used by the tested configurations.
-- `uart_tx_pin` and `uart_rx_pin` to two available pins on the board. ESP32-WROVER
-  boards can use GPIO16/17 for PSRAM, so the WROOM example's pins do not apply.
-  See the [ESP32-WROVER pin mapping](https://www.espressif.com/sites/default/files/documentation/esp32-wrover_datasheet_en.pdf).
-- `logger` to the board's USB/serial arrangement. `baud_rate: 0` disables serial
-  logging while retaining API logs; this is the generic example's setting.
-
-Keep the desk UART at 115200 baud, 8N1, and connect TX to desk RX, RX to desk TX,
-and a common ground. Power the ESP32 separately through USB.
-ESP32-C3, S2, S3 and C6 boards with Wi-Fi are candidates for adaptation;
-only the supplied Stamp-C3 and original ESP32 profiles have build coverage here.
-See [ESPHome's ESP32 configuration](https://esphome.io/components/esp32/) for
-variant settings. Validate and compile each adapted YAML, then check UART
-telemetry on that board before relying on its controls.
+Replace `stamp-c3.yaml` with your board's filename. Use USB for the first upload;
+later uploads can use its network address. Configuration output may contain
+secrets, so keep it private.
 
 ### Local build and install
 
-Keep the example files in their checkout locations and create
-`examples/esphome/secrets.yaml` from `examples/esphome/secrets.example.yaml`.
-Replace the placeholders and generate an API key with `openssl rand -base64 32`.
-With ESPHome installed, run the following from the repository root. Validation
-may print configuration secrets; keep its output private.
+Copy `examples/esphome/secrets.example.yaml` to `examples/esphome/secrets.yaml`
+and fill it in. With ESPHome installed, run from the repository root:
 
 ```sh
 esphome config examples/esphome/stamp-c3.yaml
 esphome compile examples/esphome/stamp-c3.yaml
-# Choose the intended USB device or network address when installing:
 esphome upload examples/esphome/stamp-c3.yaml
 ```
 
-Generated build paths can be redirected with the `build_directory` substitution.
-For isolated builds, set `ESPHOME_DATA_DIR`, `PLATFORMIO_CORE_DIR`,
-`PLATFORMIO_BUILD_CACHE_DIR`, `IDF_TOOLS_PATH`, `PIP_CACHE_DIR` and `UV_CACHE_DIR`
-to directories under your temporary work directory.
+Choose the intended USB port or network address when prompted. For temporary
+builds, redirect `build_directory` and dependency caches outside the checkout.
 
-Add the ESPHome device in Home Assistant using its address and the same API key.
-The protocol loop runs locally; Wi-Fi/API `reboot_timeout` is disabled in all
-examples. Losing Home Assistant does not stop a desk movement already underway.
+### Browser controls
+
+Open `http://<device_name>.local/` or the ESP32's IP address and log in with
+`web_username` and `web_password`. Browser and Home Assistant controls use the
+same entities. Core web assets are stored locally; icon fonts load externally.
+Click a sensor for its history graph. Home Assistant and internet access are
+optional during use.
+
+The examples disable Wi-Fi/API reboot timeouts. Losing the network does not
+stop movement already underway. ESP32 updates use ESPHome OTA or USB;
+[controller firmware maintenance](firmware-update.md) is a separate optional build.
+
+### Other ESP32 boards
+
+Adapt `esp32.variant`, `flash_size`, `uart_tx_pin`, `uart_rx_pin` and `logger`
+from the closest example. Keep the ESP-IDF framework and a hardware UART at
+115200 baud, 8N1. Check pin availability: ESP32-WROVER boards may use GPIO16/17
+for PSRAM. Disable serial logging with `baud_rate: 0` when appropriate.
+Validate and compile, then check telemetry on the actual board before using
+controls. See [wiring](hardware.md#uart-wiring) and
+[ESPHome's ESP32 settings](https://esphome.io/components/esp32/).
 
 ## Display units
 
-Set `display_unit: cm` or `display_unit: in` under `desk_uart`; the default is
-`cm`. Rebuild and install after changing it. The setting applies to height,
-target height and all three editable preset heights, including their API unit
-labels and number limits. It does not change or detect the physical panel's
-unit setting. The panel and the browser/Home Assistant interfaces can use different units.
+Set `display_unit: cm` or `in` under `desk_uart` and reinstall. This controls
+height, target and preset entities independently of the panel's own setting.
+Inputs use 0.1-unit steps. Inch limits round inward, giving 28.8–46.4 in for the
+default range. UART-derived readings may differ from the panel's truncated display.
 
-The controller uses internal position coordinates. Firmware analysis indicates
-that its cm/in setting changes the panel's display conversion. No verified UART
-query or telemetry field for that setting has been identified. Select the
-adapter's display unit manually.
-
-Input in inches is multiplied by 2.54 before entering the existing centimetre
-control path. Display conversion uses the unrounded metric value, avoiding the
-panel's whole-centimetre truncation above 100 cm. Height defaults to one displayed
-decimal; it may differ from the panel's truncated inch reading.
-
-Height number inputs use 0.1 steps in the selected unit. Inch input limits are
-rounded inward to tenths, so the default 73–118 cm range permits 28.8–46.4 in.
-Measured values can fall outside those rounded input limits near an endpoint.
-`min_height` and `max_height` remain in centimetres, as do the C++ methods
-`move_to_height()` and `set_preset_height()`. Optional `up`/`down` buttons still
-request a 1 cm step. UART values, interlocks and preset backups are unchanged.
-Height entities use the unit selected by `display_unit`; configuration validation
-rejects conflicting `unit_of_measurement` values.
-
-## Entities
-
-| Configuration key | Meaning |
-|---|---|
-| `height` | Height in the selected display unit; mandatory |
-| `load_raw` | Optional filtered raw load telemetry |
-| `connected` | Fresh UART height within three seconds, independent of Wi-Fi |
-| `uart_frame_errors` / `height_sample_gap` | Link diagnostics: rejected frames and the longest gap between height samples |
-| `control_status` | Current operation or reason control is blocked |
-| `command_result` | Last command outcome, which can outlive the current status |
-| `preset_1` / `preset_2` / `preset_3` | Recall an existing preset |
-| `preset_1_height` / `preset_2_height` / `preset_3_height` | Editable Configuration values |
-| `target_height` | Requested height, distinct from measured height |
-| `stop` / `stop_locked` | Controlled brake and pending stop cleanup |
-| `restore_preset_3` / `preset_restore_pending` | Preset RAM restoration and unresolved recovery |
-| `accept_current_preset_3` | Keep the controller's current preset 3 and discard the pending backup |
-| `timer_30min` / `timer_60min` / `timer_90min` / `timer_120min` | Experimental T-key sequences |
-| `cancel_timer` / `timer_command_pending` | Cancellation sequence and sequence-in-progress status |
-
-Preset recalls require `experimental_preset_buttons: true`. Target height
-requires `experimental_target_height: true`. Timer buttons require
-`experimental_timer_buttons: true`. These component defaults are false;
-the full control profiles opt in explicitly.
-
-Preset height edits check active scale coefficients A=24 and B=39, write one
-RAM setting and verify it by readback. They do not recall the preset or move
-the desk. An edit can subsequently be autosaved by the controller. The number
-entities belong in Configuration; dashboards can place them beside recall buttons.
-If an original preset-3 backup is retained, first use **Accept current preset 3**
-to discard it before deliberately editing preset 3. Accept is available while
-idle even when no restoration is pending.
-
-### Raw load telemetry
-
-Add `load_raw` inside your existing `desk_uart:` block to expose the controller's
-filtered 16-bit load value as a diagnostic sensor:
-
-```yaml
-  load_raw:
-    name: Load (raw)
-```
-
-It uses the existing height telemetry stream and sends no additional UART
-requests. It follows the same sequence checks as height and becomes unknown
-after three seconds without an accepted sample, or while the firmware reader
-owns the UART. A new sample restores the value.
-
-The value has no established conversion to kilograms, amperes or force. Its
-filtering delays load changes; the component does not use it for movement or
-obstruction detection.
+`min_height`, `max_height`, `move_to_height()` and `set_preset_height()` always
+use centimetres. The configured range can narrow 73–118 cm, but cannot widen it.
+Optional `up`/`down` buttons request 1 cm targets, not held direction keys.
 
 ## Configuration reference
 
@@ -244,11 +123,6 @@ Configuration validation checks the listed dependencies. Keep the component
 | `height_sample_gap` | sensor | — | Diagnostic. Longest interval in ms between accepted height samples while connected, per 60-second window; unknown when no samples arrived |
 | `uart_observation` | boolean | `false` | Cumulative DEBUG log every five seconds; no entity or UART commands |
 
-These diagnostic sensors do not feed an interlock. Optional `uart_observation`
-adds cumulative accepted-height, gap, parser-error, TX and UART-handoff counters
-to DEBUG logs. Counters survive reconnects, with a boot identifier; they describe
-observation continuity, not physical standstill or firmware attestation.
-
 ### Movement and stop
 
 | Key | Type | Default | Requirements and notes |
@@ -256,18 +130,19 @@ observation continuity, not physical standstill or firmware attestation.
 | `experimental_preset_buttons` | boolean | `false` | — |
 | `preset_1` / `preset_2` / `preset_3` | button | — | `experimental_preset_buttons: true` |
 | `experimental_target_height` | boolean | `false` | — |
-| `target_height_mode` | `preset` or `direct` | `preset` | Direct requires experimental target opt-in and reviewed DT02 firmware |
+| `target_height_mode` | `auto`, `preset` or `direct` | `preset` | Auto detects the supported stock/DT02 identity; direct requires experimental target opt-in |
+| `target_height_backend` | text sensor | not created | Configured or detected target backend, `Unknown` or `Disabled` |
 | `target_height` | number, 0.1 selected-unit steps | — | `experimental_target_height: true` |
 | `up` / `down` | button, 1 cm target step | — | `experimental_target_height: true` |
 | `min_height` / `max_height` | float, 73.0–118.0 cm | `73.0` / `118.0` | `min_height` below `max_height`; also bounds the height numbers |
 | `stop` | button | — | — |
 | `stop_locked` | binary sensor | — | — |
 
-Preset buttons send a 150 ms button pulse. With fresh telemetry and no blocking
-transaction or fault, they also work while height changes; the desk controller
-decides how that press affects movement. During automatic keep-awake, see
-[preset priority](#normal-operation). A target-height transaction has its own
-[braking and restoration sequence](#target-height-and-preset-preservation).
+### Panel lock
+
+`child_lock` is a switch, `child_lock_status` a text sensor and
+`child_lock_available` a binary sensor. All are optional. See
+[panel lock](child-lock.md) for CL01 requirements and use.
 
 ### Preset heights and recovery
 
@@ -303,414 +178,218 @@ The component also registers the `desk_uart.stop` action described under
 
 ## Target height and preset preservation
 
-The metric target range is 73–118 cm and can be narrowed in configuration.
-Input steps are 0.1 cm or 0.1 in. Metric panel displays above 100 cm can omit
-the decimal even though UART coordinates retain it.
-
-The default `target_height_mode: preset` uses the sequence below.
+The examples enable preset recalls and target height explicitly. Use a number
+slider that sends its value on release; custom cards may send intermediate targets.
+Preset buttons forward a short press, including during movement when no other
+transaction blocks it. The controller decides whether that press stops or starts motion.
 
 ### Preset backend
 
-Before movement the adapter reads scaling and preset 3, durably records the
-original value on the ESP, writes a temporary target and verifies it. It then
-sends a 150 ms preset pulse. Once release is confirmed, the first fresh height
-change toward the target starts restoration and readback of the original.
-The adapter continues monitoring the move after restoring the preset. It finishes
-after at least three seconds from recall and 1.5 seconds of unchanged fresh
-height. If no movement is detected, those same settling conditions trigger
-restoration. Idle keep-awake cycles use this settling path.
-The adapter restores RAM and reads it back; it does not send an EEPROM-save
-command. The controller saves all three presets during a local M/save action,
-sleep entry or software reset. A save while preset 3 is borrowed can therefore
-persist the temporary value. RAM restoration does not verify or repair EEPROM.
+`target_height_mode: preset` is the default. It backs up preset 3 on the ESP32,
+borrows it for the target and restores the original RAM value once movement starts
+or the desk settles. Avoid local M/save and preset-3 use until the transaction ends.
+The controller can autosave all presets while one is borrowed; RAM restoration
+neither checks nor repairs EEPROM.
 
-Wait for the target transaction to finish before using local M/save or preset 3.
-An unexpected preset value pauses the transaction for recovery. Settling is
-determined from unchanged height telemetry.
+A new target during an active preset-target move brakes, restores the preset,
+then recalls the latest target. Stop, a fault or lost telemetry cancels the queued
+request. Conflicts during preparation or cleanup are rejected. Long moves and
+full physical retarget behavior remain unverified.
 
-A target change during an active target move requests one controlled brake,
-waits for ACK, fresh settled height and restoration, then recalls the latest
-requested target. Further changes during that transition replace the pending
-target. Preparation/cleanup conflicts are rejected visibly. Stop, lost telemetry
-or a fault cancels the pending target; reconnection does not replay movement.
-Complete physical retarget behavior remains unvalidated.
+Editing a preset-height number does not move the desk. The component verifies
+its RAM value; the controller may save it later. Before deliberately changing
+preset 3, discard any retained backup with **Accept current preset 3**.
 
-Use a Home Assistant number slider that sends its value on release. Custom
-cards may send intermediate values; the ESP cannot observe pointer release.
-Optional `up`/`down` component buttons request 1 cm targets, not held direction
-keys. The Stamp example intentionally omits them.
+### Automatic backend selection
 
-### Direct backend
-
-Select `target_height_mode: direct` only for reviewed custom DT02 controller
-firmware; this repository does not distribute controller firmware images:
+To select the control method from the connected controller, add these settings
+under `desk_uart`:
 
 ```yaml
   experimental_target_height: true
-  target_height_mode: direct
+  target_height_mode: auto
   keep_awake: auto
 ```
 
-The existing target, 1 cm step and Stop controls use this backend. A runtime
-capability/idle handshake precedes each SET; this advertisement is not flash
-readback. Direct requests never borrow presets or fall back to that path.
-Missing or inconsistent SET acknowledgement requests one controlled Stop;
-there is no SET retry. A target selected during the startup capability check is
-rejected without cancelling that check; select it again once ready. A preset
-press while SET admission is uncertain requests Stop and must also be repeated
-after settling; only an acknowledged active direct move permits native preset
-preemption. A new target while direct control is active sends Stop
-and returns `Stopped; select target again after the desk settles`. Wait for
-settling, then make a new request; no replacement is queued or resumed after a
-lost connection. Native preset buttons cancel direct ownership. Physical keys
-remain authoritative, and telemetry cannot identify every physical preemption.
-An unresolved older preset backup still requires the usual recovery decision.
+After fresh settled telemetry, the component checks the supported identity and
+height profile, then queries DT02. The optional `target_height_backend` shows
+`Direct target (DT02)`, `Preset-based` or `Unknown`. CL01 includes DT02 support.
+See the [detection reference](protocol.md#automatic-target-detection) for exact
+identity matching; other stock revisions require explicit `preset` mode.
+
+Unknown or incomplete detection blocks target moves and keep-awake, but leaves
+native preset buttons and Stop available. Failed checks retry after reconnection
+or maintenance. No target is replayed; select it again once ready. Runtime
+identification does not verify firmware bytes. Examples retain `preset` mode
+until stock auto-detection has been checked on hardware.
+
+### Direct backend
+
+`target_height_mode: direct` requires DT02 or CL01 and
+`experimental_target_height: true`. It never borrows presets or falls back to
+the preset backend. Each request checks capability and idle state first.
+An uncertain acknowledgement requests Stop without retrying the target.
+
+Changing a target during a direct move stops the desk. Wait for settling and
+select the target again; no replacement is queued. A preset press during uncertain
+command admission also requests Stop and must be repeated. Once a direct move
+is acknowledged, preset buttons can interrupt it normally. Physical keys also
+interrupt movement unless [panel lock](child-lock.md) is active.
 
 ## Stop and recovery
 
 ### What Stop does
 
-Stop sends `17 01 00 00` through the priority path, without waiting for network
-access or fresh telemetry. It keeps the controller's soft deceleration.
-Stops are suppressed while a brake ACK is pending and for two seconds after
-sending. After that interval, a new explicit Stop sends a new brake request,
-even if a missing ACK or preset conflict has kept the control lock active.
-There is no automatic brake retry. A detector calling Stop continuously can
-therefore send at most one request per two seconds; it should latch its anomaly
-and avoid repeated braking targets.
+Stop requests soft deceleration without waiting for fresh telemetry. It is not
+an emergency stop; UART failure can prevent delivery. Repeated requests are
+suppressed while an ACK is pending and for two seconds after dispatch. There
+is no automatic retry.
 
-The temporary stop block clears after a matching ACK, at least two seconds
-since dispatch, 1.5 seconds of unchanged fresh height, confirmed release and
-successful preset cleanup. Communication faults or restoration conflicts remain
-visible. `clear_stop_latch()` cannot bypass these requirements. A separate load
-detector must maintain its own anomaly inhibit; no detector is implemented here.
+Movement becomes available after the ACK, at least two seconds from dispatch,
+1.5 seconds of unchanged fresh height, confirmed button release and preset cleanup.
+See [troubleshooting](#troubleshooting) if the lock remains.
 
 ### Calling Stop from an automation
 
-Local main-loop use:
+Use this action in a local ESPHome automation:
 
 ```yaml
 then:
   - desk_uart.stop: desk
 ```
 
-Or call `id(desk).stop()` from a main-loop lambda. A true return reports that
-the request was dispatched. This method runs in the main loop, outside an ISR.
-Braking with a pending controller button event is not physically validated.
+A main-loop lambda can call `id(desk).stop()`; a true return means dispatched,
+not physically stopped. Do not call it from an interrupt handler.
 
 ### Recovering a borrowed preset
 
-If `Preset restoration pending` is on, follow the
-[preset recovery steps](#preset-restoration-pending-is-on). Recovery does not
-recall a preset or start movement. Restore verifies the saved value in RAM and
-retains the backup. Accept keeps the current value and explicitly discards the
-backup. Stop cancels either explicit recovery action and leaves the backup
-pending. Neither action verifies EEPROM.
+The ESP retains the original backup after target and keep-awake cycles. On
+restart or UART reconnection, it checks preset 3. A matching value resolves the
+check; a different value requires [Restore or Accept](#preset-restoration-pending-is-on).
+These actions do not move the desk and do not verify EEPROM.
 
-The ESP retains the original backup after every completed target or keep-awake
-cycle. After an ESP restart or a height-telemetry gap of at least three seconds,
-it checks preset 3 with read-only requests once telemetry is fresh and settled.
-A matching original resolves that recovery check while keeping the backup; it
-does not clear an existing keep-awake fault. Any different value needs a
-recovery decision. A later preset read cannot silently discard the backup or
-replace it with a new original.
-
-Backups include the configured height profile. A different profile, damaged
-record or storage error blocks movement, preset edits, Restore and Accept;
-Stop and height telemetry remain available. Check **Control status** and keep
-the stored data for inspection. Resolve a backup under its original profile
-before switching profiles. Units, entity names and user height limits do
-not change the profile identity. This identity does not identify the connected
-controller or its firmware.
-
-Earlier eight-byte records migrate with the same component ID and the built-in
-profile. Accept commits a resolved record before clearing the old format.
-Startup preserves and checks any active old-format backup, even beside a
-resolved record: it may remain from interrupted cleanup or have been created
-by an older component. An accepted backup can therefore return to recovery
-after a restart. Resolve backups before downgrading; older component versions
-cannot enforce the profile binding.
-
-The recovery buttons and pending sensor can also be configured with target
-movement disabled. Keep them available for retained backups. Keep the
-component ID stable, and resolve pending recovery before erasing ESP flash or
-connecting the ESP to another desk.
+Keep `id: desk` stable because it identifies the saved backup. Resolve recovery
+before erasing ESP flash, switching height profiles, downgrading the component
+or connecting another desk. A profile mismatch, damaged record or storage error
+blocks both recovery actions; preserve the data for inspection.
 
 ## Keep-awake
 
-### Enabling it
+`keep_awake` defaults to `false`. Enabling it requires
+`experimental_target_height: true`.
 
-`keep_awake` defaults to `false`. Values other than `false` require
-`experimental_target_height: true`. The full examples explicitly select preset
-mode and `auto`:
-
-| Value | Preset mode | Direct mode |
+| Setting | Preset backend | DT02/CL01 direct backend |
 |---|---|---|
-| `false` | Workaround disabled | Workaround disabled |
-| `true` | Existing preset-3 workaround | Configuration error |
-| `auto` | Permission to use the existing preset workaround | Use the verified DT02 sleep-wrap feature; never borrow presets |
+| `false` | No workaround | No ESP workaround |
+| `auto` | Enable preset-3 workaround | Rely on firmware sleep fix |
+| `true` | Enable preset-3 workaround | Rejected in explicit direct mode; no workaround after auto detection selects direct |
 
-No extra keep-awake entity is created. Logs and existing Control status and
-UART connected diagnostics show readiness. The sleep-wrap feature is separate
-from direct targeting and requires the normal channel-2 subscription. It does
-not force wakefulness without telemetry or wake an already sleeping UART; wake
-locally before requesting control. Unknown firmware is never privately probed
-in preset mode.
+The patched sleep behavior uses the normal telemetry subscription, not periodic
+keep-awake commands. It does not wake an already sleeping UART. No keep-awake
+switch is added to the interface.
 
-### Normal operation
-
-In preset mode, after 30 seconds without user commands or height changes, with fresh settled
-height and no other transaction active, it reads the integer position and
-original preset 3. It backs up, temporarily writes the
-exact raw position, verifies it, rereads position to exclude a change, pulses
-preset 3 and restores the original with readback. No centimetre round trip is
-used. Movement, timer sequences, parameter work and faults exclude the cycle.
-
-Healthy automatic cycles remain in DEBUG logs but do not toggle Control status
-or Preset restoration pending in Home Assistant. Errors, release failures,
-connection loss and interrupted recovery remain visible, as do user operations.
-During a healthy cycle, a preset button cancels keep-awake before its automatic press. If preset 3
-has not been borrowed, the button is forwarded immediately. Otherwise it waits
-for the original preset to be restored and verified. An already-sent automatic
-press finishes its release and settling sequence first. The latest button
-replaces an earlier waiting button without extending the four-second deadline.
-Stop, a height change, a height-sample gap over 750 ms, a transaction failure
-or the deadline cancels the waiting button. Press again after the blocking
-condition clears; the cancelled button is never replayed. Other conflicting
-commands are rejected with a reason and leave the waiting preset unchanged.
-Use Stop to cancel it. Buttons requested during an already interrupted or failed
-cycle are rejected. The next cycle waits another 30 seconds after cleanup or user activity.
-
-### Early stop before the press
-
-If height changes, the raw position changes, or a height sample is more than
-750 ms old before the preset press has been sent, the cycle stops without a
-brake. If preset 3 was already written, the original is restored and read back
-first; restoration pending is shown meanwhile. Once the original is verified,
-or nothing was written, the next cycle starts after the normal 30 seconds and
-no fault is set. If telemetry is lost before the original is verified,
-restoration fails or preset 3 holds a third value, keep-awake pauses as a fault.
-This also applies when a preset button interrupted the cycle.
-A height-change or late-sample abort after the press has been sent requests a
-brake and pauses keep-awake. A failed preset restoration remains a fault; it
-does not necessarily send another brake request.
-
-### Retained backups
-
-Identical cycles reuse the retained ESP flash record instead of saving and
-clearing it on every cycle. Retention also applies to user target moves. See
-[Recovering a borrowed preset](#recovering-a-borrowed-preset) for startup,
-reconnect and local-edit handling. A backup can remain stored while
-`Preset restoration pending` is off; that sensor reports unresolved recovery,
-not whether a retained record exists.
-
-A restore-button request during a healthy cycle is rejected without disabling
-that cycle's height-change and telemetry checks.
+In preset mode, after 30 seconds of inactivity the component briefly sets
+preset 3 to the current position, recalls it and restores the backup. A user
+preset press interrupts preparation and waits for cleanup if needed. Failed or
+expired requests are not replayed; press again when ready. Movement or stale
+telemetry aborts the cycle. After cleanup or user activity, the 30-second wait
+starts again. Faults pause automatic cycles until resolved.
 
 ## Timers
 
-Timer commands emulate short T presses after a five-second quiet interval.
-There are one to four presses for 30/60/90/120 minutes, or five to cancel,
-followed by another settling interval. Cancellation takes about 15 seconds.
-Keep physical buttons untouched while the sequence is pending.
+Timer buttons emulate T-key presses after a quiet interval. Keep physical
+buttons untouched while the sequence is pending. Cancellation takes about
+15 seconds. There is no verified duration or remaining-time readback, and an
+aborted sequence can leave a partial selection. Full timer/alarm behavior still
+needs hardware testing.
 
-ACKs verify button-flag writes, not the selected timer duration. There is no
-confirmed timer-state or remaining-time readback. An aborted sequence can still
-leave a partial timer selection. The component does not publish a guessed countdown.
-The full timer sequence, including alarm operation during sleep, still needs
-hardware testing.
+## Raw load telemetry
+
+Add `load_raw: {name: "Load (raw)"}` under `desk_uart` for the filtered 16-bit
+value from existing height telemetry. It sends no extra requests and becomes
+unknown when telemetry expires or firmware reading begins. Its units and filter
+delay are not calibrated; it is not used for obstruction detection.
 
 ## Optional load settings
 
-The full Stamp profile exposes these Configuration controls. Omit them if you
-do not intend to adjust protection parameters.
+Load-limit numbers use raw values, not kilograms or amperes. The range 1–65535
+is the wire range, not a validated operating range. Increasing thresholds
+reduces sensitivity. The downward base also affects homing and remains experimental.
+A protection trip can require a panel reset.
 
-| Key | Meaning |
-|---|---|
-| `upward_load_limit` | Parameter 0E, upward raw cutoff |
-| `downward_load_limit` | Parameter 0F, downward base; also affects homing |
-| `restore_upward_load_limit` / `restore_downward_load_limit` | Restore the first value read during this ESP boot |
-
-The number range 1–65535 is a wire range, not a validated operating range.
-Increasing thresholds reduces sensitivity. The downward mapping uses base +
-1200 for normal motion and the base directly for homing. Downward adjustment
-remains experimental. A protection trip can leave an Er3 fault requiring a reset.
-
-Configured values are read at startup, never overwritten with defaults.
-Writes are one-shot with ACK and readback; reconnects only read again.
-Restore baselines live in ESP RAM and are lost on reboot. No factory-reset,
-calibration or explicit EEPROM-save command is exposed. Use direct Stop for a
-future anomaly detector, rather than repeatedly changing protection limits.
-
-## Load-setting write guards
-
-Adding a load-limit number explicitly enables that setting. Writes and restore
-buttons require a known baseline, fresh telemetry no older than 750 ms, 1.5
-seconds of unchanged raw height and three seconds since a normal preset recall.
-Stop/release faults and other transactions block writes.
+Values are read at startup, never replaced by defaults. Writes need an idle desk,
+fresh settled telemetry and no pending transaction. Each write uses ACK and
+readback without automatic retry. Restore buttons use the first value read
+since the ESP boot; those baselines disappear on reboot. No calibration,
+factory-reset or explicit EEPROM-save command is exposed.
 
 ## Troubleshooting
 
-`Control status` shows the current operation or the highest-priority blocking
-condition. Healthy automatic keep-awake cycles deliberately display `Ready`
-while their internal checks continue. A preset waiting for keep-awake cleanup
-shows that waiting state. Other conflicting commands can still be rejected
-while this entity says `Ready`.
-
-`Last command result` shows the last reported command outcome. Check it when a
-command does not run; it can explain a rejection after the current status has
-changed. Normal progress messages, such as a target move or timer sequence,
-usually require only waiting for that operation to finish.
+**Control status** describes the current operation or blocking condition.
+**Last command result** explains the latest outcome, even after status changes.
+Healthy background keep-awake can show `Ready` while cleanup still blocks a command.
 
 ### A button release is unconfirmed
 
-Message: `Button release uncertain; inspect desk and restart ESP`.
-
-The ESP did not receive a button-release acknowledgment, or a timer click was
-held too long. The controller may still treat the button as held. Further
-remote button commands are blocked.
-
-1. Check the desk itself. Confirm that it is stationary and the panel responds
-   normally. If it does not, use the desk's local controls or power switch to
-   resolve its state before continuing.
-2. Restart the ESP to clear its release interlock, then wait for `UART connected`.
-   The restart does not itself release a button or prove that the controller
-   accepted a release.
-3. If `Preset restoration pending` is on, follow the recovery steps below before
-   requesting a new move.
+For `Button release uncertain; inspect desk and restart ESP`, check the desk
+and resolve any held-button behavior locally or with its power switch. Then
+restart the ESP and wait for UART telemetry. Restarting clears the ESP interlock;
+it does not prove the controller released the button. Resolve pending preset
+recovery before moving again.
 
 ### The UART connection is lost
 
-Message: `No fresh UART height; wake panel or check connection`.
-
-The ESP has no fresh height sample. Samples expire after three seconds; repeated
-or out-of-order frames do not refresh them. Wake the panel with a local key. If
-the status remains, check wiring and UART pins. The ESP re-requests telemetry
-every five seconds while the link is stale. Keep-awake maintains an awake
-panel's connection; it cannot wake a panel that is already asleep.
+Height expires after three seconds without a valid new sample. Wake the panel
+with a local key, then check wiring and pins if telemetry remains absent.
+The ESP requests telemetry every five seconds while disconnected; keep-awake
+cannot wake an already sleeping controller.
 
 ### Stop is still blocking movement
 
-Message: `Brake ACK missing or pending; movement blocked`.
-
-The controller has not acknowledged Stop. Check the desk itself; this message
-cannot tell you whether it stopped. After the two-second suppression interval,
-you can press Stop again to send a new request. There is no automatic retry.
-
-Message: `Stop: waiting for settled height and preset cleanup`.
-
-Stop was acknowledged, but cleanup is incomplete. The lock clears only after
-at least two seconds since Stop, 1.5 seconds of unchanged fresh height,
-confirmed button release and preset cleanup. If `Preset restoration pending`
-is on, resolve it below. See [What Stop does](#what-stop-does) for the braking
-behavior and limits.
+For a missing brake ACK, inspect whether the desk stopped. After the two-second
+suppression interval, press Stop again if needed. If status says it is waiting
+for settled height and preset cleanup, allow settling and resolve any pending
+preset recovery. Restore/Accept do not clear a separate missing-ACK lock.
 
 ### Preset restoration pending is on
 
-Check `Control status` first. These storage and profile conditions block both
-Restore and Accept:
+Leave the desk stationary with fresh UART telemetry and no release fault.
+Choose one action:
 
-| Control status starts with | Action |
+- **Restore interrupted preset** restores the saved original in RAM and retains
+  the backup. This can overwrite a newer local preset.
+- **Accept current preset 3** keeps the controller's value and discards the
+  backup. Choose it after a deliberate local edit you want to retain.
+
+Check the command result and that pending recovery turns off. Both choices
+verify the current value before completing. Stop, changing values, lost telemetry
+or a failed storage update leaves recovery pending; resolve the cause and retry.
+
+| Reported problem | Action |
 |---|---|
-| `Preset backup belongs to a different height profile` | Use the matching component/profile with the same component ID, then retry recovery. |
-| `Preset backup storage failed` or `Legacy backup cleanup failed` | Restart the ESP to recheck the saved records. If a backup remains active, follow the recovery steps below. If the storage error persists, preserve the data for inspection. |
-| `Preset backup unreadable or invalid` or `Legacy preset backup unreadable or invalid` | Preserve the stored data for inspection. Recovery buttons cannot repair an unreadable or damaged record. |
-| `Stored preset backups disagree` | Preserve both stored originals for inspection. Neither button can choose which backup to trust. |
-
-For an interrupted preset transaction or a differing preset value, use the
-recovery buttons under Configuration. New moves remain blocked until recovery
-is resolved. The ordinary preset recall buttons command movement; they are not
-a way to inspect a saved height.
-
-1. Leave the desk stationary, wait for `UART connected`, and allow other
-   operations to finish. If a release fault is shown, handle it first using
-   [A button release is unconfirmed](#a-button-release-is-unconfirmed).
-2. Choose one recovery action:
-   - **Restore interrupted preset** (`restore_preset_3`) restores the saved
-     original after two matching reads with different receive sequences. This
-     explicit choice can replace a newer local value or an older temporary
-     value. If the original is already present, no write is needed. Restoration
-     verifies RAM, clears the pending state and retains the backup.
-   - **Accept current preset 3** (`accept_current_preset_3`) keeps the value
-     currently held by the controller and discards the backup after two matching
-     reads. Choose this when you want to keep the current preset, for example
-     after deliberately saving a new value locally. It sends no preset write
-     and does not establish that the accepted value is stored in EEPROM.
-3. Check `Last command result` for successful recovery and that
-   `Preset restoration pending` turns off. A changing value, timeout, lost
-   telemetry, Stop or failed flash update leaves the backup pending. Resolve
-   the reported cause before trying again.
-
-Neither recovery action recalls a preset or starts movement. Resolving the
-backup does not bypass a separate Stop lock: that lock still needs its own ACK,
-settled height and confirmed release. If the Stop ACK was lost, a new explicit
-Stop can be sent after the suppression interval.
-
-The following messages describe why recovery is pending:
-
-| Message | Meaning |
-|---|---|
-| `Interrupted preset transaction; restore required` | A preset backup was loaded after an ESP restart; the transaction needs recovery |
-| `Preset recovery needs a decision: restore backup or accept current preset` | A recovery check found that preset 3 differs from the saved original |
-| `Preset 3 differs from retained backup; restore backup or accept current preset` | A preset read or new borrow found a different value during the current session; choose which value to keep |
-| `Preset changed during recovery; backup retained` | The two confirmation reads disagreed during Restore or Accept |
-| `Preset changed locally; refusing overwrite` | Automatic restoration found a third value and left it untouched; choose explicitly whether to Restore or Accept |
-| `Preset recovery interrupted; backup retained` | The recovery checks no longer passed, for example because height changed or telemetry was lost |
-| A timeout or readback mismatch | The value could not be confirmed; inspect `Last command result` before retrying |
+| Different height profile | Use the original component/profile and component ID to resolve the backup. |
+| Storage or legacy cleanup failed | Restart to recheck; preserve the data if the error persists. |
+| Unreadable backup or disagreeing records | Preserve the records for inspection; neither button can choose or repair them. |
 
 ### Automatic keep-awake has paused
 
-Message: `Keep-awake failed; inspect last command result, restore preset or restart ESP`.
-
-Read `Last command result` for the cause. If `Preset restoration pending` is
-on, follow the recovery steps above. Otherwise, leave the desk stationary with
-a fresh UART connection, then press **Restore interrupted preset**. This also
-clears a keep-awake fault when there is no pending backup. The next cycle can
-start after 30 seconds if its normal conditions are met; an ESP restart is not
-needed for this case.
+Read the last command result and resolve pending preset recovery. If no recovery
+is pending, leave the desk idle with fresh telemetry and press **Restore
+interrupted preset** to clear the keep-awake fault. The next cycle can start
+after 30 seconds.
 
 ## Renamed example devices
 
-The examples use `t150-desk-control` and `t150-desk-control-stamp-c3`. For an
-existing installation, keep its previous `device_name` to retain the hostname,
-or upload to its existing IP using `esphome upload <config> --device <IP>` when
-intentionally renaming it. Replace `<config>` with the YAML path relative to your
-current directory, or an absolute path. Check Home Assistant's discovery and
-entity bindings afterward. Keep `id: desk` unchanged so the preset recovery key remains stable.
+Keep `device_name` when updating an existing installation. To rename it, upload
+to its current IP with `esphome upload <config> --device <IP>`, where `<config>`
+is your YAML path. Check Home Assistant discovery afterward. Keep the component
+ID unchanged to retain its recovery storage key.
 
 ## Controller identity
 
-Optional diagnostic text sensors read the controller's own UART identity fields:
-
-```yaml
-desk_uart:
-  # Existing UART and height configuration goes here.
-  controller_model:
-    name: Controller model
-  controller_manufacturer:
-    name: Controller manufacturer
-  controller_identifiers:
-    name: Controller identifiers
-  controller_date:
-    name: Controller date
-```
-
-The examples include these entities. They appear in Home Assistant and in the
-ESPHome web interface. They describe the desk controller; ESPHome's own device
-information still describes the ESP32 running this component.
-
-| Entity | Verified value on the tested controller | Meaning |
-|---|---|---|
-| Controller model | `T150-22-03` | Matches the enclosure model `T150-22-03-PJ` without its suffix. |
-| Controller manufacturer | `LUMI LEGEND GROUP` | Company identifier reported by the controller. |
-| Controller identifiers | `05: 1.5.0; 06: 1.6; 07: 1.9.0118` | Three identifiers, labelled by their UART selectors. Their hardware/software/protocol roles are unconfirmed; `1.5.0` may also relate to the T150 model family. |
-| Controller date | `21/01/18` | A constant embedded in the firmware, probably 18 January 2021. Its meaning as a build, release or manufacturing date is unconfirmed. |
-
-Identity values are read from the connected controller, not hard-coded from
-this table. Queries run while fresh height telemetry indicates an idle desk.
-Each requested field gets at most three attempts per ESP32 boot; missing or
-unsupported replies leave its entity unknown. Successful static values are
-kept until the ESP32 restarts. These diagnostics do not wake the controller.
-
-The identifiers list publishes after all three fields have been read. The date
-is shown exactly as reported, without converting it into a manufacturing date.
+The examples expose `controller_model`, `controller_manufacturer`,
+`controller_identifiers` and `controller_date` as diagnostic text sensors.
+They describe the desk controller, not the ESP32. Reads occur while idle;
+missing replies remain unknown and successful values persist until ESP restart.
+The date is displayed as received, without interpreting it as a manufacturing date.
+See [identity fields](protocol.md#controller-identity) for exact replies.

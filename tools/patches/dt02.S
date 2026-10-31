@@ -6,7 +6,11 @@
 .global direct_target_hook
 .thumb_func
 direct_target_hook:
+#ifdef CHILD_LOCK
+    bl child_lock_dispatch
+#else
     bl direct_target_entry
+#endif
 
 .section .cave,"ax",%progbits
 .global direct_target_entry
@@ -122,6 +126,13 @@ scanner_loop:
     adds r0, #16
     subs r1, #1
     bne scanner_loop
+#ifdef CHILD_LOCK
+    // Physical keys are intentionally hidden by CL01; UART/scanner guards above
+    // still apply. Keep the ordinary raw-IDR exclusion whenever keys are live.
+    bl child_lock_gate_refresh
+    cmp r0, #0
+    bne check_profile
+#endif
     ldr r0, =0x48000010
     ldrh r0, [r0]
     ldr r1, =0x1f00

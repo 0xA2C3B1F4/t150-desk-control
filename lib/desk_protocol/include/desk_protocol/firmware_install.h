@@ -8,14 +8,17 @@ namespace desk_protocol {
 class FirmwareInstall {
  public:
   enum class State { Idle, Boot, InitialAck, InitialC, HeaderAck, HeaderC, DataAck, EotAck, CloseAck, Complete, Failed };
+  enum class Profile { OriginalDT02, ChildLockCL01 };
   using Write = FirmwareExport::Write;
   using BeforeErase = bool (*)(void *);
   void set_before_erase(BeforeErase callback) { before_erase_=callback; }
-  bool begin(const uint8_t *image, size_t size, Write write, void *context, uint32_t now) {
+  bool begin(const uint8_t *image, size_t size, Write write, void *context, uint32_t now, Profile profile=Profile::OriginalDT02) {
     if (active() || !image || size != 55296 || !write) return false;
+    if (profile!=Profile::OriginalDT02 && profile!=Profile::ChildLockCL01) return false;
+    payload_size_=profile==Profile::ChildLockCL01 ? 26624 : 25600;
     // This erase profile leaves the final page untouched. Everything after
-    // the 25 transmitted blocks must be erased in the admitted target.
-    for (size_t i=25600; i<size; ++i) if (image[i]!=255) return false;
+    // the explicitly selected 25/26-block profile must be erased in the target.
+    for (size_t i=payload_size_; i<size; ++i) if (image[i]!=255) return false;
     image_=image; write_=write; context_=context; started_=now;
     matched_=rx_=acked_=0; erase_possible_=false; error_=nullptr;
     transition_(State::Boot,now); return true;
@@ -57,14 +60,14 @@ class FirmwareInstall {
         uint8_t header[128]{};
         const char name[]="t150-application.bin";
         std::memcpy(header,name,sizeof(name));
-        std::memcpy(header+sizeof(name),"25600 ",6);
+        std::memcpy(header+sizeof(name),payload_size_==26624 ? "26624 " : "25600 ",6);
         transition_(State::HeaderAck,now); send_packet_(0,header,128); break;
       }
       case State::HeaderAck: transition_(State::HeaderC,now); break;
       case State::HeaderC: transition_(State::DataAck,now); send_packet_(1,image_,1024); break;
       case State::DataAck:
         ++acked_;
-        if (acked_==25) { transition_(State::EotAck,now); const uint8_t eot=4; send_(&eot,1); }
+        if (acked_==payload_size_/1024) { transition_(State::EotAck,now); const uint8_t eot=4; send_(&eot,1); }
         else { transition_(State::DataAck,now); send_packet_(acked_+1,image_+acked_*1024,1024); }
         break;
       case State::EotAck: {
@@ -92,7 +95,7 @@ class FirmwareInstall {
   State state_{State::Idle};
   const uint8_t *image_{nullptr}; Write write_{nullptr}; void *context_{nullptr};
   uint32_t started_{0},since_{0},rx_{0};
-  size_t matched_{0}; unsigned acked_{0}; bool erase_possible_{false};
+  size_t matched_{0},payload_size_{25600}; unsigned acked_{0}; bool erase_possible_{false};
   const char *error_{nullptr}; uint8_t packet_[1029]{};
 };
 }  // namespace desk_protocol

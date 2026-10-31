@@ -4,6 +4,8 @@
 #include "desk_protocol/identity.h"
 #include "desk_protocol/target.h"
 #include "desk_protocol/direct_target.h"
+#include "desk_protocol/target_detection.h"
+#include "desk_protocol/child_lock.h"
 #include "desk_protocol/uart_observation.h"
 #include "desk_protocol/timer.h"
 #include "desk_protocol/presets.h"
@@ -17,8 +19,11 @@
 #include "esphome/components/button/button.h"
 #include "esphome/components/number/number.h"
 #include "esphome/components/text_sensor/text_sensor.h"
+#include "esphome/components/switch/switch.h"
 
 namespace esphome { namespace desk_uart {
+
+class ChildLockSwitch;
 
 class DeskUART : public Component, public uart::UARTDevice {
  public:
@@ -51,6 +56,14 @@ class DeskUART : public Component, public uart::UARTDevice {
   void set_target_number(number::Number *n) { target_number_ = n; }
   void set_target_range(float low, float high) { min_height_ = low; max_height_ = high; }
   void set_keep_awake_enabled(bool enabled) { keep_awake_enabled_ = enabled; }
+  void set_auto_target_mode(bool enabled) { auto_target_mode_ = enabled; }
+  void set_target_height_backend(text_sensor::TextSensor *s) { target_backend_sensor_ = s; }
+  void set_child_lock_switch(ChildLockSwitch *s) { child_lock_switch_ = s; }
+  void set_child_lock_status(text_sensor::TextSensor *s) { child_lock_status_ = s; }
+  void set_child_lock_available(binary_sensor::BinarySensor *s) { child_lock_available_ = s; }
+  // Single attempt, no queue or optimistic state. Same-state SET explicitly
+  // re-verifies the controller's persistent record, including after a fault.
+  bool set_child_lock(bool locked);
   void set_direct_mode(bool enabled) { direct_mode_ = enabled; }
   void set_uart_observation_enabled(bool enabled) { uart_observation_enabled_ = enabled; }
   void set_keep_awake_auto(bool enabled) { keep_awake_auto_ = enabled; }
@@ -119,6 +132,33 @@ class DeskUART : public Component, public uart::UARTDevice {
   const char *last_timer_error_{nullptr};
   void target_loop_(uint32_t now);
   void direct_loop_(uint32_t now);
+  void child_lock_loop_(uint32_t now);
+  void child_lock_result_();
+  void publish_child_lock_(uint32_t now);
+  void invalidate_child_lock_(const char *reason, bool publish = true, bool report_failure = true);
+  void yield_child_lock_read_();
+  bool child_lock_access_allowed_(uint32_t now) const;
+  bool child_lock_busy_() const { return child_lock_.busy() || child_lock_detection_.busy(); }
+  bool child_lock_enabled_() const { return child_lock_switch_ || child_lock_status_ || child_lock_available_; }
+  desk_protocol::ChildLock child_lock_{};
+  desk_protocol::TargetDetection child_lock_detection_{};
+  ChildLockSwitch *child_lock_switch_{nullptr};
+  text_sensor::TextSensor *child_lock_status_{nullptr};
+  binary_sensor::BinarySensor *child_lock_available_{nullptr};
+  bool child_lock_probed_{false}, child_lock_dt02_{false}, child_lock_sending_{false}, last_child_lock_available_{false};
+  uint32_t last_child_lock_query_{0};
+  const char *last_child_lock_status_{nullptr};
+  void detection_loop_(uint32_t now);
+  void invalidate_detection_();
+  bool target_detected_() const {
+    return !auto_target_mode_ || auto_target_ready_;
+  }
+  const char *target_backend_name_() const;
+  desk_protocol::TargetDetection detection_{};
+  uint32_t detection_cancelled_at_{0};
+  bool auto_target_mode_{false}, auto_target_ready_{false}, detection_sending_{false};
+  text_sensor::TextSensor *target_backend_sensor_{nullptr};
+  const char *last_target_backend_{nullptr};
   void uart_observation_log_();
   desk_protocol::UARTObservation uart_observation_{};
   bool uart_observation_enabled_{false};
@@ -205,6 +245,25 @@ class DeskUART : public Component, public uart::UARTDevice {
   uint32_t last_subscribe_{0}, last_stop_{0};
   bool stop_latched_{false}, stop_acknowledged_{false};
   bool connected_{false}, motion_enabled_{false}, release_fault_{false};
+};
+
+class ChildLockSwitch : public switch_::Switch {
+ public:
+  ChildLockSwitch();
+  static bool is_instance(const switch_::Switch *candidate);
+  void set_parent(DeskUART *parent) { parent_ = parent; }
+  // ESPHome's switch API has no unknown-state message. The companion status
+  // and availability entities carry validity; do not publish a guessed bool.
+  bool assumed_state() override { return true; }
+  void invalidate();
+  void publish_confirmed(bool locked) { this->set_has_state(true); this->publish_state(locked); }
+ protected:
+  void write_state(bool locked) override { parent_->set_child_lock(locked); }
+  DeskUART *parent_{nullptr};
+  // ESPHome entities live for the lifetime of the application. Identify this
+  // subclass without RTTI so the web hook leaves other switch types unchanged.
+  static ChildLockSwitch *first_;
+  ChildLockSwitch *next_{nullptr};
 };
 
 class PresetHeightNumber : public number::Number {

@@ -1,119 +1,101 @@
 # Supported features and testing
 
-The supported profile comes from a Deltaco Gaming DT410 / GAM-140 with a
-T150-22-03-PJ controller enclosure, T150-PJ-V1.5 PCB and STM32F030C8T6 in metric
-mode during development.
-See [hardware compatibility](hardware.md#desk-and-controller-compatibility)
-for identification, the WT95 white variant and the scope of controller testing.
-
-| Feature | Behavior | Limitations |
-|---|---|---|
-| Height | Reads channel-2 telemetry; displays cm or inches selected in YAML | Uses the same position profile in either unit |
-| Presets | Recalls and edits three stored heights | Local buttons and controller autosave can conflict with remote edits |
-| Target height | Default preset backend preserves its backup; optional DT02 direct backend does not borrow presets | Uses a profile-specific 73–118 cm range; preset-path EEPROM restoration is unverified |
-| Stop | Requests controlled deceleration | Not an emergency stop; UART failure can prevent delivery |
-| Retargeting | Preset mode queues the latest target through restoration; direct mode Stops and requires a new explicit request | Simulated-peer coverage; physical behavior remains a separate check |
-| Keep-awake | Preset workaround or verified DT02 sleep-wrap feature with telemetry | Cannot wake an already sleeping UART |
-| Recovery | Preserves ambiguous preset values until the user chooses how to proceed | Pending recovery blocks new movement |
-| Raw load telemetry | Optional filtered value from the existing height stream | Physical units are uncalibrated |
-| Load settings | Reads and writes raw protection thresholds | No conversion to kilograms or amperes; downward adjustment needs hardware testing |
-| Timers | Sends T-key sequences for 30–120 minutes or cancellation | No timer-state readback; the full ESP-driven sequence needs hardware testing |
-
+Hardware results apply to the [tested controller](hardware.md#desk-and-controller-compatibility).
+Host tests and successful builds do not establish physical behavior.
 
 ## Hardware validation
 
-Stamp-C3 has been checked with the controller above for startup recovery,
-preset acceptance, idle keep-awake, browser login, live telemetry and preset
-readback. ESP32-WROOM-32 has build coverage; its UART wiring has not been tested
-on hardware. The adapter's inch display has simulated-peer coverage;
-installation and Home Assistant checks for that setting are pending.
-Stamp-C3 checks also cover preset-button priority over keep-awake, the inactivity
-interval and a second preset press during movement. Raw-load telemetry was
-checked against UART frames on Stamp-C3, including stale-state recovery after
-a controller restart and invalidation during firmware-reader start/cancel.
+| Feature | Checked on hardware | Remaining limits |
+|---|---|---|
+| Stamp-C3 controls | Browser login, height, preset recall/editing, Stop, UART reconnect and raw-load reporting | Full-range positioning accuracy unmeasured |
+| Preset target backend | Early restoration during short moves; backup retention across ESP restart; Restore/Accept after controller restart | Long moves, full retarget behavior and EEPROM restoration unverified |
+| Keep-awake | Preset priority, inactivity timing and interruption; patched telemetry continuity | Observed continuity does not prove execution of a particular RTC branch |
+| DT02 direct target | Supervised moves, Stop, target-change stopping, panel interruption and cold-start movement | Full-range positioning accuracy unmeasured |
+| Firmware maintenance | Browser original/DT02 install and complete readback; browser cancellation/retry; partial-block power-loss recovery through the maintenance API | CL01 browser installation is host-tested, not yet device-tested |
+| CL01 panel lock | Complete firmware readback; button blocking, remote movement/Stop and persistence; ESPHome browser lock/unlock and confirmed-state colors; locking tested with the motor connected | EEPROM brownouts, interrupt latency and held-key contact bounce unmeasured |
+| ESP32-WROOM-32 and inch display | Not hardware-tested | Build and simulated-peer coverage only |
+| Timers and load settings | Raw-load readings checked; controller parameters investigated | Full timer/alarm sequence and downward-threshold adjustment unverified; load units uncalibrated |
 
-Early preset restoration has been checked during short moves. Long moves and
-moves with the original preset far from the target remain unverified. These
-checks do not establish positioning accuracy across the full height range.
-Backup retention has been checked across Stamp power loss. A controller restart
-with a different preset value blocked automation until explicit Restore; Restore
-and Accept were checked without desk movement. EEPROM contents remain unverified.
-See the [protocol documentation](protocol.md) for movement and recovery behavior.
+Automatic target selection has host coverage; stock detection needs a device check
+before becoming the example default. The panel-lock offline emulator includes
+1,536 interrupted-write cases with modeled EEPROM transport and initialization.
+It does not establish electrical brownout behavior or EEPROM endurance.
 
 ## Automated tests
 
-The CI workflow defines native tests in Debug and Release with ASan/UBSan, ESPHome integration
-tests against simulated UART peers, and full Stamp-C3 and ESP32 example builds.
-The examples fetch the tested commit from GitHub and compare generated component
-sources with that checkout. Tests use dummy device credentials and do not upload
-firmware.
+The CI workflow defines Debug/Release native tests with ASan/UBSan, ESPHome host
+UART tests and Stamp-C3/ESP32 builds. Tests use dummy credentials and never upload firmware.
 
-Native profile tests compare every uint16 telemetry, preset and target input
-with the original conversion behavior. Synthetic profiles cover endpoint
-plateaus, gaps, binary32 rounding and rejection of unapproved control profiles.
-Firmware-image tests check normalization spans, scalar validation and the
-research-only extraction result. The host SHA-256 test rejects synthetic unknown
-images and can also check a separately supplied known application image. Optional
-configuration checks include the profile entities; the normal YAML omits them.
-The reader lifecycle test compiles the unchanged adapter with narrow host
-substitutes for UART, heap and synchronous HTTP sending, plus ESPHome's real
-OpenSSL SHA-256. It checks retained images after failed reads and cancellation,
-profile/status agreement, and download ownership during Clear in Debug and
-Release with ASan/UBSan. It uses synthetic bytes; recognized profile metadata
-is seeded explicitly for retention checks, without claiming image recognition.
+Coverage includes framing, height conversions, presets, Stop, recovery,
+keep-awake, timers, load values, identity, target detection, DT02 and CL01.
+Firmware tests cover size limits, CRC/sequence checks, buffer ownership, image
+recognition, recovery records, interrupted transfers and UI states. The
+[fixture manifest](../tests/fixtures/manifest.json) records capture provenance.
 
-Coverage includes framing, height units, presets, Stop, retargeting, recovery,
-keep-awake, timers, raw load telemetry, load settings and controller identity.
-DT02 native tests cover strict build/profile/nonce/echo binding, compensation,
-clock wrap, timeouts, cancellation and pending-brake occupancy. The real host
-PTY test starts with an old journal, verifies explicit acceptance, Stop without
-a queued replacement, preset preemption, lost-ACK braking and no stale SET replay.
-It rejects preset/EEPROM/reset writes and checks all preset values unchanged.
-Callback tests prevent export or preset requests from stealing a pending brake.
-These host checks do not prove physical accuracy, standstill or an RTC-hour wrap.
-Raw-load tests cover saved UART frames, malformed input, sequence handling,
-stale values, firmware-reader handoff and unchanged UART subscriptions. Simulated-peer tests
-check timeouts, malformed replies and interrupted operations without a desk.
-The [fixture manifest](../tests/fixtures/manifest.json) records UART fixture
-provenance and checksums.
-
-See the [README](../README.md#tests) for native test commands. Run the ESPHome
-suite from the repository root with the version pinned in `requirements-dev.txt`.
-Set `TMPDIR` to a writable temporary directory first:
+Run all commands below from the repository root. Install the ESPHome version
+pinned in `requirements-dev.txt` and set `TMPDIR` to a writable temporary
+directory. Native CMake commands are in the [README](../README.md#tests).
 
 ```sh
-python tests/esphome/run_all.py --work-dir "$TMPDIR/t150-tests"
+python tests/esphome/run_all.py --work-dir "${TMPDIR:?}/t150-tests"
 ```
 
-The lifecycle test also needs a C++17 compiler, OpenSSL development files and
-`pkg-config`. Run it alone from the same repository root:
+The reader lifecycle test needs a C++17 compiler, OpenSSL development files and
+`pkg-config`. Its HTTP substitute checks ownership, not ESP-IDF scheduling:
 
 ```sh
-python tests/esphome/firmware_export_lifecycle.py --work-dir "$TMPDIR/t150-lifecycle"
+python tests/esphome/firmware_export_lifecycle.py --work-dir "${TMPDIR:?}/t150-lifecycle"
 ```
 
-The HTTP substitute pauses the synchronous send before reading its non-owning
-image pointer. These tests check adapter ownership, not ESP-IDF scheduling or
-hardware SHA behavior.
-
-To include a local reference image in the profile test, run from the same root:
+An optional local reference image must match the pinned original application
+hash. It is read at runtime and never bundled into generated code:
 
 ```sh
-python tests/esphome/firmware_profile_integration.py --work-dir "$TMPDIR/t150-profile-test" --firmware /path/to/UploadedFlashImage.bin
+python tests/esphome/firmware_profile_integration.py --work-dir "${TMPDIR:?}/t150-profile-test" --firmware /path/to/UploadedFlashImage.bin
 ```
 
-The optional file must match the pinned 55,296-byte application hash. The test
-reads it at runtime and keeps synthetic variants in memory; it is not bundled
-with the repository or embedded in generated code.
-
-The GitHub build in this suite requires a published checkout commit and repository
-read access. It uses Stamp-C3 by default; from the same repository root, run
-either example separately with:
+GitHub example builds require a published checkout commit and repository read
+access. They fetch that commit and compare generated sources with the checkout.
+Use fresh work directories:
 
 ```sh
-python tests/esphome/github_example_build.py --example stamp-c3 --work-dir "$TMPDIR/t150-web-check/stamp"
-python tests/esphome/github_example_build.py --example esp32 --work-dir "$TMPDIR/t150-web-check/esp32"
+python tests/esphome/github_example_build.py --example stamp-c3 --work-dir "${TMPDIR:?}/t150-web-check/stamp"
+python tests/esphome/github_example_build.py --example esp32 --work-dir "${TMPDIR:?}/t150-web-check/esp32"
 ```
 
-Use fresh work directories for GitHub builds. Remove test directories and their
-shared dependency caches when finished.
+The child-lock host UART fixture preserves outbound writes when clearing input
+so it can check Stop ordering. It does not verify physical UART drain timing.
+Remove task-owned build directories and caches when finished.
+
+## Patch reproduction
+
+With LLVM installed, run from the repository root. These checks rebuild our
+replacement code without needing a manufacturer image:
+
+```sh
+python3 tools/verify_dt02_assembly.py --llvm-bin /path/to/llvm/bin
+python3 tools/embed_child_lock_patch.py --check --llvm-bin /path/to/llvm/bin
+PYTHONDONTWRITEBYTECODE=1 python3 tools/test_child_lock_builder.py
+node tests/esphome/firmware_ui_test.cjs
+```
+
+The UI test requires Node.js 18 or later and contacts no device. For a standalone
+CL01 image, provide your saved DT02 full image or application. Output paths must
+not already exist:
+
+```sh
+python3 tools/build_child_lock_patch.py /path/to/saved-dt02.bin \
+  /path/to/new-cl01.bin --manifest /path/to/new-cl01.json \
+  --llvm-bin /path/to/llvm/bin
+```
+
+For firmware emulation, install Unicorn 2.1.4 in a temporary virtual environment
+and supply full images:
+
+```sh
+python3 tools/test_child_lock_patch.py /path/to/saved-full-dt02.bin \
+  /path/to/new-full-cl01.bin /path/to/new-cl01.json --output /path/to/new-report.json
+```
+
+The builder checks its input and output hashes. Accepted application hashes are
+listed in the [maintenance reference](protocol.md#firmware-maintenance).

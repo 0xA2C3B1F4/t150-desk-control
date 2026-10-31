@@ -9,12 +9,13 @@ const base={state:'idle',claimed:false,active:false,pending:false,recovery_requi
 async function page(){
  const elements={};
  for(const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g))elements[tag[1]]={textContent:'',hidden:/\bhidden\b/.test(tag[0]),disabled:/\bdisabled\b/.test(tag[0]),checked:false,files:[],tag:tag[0],scrollIntoView(){},focus(){}};
- const io={status:{...base},offline:false,reject:false};
+ const io={status:{...base},offline:false,reject:false,actions:[]};
  const context=vm.createContext({document:{getElementById:id=>elements[id],querySelectorAll:()=>Object.values(elements).filter(x=>x.tag.startsWith('<button'))},crypto:require('node:crypto').webcrypto,URL,URLSearchParams,Uint8Array,Blob,setInterval(){},setTimeout:fn=>{fn();},fetch:async(url,options)=>{
   if(io.offline)throw Error('offline');
   if(options?.method==='POST'){
    if(io.reject)return {ok:false,text:async()=> 'This tab does not own maintenance'};
    const action=options.body.get('action');
+   io.actions.push(action);
    if(action==='exit')io.status={...base};
    if(action==='claim')io.status.claimed=true;
    return {ok:true};
@@ -35,6 +36,20 @@ async function page(){
  await p.state({state:'staged',recovery_required:true});assert.equal(e.verify.hidden,false);assert.equal(e.verify.disabled,false);
  await p.state({state:'read_complete',sha256:'e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff'});
  assert.equal(e.guidanceTitle.textContent,'DT02 is already installed');assert.equal(e.patch.disabled,true);
+ assert.equal(e.patchChildLock.disabled,false);
+ await p.state({state:'read_complete',sha256:p.run('STOCK'),source_sha256:p.run('STOCK')});
+ assert.equal(e.patchChildLock.disabled,false);assert.equal(e.patch.disabled,false);
+ p.io.actions=[];await e.patchChildLock.onclick();assert.match(e.message.textContent,/saved backup/);assert.deepEqual(p.io.actions,[]);
+ p.run('original=new Uint8Array(55296);originalHash=STOCK');e.saved.checked=true;
+ await e.patchChildLock.onclick();assert.deepEqual(p.io.actions,['backup','patch_child_lock']);
+ await p.state({state:'read_complete',sha256:p.run('CL01')});
+ assert.equal(e.guidanceTitle.textContent,'CL01 panel lock is already installed');assert.equal(e.patchChildLock.disabled,true);assert.equal(e.patch.disabled,true);
+ assert.match(e.guidanceDetail.textContent,/remove CL01/);assert.match(e.guidanceDetail.textContent,/remote unlock/i);
+ await p.state({state:'staged',sha256:p.run('CL01')});assert.doesNotMatch(e.guidanceTitle.textContent,/already installed/);assert.match(e.guidanceDetail.textContent,/starts locked/);assert.match(e.guidanceDetail.textContent,/local stopping gestures/);
+ await p.state({state:'verified',sha256:p.run('CL01')});assert.match(e.guidanceDetail.textContent,/remote unlock/i);
+ await p.state({state:'read_complete',sha256:'unknown'});assert.equal(e.patchChildLock.disabled,true);
+ await p.state({state:'read_complete',sha256:p.run('STOCK'),preflight_seconds:0});assert.equal(e.patchChildLock.disabled,true);
+ await p.state({state:'reading',sha256:p.run('STOCK'),active:true});assert.equal(e.patchChildLock.disabled,true);
  await p.state({state:'staged',sha256:'e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff'});assert.doesNotMatch(e.guidanceTitle.textContent,/already installed/);
  await p.state({state:'staged',preflight_seconds:0});assert.match(e.guidanceTitle.textContent,/expired/);assert.equal(e.read.hidden,false);assert.equal(e.install.disabled,true);
  await p.state({state:'error',error:'Read timed out'});assert.match(e.guidanceTitle.textContent,/stopped/);assert.equal(e.message.hidden,false);
@@ -47,5 +62,5 @@ async function page(){
  await p.state({state:'read_complete',sha256:'unknown',research_url:''});assert.doesNotMatch(e.guidanceDetail.textContent,/research section/);
  e.file.files=[{size:1}];await e.file.onchange();assert.match(e.message.textContent,/55,296/);e.file.files=[{size:55296,arrayBuffer:async()=>new ArrayBuffer(55296)}];await e.file.onchange();assert.equal(e.message.textContent,'');
  const fresh=await page();fresh.io.offline=true;fresh.run('status=null');await assert.rejects(fresh.run('refresh()'));assert.equal(fresh.elements.message.hidden,false);
- console.log('Firmware UI: power instructions, connection loss/recovery, staged verification, DT02 labels, expiry, failed exit, takeover and initial failure passed');
+ console.log('Firmware UI: power instructions, connection loss, hash-bound DT02/CL01 preparation, saved backup, lock disclosure, expiry, recovery and takeover passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
