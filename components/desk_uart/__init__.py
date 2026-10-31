@@ -187,6 +187,11 @@ async def to_code(config):
     if "stop_locked" in config:
         cg.add(var.set_stop_locked_sensor(await binary_sensor.new_binary_sensor(config["stop_locked"])))
     if "child_lock" in config:
+        web = CORE.config.get("web_server", {})
+        if (CORE.is_esp32 and web.get("version") == 3 and web.get("local")
+                and web.get("compression", "gzip") == "gzip"):
+            from esphome.components import esp32
+            esp32.add_extra_script("pre", "desk_panel_lock_web.py", Path(__file__).with_name("web_panel_lock.py"))
         child_lock = await switch.new_switch(config["child_lock"])
         cg.add(child_lock.set_parent(var))
         cg.add(var.set_child_lock_switch(child_lock))

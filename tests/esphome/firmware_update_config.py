@@ -7,6 +7,7 @@ import subprocess
 import sys
 from desk_test_support import ROOT, parse_args
 subprocess.run([sys.executable, str(ROOT / 'tests/esphome/firmware_web_layout_test.py')], check=True)
+subprocess.run([sys.executable, str(ROOT / 'tests/esphome/child_lock_web_test.py')], check=True)
 subprocess.run([sys.executable, str(ROOT / 'tools/embed_firmware_ui.py'), '--check'], check=True)
 args=parse_args()
 w=args.work_dir
@@ -32,6 +33,7 @@ for name,packages,valid in [('normal',[],True),('reader',['firmware-export'],Tru
         assert ('set_child_lock_switch' in generated)==('child-lock' in packages)
         pio=(w/'build/platformio.ini').read_text()
         assert ('pre:desk_web_layout.py' in pio)==('firmware-update' in packages)
+        assert ('pre:desk_panel_lock_web.py' in pio)==('child-lock' in packages)
         if 'firmware-update' in packages:
             defines=(w/'build/src/esphome/core/defines.h').read_text()
             assert '#define USE_WEBSERVER_GZIP' in defines

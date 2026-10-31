@@ -2,6 +2,7 @@
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 #include "esphome/core/helpers.h"
+#include "esphome/core/controller_registry.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -9,6 +10,26 @@
 
 namespace esphome { namespace desk_uart {
 static const char *const TAG = "desk_uart";
+
+ChildLockSwitch *ChildLockSwitch::first_ = nullptr;
+ChildLockSwitch::ChildLockSwitch() : next_(first_) { first_ = this; }
+bool ChildLockSwitch::is_instance(const switch_::Switch *candidate) {
+  for (auto *item = first_; item != nullptr; item = item->next_)
+    if (item == candidate) return true;
+  return false;
+}
+
+void ChildLockSwitch::invalidate() {
+  const bool changed = this->has_state();
+  this->set_has_state(false);
+  this->publish_dedup_.next_unknown();
+#ifdef USE_CONTROLLER_REGISTRY
+  // Notify the web server even though there is no new boolean state. Its local
+  // renderer uses has_state() to clear the last confirmed color. The native API
+  // still needs the companion status/availability entities for unknown states.
+  if (changed) ControllerRegistry::notify_switch_update(this);
+#endif
+}
 // Interruptions caused by a successful Stop are logged, not published as
 // command results, so they cannot replace that Stop's own result.
 static const char *const STOP_PRESET_REASON = "Preset setting interrupted by Stop; readback required";

@@ -249,15 +249,21 @@ class DeskUART : public Component, public uart::UARTDevice {
 
 class ChildLockSwitch : public switch_::Switch {
  public:
+  ChildLockSwitch();
+  static bool is_instance(const switch_::Switch *candidate);
   void set_parent(DeskUART *parent) { parent_ = parent; }
   // ESPHome's switch API has no unknown-state message. The companion status
   // and availability entities carry validity; do not publish a guessed bool.
   bool assumed_state() override { return true; }
-  void invalidate() { this->set_has_state(false); this->publish_dedup_.next_unknown(); }
+  void invalidate();
   void publish_confirmed(bool locked) { this->set_has_state(true); this->publish_state(locked); }
  protected:
   void write_state(bool locked) override { parent_->set_child_lock(locked); }
   DeskUART *parent_{nullptr};
+  // ESPHome entities live for the lifetime of the application. Identify this
+  // subclass without RTTI so the web hook leaves other switch types unchanged.
+  static ChildLockSwitch *first_;
+  ChildLockSwitch *next_{nullptr};
 };
 
 class PresetHeightNumber : public number::Number {

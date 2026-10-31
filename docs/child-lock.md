@@ -31,6 +31,12 @@ storage fault. Explicitly choose the desired switch state to initialize it.
 Confirmed settings survive power loss; ESPHome startup never changes the lock.
 A locked panel stays locked if ESPHome or UART becomes unavailable.
 
+In local ESPHome v3 pages, the cross is red when the confirmed state is Off,
+and the checkmark is green when it is On. The inactive button is gray. Both
+are gray with an Unknown label while awaiting confirmation or after losing
+the state. Clicking a button does not change the color until the controller
+replies. These explicit commands remain available for recovery attempts.
+
 ## Status and recovery
 
 The switch changes only after a matching controller reply. Home Assistant may
