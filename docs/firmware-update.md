@@ -75,7 +75,7 @@ first 10 KiB bootloader, EEPROM and option bytes. See the
 ## Interrupted installation
 
 An interrupted write has been recovered over UART and verified by full readback.
-For coverage and remaining limits, see [validation](validation.md#hardware-validation).
+For completed checks, see [validation](validation.md#hardware-validation).
 
 Keep the ESP32's current firmware and preferences intact; they contain the
 recovery record. Read the controller again, save that read, select the known
@@ -94,5 +94,5 @@ another write.
 An optional `research_url` enables **Send firmware for research**. After you save
 a backup and consent, the browser sends the image over HTTPS to a private inbox,
 without ESPHome credentials. A receipt confirms storage, not patch approval.
-The operator retains it until removal. Upload is never automatic; omit the URL
+The inbox retains uploads until deletion. Upload is never automatic; omit the URL
 to hide it. The service cannot enable an unreviewed patch on the ESP32.
