@@ -1,6 +1,9 @@
 #include "desk_firmware_update.h"
 #include "dt02_patch.h"
 #include "partial_recovery.h"
+#include "esphome/components/sha256/sha256.h"
+#include <algorithm>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -23,6 +26,10 @@ struct Rig:fw::FirmwareUpdate {
   void claim(){CHECK(post("claim",{{"motor_isolated","yes"}})==200);CHECK(owned_);}
   std::string state(){return phase_name_();}
   std::string hash(){return hash_;}
+  bool erase_possible(){return sender_.erase_possible();}
+  std::string write_target(){return recovery_record_.write_target;}
+  std::string source(){return recovery_record_.source;}
+  std::string target(){return recovery_record_.target;}
   void feed(const std::vector<uint8_t> &p){export_host::rx.insert(export_host::rx.end(),p.begin(),p.end());tick();}
   static std::vector<uint8_t> packet(uint8_t n,std::vector<uint8_t> data){
     std::vector<uint8_t> p{uint8_t(data.size()==128?1:2),n,uint8_t(255-n)};
@@ -50,7 +57,7 @@ int main(int argc,char **argv){
  {Rig r;r.claim();r.post("read");CHECK(r.post("claim",{{"motor_isolated","yes"},{"takeover","yes"}},std::string(32,'b'))==409);auto tx=export_host::tx.size();r.post("cancel");r.tick();CHECK(export_host::tx.size()==tx);CHECK(r.state()=="error");CHECK(r.desk.end_count==0);r.post("exit");CHECK(r.desk.end_count==0);export_host::now+=3000;r.post("exit");CHECK(r.desk.end_count==1);}
  export_host::reset();
  if(argc>=3){
-  auto stock=load(argv[1]),patched=load(argv[2]);
+  auto stock=load(argv[1]),patched=load(argv[2]);bool interrupted_used=false;
   // Once the loader write request is attempted, failures keep durable recovery.
   for(int failure=0;failure<3;++failure){
    Rig r;r.claim();r.read(stock);r.backup();r.post("patch");r.install();
@@ -76,7 +83,7 @@ int main(int argc,char **argv){
    r.post("stage");CHECK(r.state()=="error");
   }
   export_host::reset();
-  {Rig r;CHECK(r.state()=="error");CHECK(r.desk.begin_count==1);r.claim();auto unsupported=patched;unsupported[5]^=1;r.read(unsupported);r.backup();r.upload(stock);CHECK(r.state()=="error");
+  {Rig r;CHECK(r.state()=="error");CHECK(r.desk.begin_count==1);r.claim();auto unsupported=patched;unsupported[5]^=1;r.read(unsupported);r.backup();CHECK(unsupported[1023]!=255);r.post("stage");CHECK(r.state()=="error"); // not a torn prefix: refused before upload
    auto damaged=patched;std::fill(damaged.begin()+2048,damaged.begin()+3072,255);r.read(damaged);r.backup();r.upload(stock);CHECK(r.state()=="staged");r.install();r.complete_write();r.post("verify");r.export_image(damaged);CHECK(r.state()=="error");CHECK(esphome::saved_recovery!=0);
    r.read(damaged);r.backup();r.upload(stock);r.install();r.complete_write();r.post("verify");r.export_image(stock);CHECK(r.state()=="verified");CHECK(esphome::saved_recovery==0);
   }
@@ -92,7 +99,7 @@ int main(int argc,char **argv){
    {Rig r;r.claim();r.read(target?stock:patched);r.backup();if(target)r.post("patch");else r.upload(stock);r.install();r.feed({0xfa,0x30,0,1,0x31,0xfd});r.post("cancel");}
    export_host::reset();
    {Rig r;r.claim();auto torn=target?patched:stock;std::fill(torn.begin()+cut,torn.end(),255);
-    if(!target && cut==18*1024+128 && argc==4) torn=load(argv[3]);
+    if(!target && cut==18*1024+128 && argc==4){auto saved=load(argv[3]);CHECK(saved==torn);torn=saved;interrupted_used=true;}
     r.read(torn);r.backup();r.upload(patched);CHECK(r.state()=="error"); // original-only recovery
     r.read(torn);r.backup();r.upload(stock);CHECK(r.state()=="staged");
     export_host::now+=300001;r.post("install",{{"confirmed","yes"}});CHECK(r.state()=="error");
@@ -115,8 +122,84 @@ int main(int argc,char **argv){
   // No history: even a plausible torn stock image must not become writable.
   export_host::reset();
   {Rig r;r.claim();auto torn=stock;std::fill(torn.begin()+18*1024+128,torn.end(),255);r.read(torn);r.backup();r.post("stage");CHECK(r.state()=="error");}
+  // A recovery arm that times out before erase rewrites write_target to stock.
+  // The torn DT02 block must still be admitted through the recorded target,
+  // and a torn stock block from a later recovery write through the source.
+  for(size_t cut : {size_t(18*1024+128),size_t(0x1658),size_t(0x53b0),size_t(0x6010)}) {
+   export_host::reset();
+   {Rig r;r.claim();r.read(stock);r.backup();r.post("patch");r.install();r.feed({0xfa,0x30,0,1,0x31,0xfd});r.post("cancel");}
+   export_host::reset();
+   {Rig r;r.claim();auto torn=patched;std::fill(torn.begin()+cut,torn.end(),255);
+    r.read(torn);r.backup();r.upload(stock);r.install();export_host::now+=120001;r.tick();
+    CHECK(r.state()=="error");CHECK(!r.erase_possible());CHECK(esphome::saved_recovery!=0);
+    CHECK(r.write_target()==fw::STOCK_SHA);
+    r.read(torn);r.backup();r.upload(stock);CHECK(r.state()=="staged");
+    // Interrupt this recovery write too, leaving a torn stock prefix.
+    r.install();r.feed({0xfa,0x30,0,1,0x31,0xfd});r.post("cancel");CHECK(esphome::saved_recovery!=0);
+    auto again=stock;std::fill(again.begin()+(cut==0x6010?0x53b0:cut),again.end(),255);
+    r.read(again);r.backup();r.upload(patched);CHECK(r.state()=="error");
+    r.read(again);r.backup();r.upload(stock);r.install();r.complete_write();r.post("verify");r.export_image(stock);CHECK(r.state()=="verified");CHECK(esphome::saved_recovery==0);
+   }
+  }
+  // DT02->DT02 reinstall: arming stock recovery records stock in the redundant
+  // source slot, keeping DT02 evidence in the target slot across a reboot.
+  for(size_t cut : {size_t(18*1024+128),size_t(0x1658),size_t(0x53b0),size_t(0x6010)}) {
+   export_host::reset();
+   {Rig r;r.claim();r.read(patched);r.backup();r.upload(patched);r.install();r.feed({0xfa,0x30,0,1,0x31,0xfd});r.post("cancel");
+    CHECK(r.source()==fw::DT02_SHA);CHECK(r.target()==fw::DT02_SHA);}
+   export_host::reset();
+   auto torn=patched;std::fill(torn.begin()+cut,torn.end(),255);
+   auto again=stock;std::fill(again.begin()+(cut==0x6010?0x53b0:cut),again.end(),255);
+   {Rig r;r.claim();r.read(torn);r.backup();r.upload(stock);r.install();export_host::now+=120001;r.tick();
+    CHECK(r.state()=="error");CHECK(!r.erase_possible());CHECK(esphome::saved_recovery!=0);
+    CHECK(r.source()==fw::STOCK_SHA);CHECK(r.target()==fw::DT02_SHA);CHECK(r.write_target()==fw::STOCK_SHA);
+    r.read(torn);r.backup();r.upload(stock);CHECK(r.state()=="staged");
+    r.install();r.feed({0xfa,0x30,0,1,0x31,0xfd});r.post("cancel");CHECK(esphome::saved_recovery!=0);}
+   export_host::reset();
+   {Rig r;CHECK(r.state()=="error");r.claim();
+    r.read(again);r.backup();r.upload(patched);CHECK(r.state()=="error");
+    r.read(again);r.backup();r.upload(stock);r.install();r.complete_write();r.post("verify");r.export_image(stock);CHECK(r.state()=="verified");CHECK(esphome::saved_recovery==0);}
+  }
+  // The moved identity still clears on a clean read of the untouched original.
+  export_host::reset();
+  {Rig r;r.claim();r.read(patched);r.backup();r.upload(patched);r.install();r.feed({0xfa,0x30,0,1,0x31,0xfd});r.post("cancel");
+   auto torn=patched;std::fill(torn.begin()+0x1658,torn.end(),255);
+   r.read(torn);r.backup();r.upload(stock);r.install();export_host::now+=120001;r.tick();CHECK(r.source()==fw::STOCK_SHA);
+   r.read(patched);CHECK(r.state()=="read_complete");CHECK(esphome::saved_recovery==0);}
+  // Halfword boundary: an odd programmed length is accepted only when the
+  // next expected byte is erased; a missing programmed byte is refused.
+  size_t missing=0,erased_next=0;
+  for(size_t k=0;k+2<fw::PAYLOAD_SIZE;k+=2){
+   const size_t end=(k/1024+1)*1024;
+   if(!missing && k%1024 && k+2<end && patched[k]!=255 && patched[k+1]!=255 && stock[k+1]!=255) missing=k;
+   if(!erased_next && k%1024 && patched[k]!=255 && patched[k+1]==255 && std::any_of(patched.begin()+k+2,patched.begin()+end,[](uint8_t b){return b!=255;})) erased_next=k;
+  }
+  CHECK(missing);
+  for(size_t k : {missing,erased_next}) {
+   if(!k) continue;
+   export_host::reset();
+   {Rig r;r.claim();r.read(stock);r.backup();r.post("patch");r.install();r.feed({0xfa,0x30,0,1,0x31,0xfd});r.post("cancel");
+    auto torn=patched;std::fill(torn.begin()+k+1,torn.end(),255);
+    CHECK(fw::partial_prefix_length(torn.data()+k/1024*1024)==k%1024+2);
+    r.read(torn);r.backup();r.upload(stock);CHECK(r.state()==(k==missing?"error":"staged"));
+    r.read(stock);CHECK(esphome::saved_recovery==0);
+   }
+  }
+  // A programmed prefix outside the 25-block payload is refused before upload.
+  export_host::reset();
+  {Rig r;r.claim();r.read(stock);r.backup();r.post("patch");r.install();r.feed({0xfa,0x30,0,1,0x31,0xfd});r.post("cancel");
+   auto torn=stock;CHECK(std::all_of(torn.begin()+30*1024,torn.begin()+31*1024,[](uint8_t b){return b==255;}));torn[30*1024]=0;
+   r.read(torn);r.backup();r.post("stage");CHECK(r.state()=="error");CHECK(esphome::saved_recovery!=0);
+   r.read(stock);CHECK(esphome::saved_recovery==0);
+  }
   for(size_t i=0;i<stock.size();++i) CHECK(fw::dt02_byte(i,stock[i])==patched[i]);
-  std::cout<<"Torn stock/DT02 blocks, saved power-cut image, reboot, original-only recovery, stale preflight and malformed images passed\n";
+  std::cout<<"Torn stock/DT02 blocks, reboot, original-only recovery, stale preflight and malformed images passed\n";
+  std::cout<<"Recovery arm timeout before erase, interrupted recovery write, DT02 reinstall recovery after reboot and halfword/payload boundaries passed"<<(erased_next?"":" (no odd-length erased-next case in image)")<<"\n";
+  if(argc==4){
+   CHECK(interrupted_used);auto saved=load(argv[3]);char hex[65];
+   esphome::sha256::SHA256 sha;sha.init();sha.add(saved.data(),saved.size());sha.calculate();sha.get_hex(hex);
+   std::cout<<"Saved power-cut image "<<hex<<" recovery passed\n";
+  }
   std::cout<<"Private stock/DT02 full flow, flash preference refusal, interrupted write, reboot recovery and mismatching readback passed\n";
  }
  std::cout<<"HTTP ownership, CSRF, unknown image, RAM refusal and cancellation passed\n";

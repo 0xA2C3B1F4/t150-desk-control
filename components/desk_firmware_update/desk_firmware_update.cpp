@@ -47,6 +47,12 @@ bool FirmwareUpdate::save_recovery_(bool value) {
       std::memcpy(recovery_record_.source_blocks,preflight_blocks_,sizeof(preflight_blocks_));
       std::memcpy(recovery_record_.target,hash_,65);
       block_hashes_(recovery_record_.target_blocks);
+    } else if (!std::strcmp(recovery_record_.source,recovery_record_.target) && std::strcmp(recovery_record_.source,hash_)) {
+      // Same-image reinstall: both slots hold one identity. Record this
+      // admitted write in the redundant source slot so a torn block from it
+      // remains bound to its own block hash; the target slot keeps the original.
+      std::memcpy(recovery_record_.source,hash_,65);
+      block_hashes_(recovery_record_.source_blocks);
     }
     std::memcpy(recovery_record_.write_target,hash_,65);
   } else {
@@ -75,7 +81,9 @@ bool FirmwareUpdate::recovery_source_matches_() {
     if (erased) continue;
     // Retain at most one torn programmed block. Its contents are NOT admitted
     // until the user supplies the exact stock image at seal/install time.
-    if (block>=PAYLOAD_SIZE/1024 || partial_block_>=0) { partial_block_=-1; return false; }
+    if (block>=PAYLOAD_SIZE/1024 || partial_block_>=0 || !partial_prefix_length(buffer_.get()+block*1024)) {
+      partial_block_=-1; return false;
+    }
     partial_block_=int(block);
     std::memcpy(partial_image_,buffer_.get()+block*1024,1024);
   }
@@ -84,16 +92,21 @@ bool FirmwareUpdate::recovery_source_matches_() {
 bool FirmwareUpdate::validate_partial_recovery_() const {
   if (!recovery_ || recovery_record_.phase!=2 || partial_block_<0 ||
       partial_block_>=int(PAYLOAD_SIZE/1024) || std::strcmp(hash_,STOCK_SHA) || !buffer_) return false;
-  uint8_t expected[1024], digest[32];
   const size_t base=size_t(partial_block_)*1024;
-  const bool patched=!std::strcmp(recovery_record_.write_target,DT02_SHA);
-  for (size_t i=0;i<1024;++i) expected[i]=patched ? dt02_byte(base+i,buffer_.get()[base+i]) : buffer_.get()[base+i];
-  sha256::SHA256 sha; sha.init(); sha.add(expected,sizeof(expected)); sha.calculate(); sha.get_bytes(digest);
-  // Bind the expected bytes to the existing persistent attempt, not just to
-  // the newly uploaded file. No preference layout or recovery key changes.
-  const auto *recorded=!std::strcmp(recovery_record_.write_target,recovery_record_.source)
-      ? recovery_record_.source_blocks[partial_block_] : recovery_record_.target_blocks[partial_block_];
-  return !std::memcmp(digest,recorded,32) && partial_prefix_matches(partial_image_,expected);
+  // A failed recovery attempt rewrites write_target before erase, so derive
+  // both pinned candidates from the uploaded original. Each is admitted only
+  // through the block hash recorded for the same persistent identity.
+  for (const char *identity : {STOCK_SHA,DT02_SHA}) {
+    const uint8_t *recorded=!std::strcmp(recovery_record_.source,identity) ? recovery_record_.source_blocks[partial_block_]
+        : !std::strcmp(recovery_record_.target,identity) ? recovery_record_.target_blocks[partial_block_] : nullptr;
+    if (!recorded) continue;
+    uint8_t expected[1024], digest[32];
+    const bool patched=!std::strcmp(identity,DT02_SHA);
+    for (size_t i=0;i<1024;++i) expected[i]=patched ? dt02_byte(base+i,buffer_.get()[base+i]) : buffer_.get()[base+i];
+    sha256::SHA256 sha; sha.init(); sha.add(expected,sizeof(expected)); sha.calculate(); sha.get_bytes(digest);
+    if (!std::memcmp(digest,recorded,32) && partial_prefix_matches(partial_image_,expected)) return true;
+  }
+  return false;
 }
 bool FirmwareUpdate::active_() const {
   return phase_==Phase::Reading || phase_==Phase::Writing || phase_==Phase::Verifying;
@@ -275,7 +288,9 @@ void FirmwareUpdate::loop() {
   if (size_==IMAGE_SIZE) { block_hashes_(preflight_blocks_); recovery_source_valid_=recovery_source_matches_(); }
   // A clean full read can also prove that an interrupted attempt left the
   // original intact, or that its complete intended target is already present.
-  if (recovery_ && (!std::strcmp(hash_,recovery_record_.source) ||
+  // The target slot is checked too: a same-image reinstall may have moved the
+  // original identity there.
+  if (recovery_ && (!std::strcmp(hash_,recovery_record_.source) || !std::strcmp(hash_,recovery_record_.target) ||
                     !std::strcmp(hash_,recovery_record_.write_target))) {
     if (!save_recovery_(false)) { fail_("Read matched but recovery record could not be cleared"); return; }
   }

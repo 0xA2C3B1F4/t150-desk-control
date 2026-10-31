@@ -49,7 +49,7 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
 <li>Confirm and arm installation. Restart the controller when instructed, then leave power connected throughout writing.</li>
 <li>Select Verify by full readback after writing. Restart the controller again when instructed. Only a complete readback verifies the installation.</li>
 <li>Finish maintenance, then restart the controller for normal operation. Reconnect the motor only with controller power off.</li></ol>
-<p>Installation erases application flash. A failed transfer may require restoring the original file or ST-Link recovery. Only exact supported 55,296-byte original or DT02 application files can be installed. Unknown versions can be saved for research.</p>
+<p>Installation erases application flash. A failed transfer may require restoring the original file. Only exact supported 55,296-byte original or DT02 application files can be installed. Unknown versions can be saved for research.</p>
 <p>Files in this page are temporary. The computer download is your persistent backup.</p>
 </details>
 <section id="researchSection" hidden><h2>Send an unknown version for research</h2>
@@ -166,7 +166,7 @@ function renderGuidance(){
   }
  }else if(status.state==='staged'){
   title='Image prepared. Confirm and arm installation';
-  detail='Installation erases application flash; a failed transfer may need restoration or ST-Link recovery. Confirm installation below and select Arm installation. Leave controller power on until the instruction changes to OFF, then ON.';
+  detail='Installation erases application flash; a failed transfer may require restoring the original file. Confirm installation below and select Arm installation. Leave controller power on until the instruction changes to OFF, then ON.';
  }else if(normalBootNeeded&&status.state==='idle'&&!status.claimed){
   title='Maintenance finished. Restart the controller for normal use';
   detail='Turn only the controller off and on once more to start its application. Keep the ESP32 powered. Reconnect the motor only while controller power is off.';
