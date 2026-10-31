@@ -7,8 +7,15 @@ shipping misleading controls. Explicit on/off commands remain available.
 import gzip
 from pathlib import Path
 import re
+import warnings
 
 MARKER = "<!-- desk-confirmed-switch-v1 -->"
+# ESPHome 2026.4.2 passes a plain array to Lit's SVG tag for its static logo.
+# Construct that fixed SVG as a tagged template, retaining Lit's raw metadata.
+OLD_LOGO_INIT = "var Nu=`"
+NEW_LOGO_INIT = "var Nu=sa`"
+OLD_LOGO_RENDER = "render(){return sa([Nu])}"
+NEW_LOGO_RENDER = "render(){return Nu}"
 OLD_RENDER = r'render_switch(){if(!!this.entity)return this.entity.assumed_state?S`${this._actionButton(this.entity,"\u274C","turn_off")} ${this._actionButton(this.entity,"\u2714\uFE0F","turn_on")}`:this._switch(this.entity)}'
 RENDER = '''render_switch(){
   if(!this.entity)return;
@@ -73,9 +80,15 @@ def decorate_header(source):
     if MARKER in html:
         if RENDER not in html or DISCONNECT not in html:
             raise ValueError("Inconsistent confirmed-switch decoration")
-        return source
-    html = replace_once(html, OLD_RENDER, RENDER)
-    html = replace_once(html, '</body>', DISCONNECT + '</body>')
+    else:
+        html = replace_once(html, OLD_RENDER, RENDER)
+        html = replace_once(html, '</body>', DISCONNECT + '</body>')
+    logo_anchors = (html.count(OLD_LOGO_INIT), html.count(OLD_LOGO_RENDER))
+    if logo_anchors == (1, 1):
+        html = html.replace(OLD_LOGO_INIT, NEW_LOGO_INIT, 1)
+        html = html.replace(OLD_LOGO_RENDER, NEW_LOGO_RENDER, 1)
+    elif logo_anchors != (0, 0):
+        warnings.warn("Unrecognized ESPHome logo format; leaving the optional logo fix out")
     data = gzip.compress(html.encode(), compresslevel=9, mtime=0)
     lines = ['    ' + ', '.join(f'0x{x:02x}' for x in data[i:i+16]) + ',' for i in range(0, len(data), 16)]
     return source[:m.start(2)] + '\n' + '\n'.join(lines) + '\n' + source[m.end(2):]

@@ -38,11 +38,56 @@ class WebTest(unittest.TestCase):
     def test_installed_assets_and_idempotence(self):
         patched = web.decorate_header(self.header)
         self.assertEqual(web.decorate_header(patched), patched)
-        self.assertEqual(decode(patched).replace(web.RENDER, web.OLD_RENDER).replace(web.DISCONNECT, ''), decode(self.header))
+        self.assertEqual(decode(patched).replace(web.RENDER, web.OLD_RENDER).replace(web.DISCONNECT, '').replace(web.NEW_LOGO_INIT, web.OLD_LOGO_INIT).replace(web.NEW_LOGO_RENDER, web.OLD_LOGO_RENDER), decode(self.header))
         self.assertEqual(patched.split('#else')[1:], self.header.split('#else')[1:])
         server = web.decorate_server(self.server)
         self.assertEqual(web.decorate_server(server), server)
         self.assertEqual(server.replace(web.NEW_JSON, web.OLD_JSON).removeprefix(web.INCLUDE), self.server)
+
+    def test_full_modules_parse_and_static_logo_is_a_tagged_template(self):
+        html = decode(web.decorate_header(self.header))
+        scripts = re.findall(r'<script\b[^>]*>(.*?)</script>', html, re.S)
+        self.assertTrue(scripts)
+        for script in scripts:
+            subprocess.run(['node', '--input-type=module', '--check'],
+                           input=script, text=True, check=True, capture_output=True)
+        # Exercise the actual generated SVG initialization and render method.
+        # A plain [Nu] array reproduces the Lit guard failure seen on page load.
+        init = re.search(r'var Nu=sa`[^`]*`', html)[0]
+        render = re.search(r'let Fo=class extends J\{(render\(\)\{return Nu\})\}', html)[1]
+        script = r"""
+const assert=require('node:assert/strict');
+const input=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+const svg=(strings,...values)=>{
+ if(!Array.isArray(strings)||!Object.hasOwn(strings,'raw'))throw Error('invalid template strings array');
+ return {strings,values};
+};
+assert.throws(()=>svg(['<svg/>']),/invalid template strings array/);
+const logo=new Function('sa', input.init+';return new class {'+input.render+'}')(svg);
+const result=logo.render();
+assert.equal(result.values.length,0);
+assert.match(result.strings[0],/<svg /);
+assert.equal(result,logo.render());
+"""
+        subprocess.run(['node', '-e', script], input=json.dumps({'init': init, 'render': render}),
+                       text=True, check=True)
+
+    def test_logo_fix_does_not_require_future_upstream_logo_format(self):
+        # Logo decoration is cosmetic and must not prevent lock-control builds.
+        original = decode(self.header)
+        for old, new in ((web.OLD_LOGO_INIT, "var OtherLogo=`"),
+                         (web.OLD_LOGO_RENDER, "render(){return null}")):
+            changed = original.replace(old, new)
+            data = gzip.compress(changed.encode(), mtime=0)
+            header = re.sub(
+                r'(#ifdef USE_WEBSERVER_GZIP\s+constexpr uint8_t INDEX_GZ\[\] PROGMEM = \{)[^}]+',
+                lambda m: m[1]+','.join(f'0x{x:02x}' for x in data), self.header, count=1)
+            with self.assertWarnsRegex(UserWarning, "Unrecognized ESPHome logo"):
+                patched = decode(web.decorate_header(header))
+            self.assertIn(new, patched)
+            self.assertIn(web.RENDER, patched)
+            self.assertNotIn(web.NEW_LOGO_INIT, patched)
+            self.assertNotIn(web.NEW_LOGO_RENDER, patched)
 
     def test_both_build_hook_orders(self):
         a = layout.decorate_header(web.decorate_header(self.header))

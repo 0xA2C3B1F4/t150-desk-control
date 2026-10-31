@@ -34,8 +34,8 @@ A locked panel stays locked if ESPHome or UART becomes unavailable.
 In local ESPHome v3 pages, the cross is red when the confirmed state is Off,
 and the checkmark is green when it is On. The inactive button is gray. Both
 are gray with an Unknown label while awaiting confirmation or after losing
-the state. Clicking a button does not change the color until the controller
-replies. These explicit commands remain available for recovery attempts.
+the state. The requested On/Off color appears only after the controller replies;
+while waiting, both buttons are gray. Explicit commands remain available for recovery attempts.
 
 ## Status and recovery
 
