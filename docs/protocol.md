@@ -520,9 +520,8 @@ non-ASCII values and wrong lengths. Output is unchanged when decoding fails.
 
 These replies were captured from the tested controller on 2026-10-27, including
 XOR and sequence validation. `tests/identity_test.cpp` retains the exact received
-wire frames, including an escaped FA sequence byte. See
-[controller identity interpretation](esphome.md#controller-identity) for the
-model-label correspondence and unresolved identifier/date meanings.
+wire frames, including an escaped FA sequence byte. The roles of fields 05/06/07 and the date are unconfirmed; the adapter displays
+them without assigning hardware, software or manufacturing-date meanings.
 
 The ESPHome component requests only configured text entities, one request per
 second while idle, at most three attempts per field per ESP32 boot. It accepts
@@ -533,7 +532,7 @@ presets or keep the controller awake.
 ## DT02 direct target extension
 
 `direct_target.h` implements the optional ABI v1 D1 request/D2 response used
-only by explicitly selected direct mode. Requests contain operation, nonce and
+by explicit direct mode or automatic backend selection. Requests contain operation, nonce and
 native preset coordinate S; replies have exactly 37 body bytes. Binding requires
 build DT02, feature bitmap 3, A/B 24/39 and raw limits L=6/U=747. Feature bit 0
 advertises direct targeting; bit 1 separately advertises the sleep-wrap fix.
@@ -551,7 +550,8 @@ reservation across unknown firmware revisions.
 
 ### Automatic target detection
 
-`TargetDetection` owns a read-only transaction: six exact identity reads,
+`TargetDetection` matches the identity values in the table above and coefficients
+24/39. It owns a read-only transaction: six exact identity reads,
 coefficients 0B/0C, then a nonce-bound DT02 GET. Stock selection requires
 two exact `EE 03 sequence_be16` replies, separated by a fresh model read.
 The error has no nonce; the caller must hold exclusive UART command ownership.
@@ -564,7 +564,79 @@ is generated. The adapter cancels detection on other commands, waits at least
 
 ## CL01 panel lock extension
 
-CL01 uses a separate nonce-bound `D3` request and `D4` response. A DT02
-capability reply does not imply CL01 support. See the [CL01 wire format and
-persistence contract](child-lock.md#uart-protocol). Lock changes write EEPROM
-only after idle checks; GET reports cached runtime state.
+CL01 adds panel locking to DT02. A DT02 capability reply alone does not establish
+CL01 support. `child_lock.h` validates the operation, version, build, nonce,
+status, boolean fields and sequence against current telemetry. GET is read-only;
+SET requires an idle controller and is never retried automatically.
+
+Decoded request body: `D3 01 op nonce_hi nonce_lo`, with operations `00` GET,
+`01` LOCK and `02` UNLOCK. Decoded replies contain fifteen bytes:
+
+| Offset | Meaning |
+|---|---|
+| 0–1 | `D4 01` |
+| 2 | Requested operation |
+| 3 | Status: `00` success, `01` bad request, `02` busy, `03` storage failure |
+| 4 | Effective lock, 0 or 1 |
+| 5 | Physical release gate, 0 or 1 |
+| 6 | Storage fault, 0 or 1 |
+| 7–10 | ASCII `CL01` |
+| 11–12 | Echoed nonce, big-endian |
+| 13–14 | Controller sequence, big-endian |
+
+The usual framing, escaping and checksum apply. Invalid length/checksum or
+insufficient TX queue space causes no mutation or reply. Invalid version or
+operation returns bad-request status. The nonce correlates replies; it is not
+authentication. [child_lock_protocol.py](../tools/child_lock_protocol.py) builds
+requests and decodes captured replies offline without opening a device.
+
+### Persistent lock record
+
+EEPROM bytes `0x60/0x61` hold `A5 5A` for locked or `5A A5` for unlocked. Every
+other pair boots locked with a storage fault. Stock save paths do not overwrite
+these bytes. A changing SET locks RAM, invalidates the first byte, writes the
+second, then commits the first, with repeated readback checks. A verified
+same-state request avoids writes. GET reads cached runtime state, not EEPROM.
+
+A failed write/readback leaves RAM locked, but may leave either durable state.
+For example, invalidation may fail before an older unlocked record is changed,
+or an unlock commit may succeed before verification fails. Storage-failure
+status never proves a persistent lock. Only an explicit successful SET verifies
+the requested record. Power loss before the first write can retain the old state.
+
+The patch preserves the bootloader and hooks GPIO reading, boot initialization
+and UART dispatch. It uses eight RAM bytes at `0x20000FC8` and a 2 KiB code
+reservation at `0x08008C00`. The physical release gate checks one GPIO sample;
+it is not a debounce guarantee. EEPROM I/O runs with saved/restored interrupt
+masking. See [child_lock.S](../tools/patches/child_lock.S) for the exact write
+sequence and [validation](validation.md) for physical test limits.
+
+## Firmware maintenance
+
+The maintenance adapter accepts only these 55,296-byte application hashes:
+
+| Image | SHA-256 |
+|---|---|
+| Original | `bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf` |
+| DT02 | `e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff` |
+| CL01, including DT02 | `81933d93b8bc28ef0eb8b29bf7ae1c7b9104f0a8e03c1c2f8096d509de0f75d3` |
+
+The pinned loader erases 53 application pages, writes 25 blocks for original/DT02
+or 26 for CL01, and leaves the final flash page untouched. Admission requires an
+erased final page; verification covers the full 54 KiB application, including
+unwritten bytes. Replacement headers contain our patch code, not vendor images.
+
+Before installation, the ESP saves source/target block fingerprints. Interrupted
+original-image recovery retains a third fingerprint set so it can be retried.
+Every 1 KiB block must match a recorded identity or be erased, except at most one
+partial block within the write payload. After the exact original is uploaded and
+hashed, the adapter reconstructs original/DT02/CL01 candidates and requires the
+partial block to match a halfword-aligned programmed prefix followed by erased
+bytes. This recovery path permits only original-image restoration. Multiple
+partial blocks, programmed halfwords outside that pattern or a damaged final
+page are rejected. Unknown images without the saved history are also rejected.
+
+Image staging and verification reuse one RAM buffer. HTTP downloads retain shared
+ownership through the synchronous send, even if the image is cleared concurrently.
+See [maintenance instructions](firmware-update.md) for the user workflow and
+[patch reproduction](validation.md#patch-reproduction) for build commands.
