@@ -15,7 +15,7 @@ for controller markings, related models and wiring.
 - Supports [firmware backup, patching and recovery](docs/firmware-update.md)
   and the optional [panel lock](docs/child-lock.md).
 
-See [supported features and testing](docs/validation.md) for validation limits.
+See [supported features and testing](docs/validation.md) for completed hardware and host checks.
 
 ## Install
 
@@ -94,9 +94,9 @@ components/desk_uart/             ESPHome adapter
 components/desk_firmware_export/  optional firmware reader
 components/desk_firmware_update/  optional patch and recovery interface
 examples/esphome/                 monitoring and control configurations
-tests/                           native tests and UART fixtures
-tests/esphome/                   host/PTY integration tests
-docs/                            setup and technical references
+tests/                            native tests and UART fixtures
+tests/esphome/                    host/PTY integration tests
+docs/                             setup and technical references
 ```
 
 Source is MIT licensed. Manufacturer firmware, credentials and private research

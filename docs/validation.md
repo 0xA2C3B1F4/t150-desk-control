@@ -5,29 +5,26 @@ Host tests and successful builds do not establish physical behavior.
 
 ## Hardware validation
 
-| Feature | Checked on hardware | Remaining limits |
-|---|---|---|
-| Stamp-C3 controls | Browser login, height, preset recall/editing, Stop, UART reconnect and raw-load reporting | Full-range positioning accuracy unmeasured |
-| Preset target backend | Early restoration during short moves; backup retention across ESP restart; Restore/Accept after controller restart | Long moves, full retarget behavior and EEPROM restoration unverified |
-| Keep-awake | Preset priority, inactivity timing and interruption; patched telemetry continuity | Observed continuity does not prove execution of a particular RTC branch |
-| DT02 direct target | Supervised moves, Stop, target-change stopping, panel interruption and cold-start movement | Full-range positioning accuracy unmeasured |
-| Firmware maintenance | Browser original/DT02 install and complete readback; browser cancellation/retry; partial-block power-loss recovery through the maintenance API | CL01 browser installation is host-tested, not yet device-tested |
-| CL01 panel lock | Complete firmware readback; button blocking, remote movement/Stop and persistence; ESPHome browser lock/unlock and confirmed-state colors; locking tested with the motor connected | EEPROM brownouts, interrupt latency and held-key contact bounce unmeasured |
-| ESP32-WROOM-32 and inch display | Not hardware-tested | Build and simulated-peer coverage only |
-| Timers and load settings | Raw-load readings checked; controller parameters investigated | Full timer/alarm sequence and downward-threshold adjustment unverified; load units uncalibrated |
-
-Automatic target selection has host coverage; stock detection needs a device check
-before becoming the example default. The panel-lock offline emulator includes
-1,536 interrupted-write cases with modeled EEPROM transport and initialization.
-It does not establish electrical brownout behavior or EEPROM endurance.
+| Feature | Checked on hardware |
+|---|---|
+| Stamp-C3 controls | Browser login, height, native preset 1/2 recalls over 73–116 cm, preset 3 recall, preset editing, Stop, UART reconnect and raw-load reporting |
+| Preset target backend | 73–116–73 cm on DT02+CL01R3; changed-target Stop without automatic restart; early RAM restoration; preset values retained through a controller power cycle after restoration; ESP restart backup and Restore/Accept |
+| Keep-awake | Preset priority, inactivity timing and interruption; patched telemetry continuity |
+| DT02 direct target | 73–116–73 cm travel on DT02+CL01R3, remote Stop, unlocked-panel interruption and unchanged preset readbacks; earlier target-change stopping and cold-start movement |
+| Firmware maintenance | Browser original/DT02/CL01 install and complete readback; browser cancellation/retry; partial-block power-loss recovery through the maintenance API |
+| CL01 panel lock | Complete firmware readback; button blocking, remote movement/Stop and persistence; ESPHome browser lock/unlock and confirmed-state colors; locking with the motor connected |
+| Raw load | Controller telemetry readings |
 
 ## Automated tests
 
 The CI workflow defines Debug/Release native tests with ASan/UBSan, ESPHome host
 UART tests and Stamp-C3/ESP32 builds. Tests use dummy credentials and never upload firmware.
 
-Coverage includes framing, height conversions, presets, Stop, recovery,
-keep-awake, timers, load values, identity, target detection, DT02 and CL01.
+Host coverage includes metric and inch height conversions, framing, presets, Stop, recovery,
+keep-awake, timers, load values, identity, automatic target detection, DT02 and CL01.
+A changed target stops Moving/Monitoring and is rejected without braking in
+Recall and RestoreRead/Write/Verify/ClearJournal. Explicit Stop in each phase
+restores the original RAM preset without automatic restart.
 Firmware tests cover size limits, CRC/sequence checks, buffer ownership, image
 recognition, recovery records, interrupted transfers and UI states. The
 [fixture manifest](../tests/fixtures/manifest.json) records capture provenance.
@@ -41,7 +38,7 @@ python tests/esphome/run_all.py --work-dir "${TMPDIR:?}/t150-tests"
 ```
 
 The reader lifecycle test needs a C++17 compiler, OpenSSL development files and
-`pkg-config`. Its HTTP substitute checks ownership, not ESP-IDF scheduling:
+`pkg-config`. Its HTTP substitute checks reader and response ownership:
 
 ```sh
 python tests/esphome/firmware_export_lifecycle.py --work-dir "${TMPDIR:?}/t150-lifecycle"
@@ -64,7 +61,7 @@ python tests/esphome/github_example_build.py --example esp32 --work-dir "${TMPDI
 ```
 
 The child-lock host UART fixture preserves outbound writes when clearing input
-so it can check Stop ordering. It does not verify physical UART drain timing.
+so it can check Stop ordering with a simulated peer.
 Remove task-owned build directories and caches when finished.
 
 ## Patch reproduction
@@ -89,8 +86,9 @@ python3 tools/build_child_lock_patch.py /path/to/saved-dt02.bin \
   --llvm-bin /path/to/llvm/bin
 ```
 
-For firmware emulation, install Unicorn 2.1.4 in a temporary virtual environment
-and supply full images:
+The local CL01 emulator checks 1,536 interrupted-write cases with modeled
+EEPROM transport and initialization. This optional check runs outside CI.
+Install Unicorn 2.1.4 in a temporary virtual environment and supply full images:
 
 ```sh
 python3 tools/test_child_lock_patch.py /path/to/saved-full-dt02.bin \

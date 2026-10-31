@@ -191,10 +191,14 @@ or the desk settles. Avoid local M/save and preset-3 use until the transaction e
 The controller can autosave all presets while one is borrowed; RAM restoration
 neither checks nor repairs EEPROM.
 
-A new target during an active preset-target move brakes, restores the preset,
-then recalls the latest target. Stop, a fault or lost telemetry cancels the queued
-request. Conflicts during preparation or cleanup are rejected. Long moves and
-full physical retarget behavior remain unverified.
+A different target while monitoring a preset-target move brakes and restores
+the original preset if needed. No replacement target is queued. Wait for settling
+and select the target again to start another move. Repeating the same active
+target does not interrupt it. During preset preparation or restoration, target
+requests are rejected without braking; use Stop to interrupt motion. Requests
+during braking are also rejected.
+Hardware checks on DT02+CL01R3 cover 73–116 cm travel and stopping on a changed
+target; see [validation](validation.md).
 
 Editing a preset-height number does not move the desk. The component verifies
 its RAM value; the controller may save it later. Before deliberately changing
@@ -220,8 +224,8 @@ identity matching; other stock revisions require explicit `preset` mode.
 Unknown or incomplete detection blocks target moves and keep-awake, but leaves
 native preset buttons and Stop available. Failed checks retry after reconnection
 or maintenance. No target is replayed; select it again once ready. Runtime
-identification does not verify firmware bytes. Examples retain `preset` mode
-until stock auto-detection has been checked on hardware.
+identification does not verify firmware bytes. Examples use `preset` mode;
+configure `auto` explicitly to enable detection.
 
 ### Direct backend
 
@@ -299,9 +303,8 @@ starts again. Faults pause automatic cycles until resolved.
 
 Timer buttons emulate T-key presses after a quiet interval. Keep physical
 buttons untouched while the sequence is pending. Cancellation takes about
-15 seconds. There is no verified duration or remaining-time readback, and an
-aborted sequence can leave a partial selection. Full timer/alarm behavior still
-needs hardware testing.
+15 seconds. Timer controls do not read back the selected duration or remaining
+time. An aborted sequence can leave a partial selection.
 
 ## Raw load telemetry
 

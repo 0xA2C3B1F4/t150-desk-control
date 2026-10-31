@@ -163,7 +163,7 @@ Normal downward protection compares load against `base+1200`; homing compares
 against the same base. `downward_motion_cutoff(base)` returns a uint32 to avoid
 16-bit overflow in that explanatory sum. It does not set an independent limit.
 
-Downward adjustment remains experimental and needs hardware testing. See
+Downward adjustment remains experimental. See
 [supported features and testing](validation.md).
 Read replies carry no request ID, so late identical responses remain ambiguous.
 
@@ -484,8 +484,7 @@ rejects further timer requests on that instance.
 `completed()` means the software sequence finished, not that the alarm state was
 verified. No timer-state query, direct sound command or immediate cancel frame
 is established. Physical local clicks remain invisible and can invalidate the
-sequence. The ESP-driven timer sequence is experimental and still needs
-hardware testing. See [supported features and testing](validation.md).
+sequence. The ESP-driven timer sequence is experimental. See [supported features and testing](validation.md).
 
 ## Test fixtures
 
@@ -496,8 +495,7 @@ replay them across every possible two-chunk split, including escaped values.
 Synthetic cases cover malformed streams, maximum frames, unsigned time/sequence
 wrap, stale data, ACK timeout and delayed release generation.
 
-See [supported features and testing](validation.md) for integration-test coverage
-and hardware limitations.
+See [supported features and testing](validation.md) for completed hardware and host checks.
 
 ## Controller identity
 
@@ -609,7 +607,7 @@ and UART dispatch. It uses eight RAM bytes at `0x20000FC8` and a 2 KiB code
 reservation at `0x08008C00`. The physical release gate checks one GPIO sample;
 it is not a debounce guarantee. EEPROM I/O runs with saved/restored interrupt
 masking. See [child_lock.S](../tools/patches/child_lock.S) for the exact write
-sequence and [validation](validation.md) for physical test limits.
+sequence and [validation](validation.md) for completed checks.
 
 ## Firmware maintenance
 

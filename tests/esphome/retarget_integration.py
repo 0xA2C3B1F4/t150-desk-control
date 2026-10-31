@@ -23,6 +23,7 @@ def main():
           value: 80
       - delay: 800ms
       - lambda: |-
+          ESP_LOGI("test", "same=%d", id(desk)->move_to_height(80));
           ESP_LOGI("test", "retarget=%d", id(desk)->move_to_height(84));
           ESP_LOGI("test", "latest=%d", id(desk)->move_to_height(82));
           ESP_LOGI("test", "timer_blocked=%d", id(desk)->set_timer(30));
@@ -109,7 +110,7 @@ desk_uart:
                         goal = q
                         coast_until = 0
                     q += max(-2, min(2, goal - q))
-                    # Third replacement loses telemetry long enough to cancel. Reconnection
+                    # Third Stop loses telemetry during cleanup. Reconnection
                     # must only restore the slot, never replay the requested movement.
                     if not 19 <= elapsed < 24:
                         body = bytearray(30)
@@ -144,26 +145,25 @@ desk_uart:
             proc.wait(timeout=5)
         sent = list(frames(wire))
         writes = [int.from_bytes(f[2:4], "big") for f in sent if f[0] == 0x19]
-        assert writes == [122, 456, 155, 456, 285, 456, 285, 456], writes
+        assert writes == [122, 456, 285, 456, 285, 456], writes
         assert brakes == 3, brakes
         recalls = [e for e in events if e["body_hex"] == "17 08 01"]
-        assert len(recalls) == 4, recalls
-        bs = [e for e in events if e["body_hex"] == "17 01 00 00"]
-        assert recalls[1]["seconds"] - bs[0]["seconds"] >= 2
+        assert len(recalls) == 3, recalls
+        assert 12 <= recalls[1]["seconds"] < 14, recalls
+        assert not any(3.3 <= e["seconds"] < 12 and e["body_hex"] == "17 08 01" for e in events)
         assert not any(e["seconds"] >= 24 and e["body_hex"].startswith("17 08") for e in events)
         assert values[31] == 456
-        # Intentional retarget braking must not overwrite acceptance with rejection.
-        first_result = (w / "runtime.log").read_text().split("Pending target cancelled by Stop")[0]
-        assert "Command rejected: Target move interrupted" not in first_result
+        # An intentional Stop must not surface as an unrelated interruption failure.
         out = (w / "runtime.log").read_text()
+        assert "Command rejected: Target move interrupted" not in out
         for marker in [
-            "retarget=1",
-            "latest=1",
+            "same=1",
+            "retarget=0",
+            "latest=0",
             "timer_blocked=0",
             "unlocked=1",
             "end_latched=0",
-            "Pending target cancelled by Stop",
-            "Pending target cancelled by connection loss; request again",
+            "Stopped; select target again after the desk settles",
             "Stop completed; remote controls ready",
         ]:
             assert marker in out, marker
@@ -175,11 +175,12 @@ desk_uart:
             "recalls": recalls,
             "events": events,
             "checks": [
-                "brake before retarget",
-                "latest target wins",
-                "restore and readback before next recall",
-                "Stop discards pending move",
-                "link loss discards pending move across reconnect",
+                "same active target does not brake",
+                "different target brakes without queueing a move",
+                "requests during braking are rejected",
+                "restore and readback before a fresh explicit request",
+                "duplicate Stop does not replay a move",
+                "link loss and reconnect never replay a move",
                 "automatic unlock",
                 "timer blocked during retarget",
                 "diagnostic entities generated",
