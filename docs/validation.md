@@ -12,7 +12,7 @@ Host tests and successful builds do not establish physical behavior.
 | Keep-awake | Preset priority, inactivity timing and interruption; patched telemetry continuity | Observed continuity does not prove execution of a particular RTC branch |
 | DT02 direct target | Supervised moves, Stop, target-change stopping, panel interruption and cold-start movement | Full-range positioning accuracy unmeasured |
 | Firmware maintenance | Browser original/DT02 install and complete readback; browser cancellation/retry; partial-block power-loss recovery through the maintenance API | CL01 browser installation is host-tested, not yet device-tested |
-| CL01 panel lock | Complete firmware readback; button blocking, remote movement/Stop and persistence; ESPHome browser lock/unlock and confirmed-state colors; operator-confirmed locking with motor connected | EEPROM brownouts, interrupt latency and held-key contact bounce unmeasured |
+| CL01 panel lock | Complete firmware readback; button blocking, remote movement/Stop and persistence; ESPHome browser lock/unlock and confirmed-state colors; locking tested with the motor connected | EEPROM brownouts, interrupt latency and held-key contact bounce unmeasured |
 | ESP32-WROOM-32 and inch display | Not hardware-tested | Build and simulated-peer coverage only |
 | Timers and load settings | Raw-load readings checked; controller parameters investigated | Full timer/alarm sequence and downward-threshold adjustment unverified; load units uncalibrated |
 
