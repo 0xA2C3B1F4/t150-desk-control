@@ -117,3 +117,15 @@ python tests/esphome/github_example_build.py --example esp32 --work-dir "$TMPDIR
 
 Use fresh work directories for GitHub builds. Remove test directories and their
 shared dependency caches when finished.
+
+## Panel lock
+
+CL01 R3 was verified by full UART readback and supervised checks of physical
+button blocking, remote movement and Stop, lock/unlock persistence across power
+cycles, and physical control after unlock. Physical buttons cannot stop remote
+movement while locked. EEPROM write brownouts and held-key contact bounce remain
+untested. See [panel lock](child-lock.md) for the persistence contract.
+
+The component's CL01 controls and expanded maintenance workflow have separate
+host tests. The earlier firmware-only device test does not validate those new
+ESPHome and browser paths on hardware.

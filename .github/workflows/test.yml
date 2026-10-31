@@ -14,6 +14,21 @@ jobs:
       - name: Firmware UI state transitions
         if: matrix.build_type == 'Debug'
         run: node tests/esphome/firmware_ui_test.cjs
+      - name: Offline child-lock builder and protocol
+        if: matrix.build_type == 'Debug'
+        env:
+          TMPDIR: ${{ runner.temp }}
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 tools/test_child_lock_builder.py
+      - name: Reproduce embedded firmware patches
+        if: matrix.build_type == 'Debug'
+        env:
+          TMPDIR: ${{ runner.temp }}
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          sudo apt-get update && sudo apt-get install -y clang llvm lld
+          python3 tools/verify_dt02_assembly.py
+          python3 tools/embed_child_lock_patch.py --check
       - name: C++11 ${{ matrix.build_type }} with ASan and UBSan
         run: |
           cmake -S . -B "$RUNNER_TEMP/native" -DDESK_SANITIZERS=ON -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
@@ -25,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: [config_validation, identity_integration, firmware_export_config, firmware_export_integration, firmware_export_lifecycle, firmware_update_lifecycle, firmware_update_config, firmware_profile_integration, integration, stop_integration, load_limits_integration, load_raw_integration, target_integration, retarget_integration, direct_target_integration, direct_target_review_integration, preset_settings_integration, timer_integration, keep_awake_integration, preset_persistence_integration, profile_journal_integration, display_units_integration]
+        test: [config_validation, identity_integration, firmware_export_config, firmware_export_integration, firmware_export_lifecycle, firmware_update_lifecycle, firmware_update_config, firmware_profile_integration, integration, stop_integration, load_limits_integration, load_raw_integration, target_integration, retarget_integration, auto_target_integration, child_lock_integration, direct_target_integration, direct_target_review_integration, preset_settings_integration, timer_integration, keep_awake_integration, preset_persistence_integration, profile_journal_integration, display_units_integration]
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:

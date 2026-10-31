@@ -14,10 +14,10 @@ struct Rig {
   static bool write(void *c,const uint8_t *p,size_t n) {
     auto *r=static_cast<Rig *>(c); r->writes.emplace_back(p,p+n); return !r->fail;
   }
-  void begin(){CHECK(sender.begin(image.data(),image.size(),write,this,now));}
+  void begin(Sender::Profile profile=Sender::Profile::OriginalDT02){CHECK(sender.begin(image.data(),image.size(),write,this,now,profile));}
   void feed(uint8_t b){sender.feed(b,++now);}
   void boot(){for(uint8_t b:{0xfa,0x30,0,1,0x31,0xfd})feed(b);}
-  void header(){begin();boot();feed(6);feed(0x43);CHECK(sender.erase_possible());feed(6);feed(0x43);}
+  void header(Sender::Profile profile=Sender::Profile::OriginalDT02){begin(profile);boot();feed(6);feed(0x43);CHECK(sender.erase_possible());feed(6);feed(0x43);}
 };
 int main(){
   {Rig r;r.header();for(int i=0;i<25;++i)r.feed(6);CHECK(r.sender.acked_blocks()==25);CHECK(r.writes.back()==std::vector<uint8_t>{4});r.feed(6);CHECK(r.writes.back().size()==133);r.feed(6);CHECK(r.sender.complete());r.feed(0x43);CHECK(r.sender.complete());CHECK(r.writes.size()==29);
@@ -32,5 +32,15 @@ int main(){
   {Rig r;r.image.back()=0;CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now));CHECK(r.writes.empty());}
   {Rig r;r.now=0xfffffff0;r.begin();r.sender.tick(r.now+120000);CHECK(!r.sender.active());}
   {Rig r;r.begin();CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now));}
+  {Rig r;r.image[25600]=0x42;CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now));
+   r.header(Sender::Profile::ChildLockCL01);
+   const std::string header(r.writes[1].begin()+3,r.writes[1].begin()+131);CHECK(header.find("26624 ")!=std::string::npos);
+   for(int i=0;i<26;++i)r.feed(6);CHECK(r.sender.acked_blocks()==26);CHECK(r.writes.back()==std::vector<uint8_t>{4});
+   r.feed(6);r.feed(6);CHECK(r.sender.complete());CHECK(r.writes.size()==30);
+   auto &last=r.writes[27];CHECK(last[1]==26);CHECK(last[3]==0x42);CHECK(desk_protocol::FirmwareExport::crc(last.data()+3,1024)==(unsigned(last[1027])<<8|last[1028]));}
+  {Rig r;r.image[26624]=0;CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now,Sender::Profile::ChildLockCL01));CHECK(r.writes.empty());}
+  {Rig r;CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now,static_cast<Sender::Profile>(99)));CHECK(r.writes.empty());}
+  // The CL01 profile retains the same stop-once behavior at every reply gate.
+  for(unsigned stop=0;stop<32;++stop){Rig r;r.begin(Sender::Profile::ChildLockCL01);r.boot();std::vector<uint8_t> replies{6,0x43,6,0x43};replies.insert(replies.end(),28,6);for(unsigned i=0;i<stop;++i)r.feed(replies[i]);const size_t before=r.writes.size();r.sender.tick(r.now+5001);CHECK(!r.sender.active());r.feed(6);CHECK(r.writes.size()==before);}
   std::cout<<"Sender sequence, payload CRC, all response timeouts, NAK/CAN, tail and wrap checks passed\n";
 }

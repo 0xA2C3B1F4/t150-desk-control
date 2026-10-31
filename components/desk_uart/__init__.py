@@ -6,7 +6,7 @@ import zlib
 from esphome import automation
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, button, number, sensor, text_sensor, uart
+from esphome.components import binary_sensor, button, number, sensor, switch, text_sensor, uart
 from esphome.const import (
     CONF_ID,
     DEVICE_CLASS_CONNECTIVITY,
@@ -18,7 +18,7 @@ from esphome.core import CORE
 from esphome.core.config import add_includes
 
 DEPENDENCIES = ["uart"]
-AUTO_LOAD = ["sensor", "binary_sensor", "button", "number", "text_sensor"]
+AUTO_LOAD = ["sensor", "binary_sensor", "button", "number", "switch", "text_sensor"]
 MULTI_CONF = True
 ns = cg.esphome_ns.namespace("desk_uart")
 DeskUART = ns.class_("DeskUART", cg.Component, uart.UARTDevice)
@@ -33,6 +33,7 @@ StepHeightButton = ns.class_("StepHeightButton", button.Button)
 RestorePresetButton = ns.class_("RestorePresetButton", button.Button)
 AcceptCurrentPresetButton = ns.class_("AcceptCurrentPresetButton", button.Button)
 TimerButton = ns.class_("TimerButton", button.Button)
+ChildLockSwitch = ns.class_("ChildLockSwitch", switch.Switch)
 
 
 def validate_motion(config):
@@ -110,6 +111,19 @@ CONFIG_SCHEMA = cv.All(
         ) for d in ("upward", "downward")},
         cv.Optional("control_status"): text_sensor.text_sensor_schema(entity_category="diagnostic"),
         cv.Optional("command_result"): text_sensor.text_sensor_schema(entity_category="diagnostic"),
+        cv.Optional("target_height_backend"): text_sensor.text_sensor_schema(entity_category="diagnostic"),
+        cv.Optional("child_lock"): switch.switch_schema(
+            ChildLockSwitch, icon="mdi:account-lock", entity_category="config",
+            default_restore_mode="DISABLED", block_inverted=True,
+        ).extend({
+            # The controller owns persistence. ESPHome must never restore a
+            # desired value or send an unlock at startup.
+            cv.Optional("restore_mode", default="DISABLED"): cv.enum(
+                {"DISABLED": switch.RESTORE_MODES["DISABLED"]}, upper=True, space="_",
+            ),
+        }),
+        cv.Optional("child_lock_status"): text_sensor.text_sensor_schema(entity_category="diagnostic"),
+        cv.Optional("child_lock_available"): binary_sensor.binary_sensor_schema(entity_category="diagnostic"),
         **{cv.Optional(key): text_sensor.text_sensor_schema(entity_category="diagnostic")
            for key in ("controller_model", "controller_manufacturer", "controller_identifiers", "controller_date")},
         cv.Optional("stop_locked"): binary_sensor.binary_sensor_schema(entity_category="diagnostic"),
@@ -120,7 +134,7 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional("timer_command_pending"): binary_sensor.binary_sensor_schema(entity_category="diagnostic"),
         cv.Optional("keep_awake", default=False): cv.Any(cv.boolean, cv.one_of("auto", lower=True)),
         cv.Optional("uart_observation", default=False): cv.boolean,
-        cv.Optional("target_height_mode", default="preset"): cv.one_of("preset", "direct", lower=True),
+        cv.Optional("target_height_mode", default="preset"): cv.one_of("auto", "preset", "direct", lower=True),
         cv.Optional("experimental_target_height", default=False): cv.boolean,
         cv.Optional("min_height", default=73.0): cv.float_range(min=73.0, max=118.0),
         cv.Optional("max_height", default=118.0): cv.float_range(min=73.0, max=118.0),
@@ -167,17 +181,24 @@ async def to_code(config):
         cg.add(var.set_frame_errors_sensor(await sensor.new_sensor(config["uart_frame_errors"])))
     if "height_sample_gap" in config:
         cg.add(var.set_sample_gap_sensor(await sensor.new_sensor(config["height_sample_gap"])))
-    for key in ("control_status", "command_result", "controller_model", "controller_manufacturer", "controller_identifiers", "controller_date"):
+    for key in ("control_status", "command_result", "target_height_backend", "child_lock_status", "controller_model", "controller_manufacturer", "controller_identifiers", "controller_date"):
         if key in config:
             cg.add(getattr(var, "set_" + key)(await text_sensor.new_text_sensor(config[key])))
     if "stop_locked" in config:
         cg.add(var.set_stop_locked_sensor(await binary_sensor.new_binary_sensor(config["stop_locked"])))
+    if "child_lock" in config:
+        child_lock = await switch.new_switch(config["child_lock"])
+        cg.add(child_lock.set_parent(var))
+        cg.add(var.set_child_lock_switch(child_lock))
+    if "child_lock_available" in config:
+        cg.add(var.set_child_lock_available(await binary_sensor.new_binary_sensor(config["child_lock_available"])))
     cg.add(var.set_motion_enabled(config["experimental_preset_buttons"]))
     cg.add(var.set_uart_observation_enabled(config["uart_observation"]))
+    cg.add(var.set_auto_target_mode(config["target_height_mode"] == "auto"))
     cg.add(var.set_direct_mode(config["target_height_mode"] == "direct"))
     cg.add(var.set_keep_awake_auto(config["keep_awake"] == "auto"))
     cg.add(var.set_keep_awake_enabled(config["keep_awake"] is True or
-                                    (config["keep_awake"] == "auto" and config["target_height_mode"] == "preset")))
+                                    (config["keep_awake"] == "auto" and config["target_height_mode"] != "direct")))
     cg.add(var.set_target_enabled(config["experimental_target_height"]))
     cg.add(var.set_timer_enabled(config["experimental_timer_buttons"]))
     for minutes in (0, 30, 60, 90, 120):

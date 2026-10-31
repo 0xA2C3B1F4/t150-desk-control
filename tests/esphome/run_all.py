@@ -32,6 +32,8 @@ TESTS = [
     "load_raw_integration",
     "target_integration",
     "retarget_integration",
+    "auto_target_integration",
+    "child_lock_integration",
     "direct_target_integration",
     "direct_target_review_integration",
     "preset_settings_integration",

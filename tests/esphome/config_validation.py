@@ -44,10 +44,18 @@ cases = [
     ("keep_awake_requires_backup", base + "  keep_awake: true\n", False),
     ("keep_awake_opt_in", base + "  keep_awake: true\n  experimental_target_height: true\n", True),
     ("default_monitoring", base, True),
+    ("child_lock", base + "  child_lock:\n    name: Child lock\n  child_lock_status:\n    name: Child lock status\n  child_lock_available:\n    name: Child lock available\n", True),
+    ("child_lock_diagnostics_only", base + "  child_lock_status:\n    name: Child lock status\n  child_lock_available:\n    name: Child lock available\n", True),
+    ("child_lock_restore_disabled", base + "  child_lock:\n    name: Child lock\n    restore_mode: DISABLED\n", True),
+    ("child_lock_rejects_restore", base + "  child_lock:\n    name: Child lock\n    restore_mode: ALWAYS_OFF\n", False),
+    ("child_lock_rejects_inversion", base + "  child_lock:\n    name: Child lock\n    inverted: true\n", False),
     ("direct_requires_opt_in", base + "  target_height_mode: direct\n", False),
     ("direct_rejects_legacy_keep_awake", base + "  target_height_mode: direct\n  experimental_target_height: true\n  keep_awake: true\n", False),
     ("direct_auto", base + "  target_height_mode: direct\n  experimental_target_height: true\n  keep_awake: auto\n", True),
     ("preset_auto", base + "  target_height_mode: preset\n  experimental_target_height: true\n  keep_awake: auto\n", True),
+    ("auto_target", base + "  target_height_mode: auto\n  experimental_target_height: true\n  keep_awake: auto\n  target_height_backend:\n    name: Backend\n", True),
+    ("auto_monitor_only", base + "  target_height_mode: auto\n", True),
+    ("auto_legacy_keep_awake", base + "  target_height_mode: auto\n  experimental_target_height: true\n  keep_awake: true\n", True),
     ("unknown_target_mode", base + "  target_height_mode: automatic\n", False),
     ("uart_observation_only", base + "  uart_observation: true\n", True),
     ("raw_load_monitoring", base + "  load_raw:\n    name: Raw load\n", True),
@@ -109,6 +117,9 @@ for name, text, expected in cases:
     (work / (name + ".log")).write_text(result.stdout + result.stderr)
     passed = result.returncode == 0
     assert passed == expected, f"{name}: unexpected result, see log"
+    if name == "child_lock":
+        lock = yaml.safe_load(result.stdout)["desk_uart"][0]["child_lock"]
+        assert lock["restore_mode"] == "DISABLED", lock
     if name in ("raw_load_monitoring", "raw_load_inch_monitoring"):
         raw = yaml.safe_load(result.stdout)["desk_uart"][0]["load_raw"]
         assert raw["accuracy_decimals"] == 0, raw

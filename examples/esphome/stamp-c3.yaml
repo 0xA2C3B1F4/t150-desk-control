@@ -5,6 +5,9 @@
 # Power the Stamp through its own USB-C connection; leave 5V/3V3 unconnected.
 # These are 3.3V logic signals, not standard USB D+/D-.
 # Reference: https://docs.m5stack.com/en/core/Stamp-C3
+# Optional CL01 panel lock, including its status and availability.
+# packages:
+#   panel_lock: !include packages/child-lock.yaml
 substitutions:
   device_name: t150-desk-control-stamp-c3
   # Relative to the ESPHome data directory; use an absolute path for exact placement.
@@ -137,11 +140,16 @@ desk_uart:
     web_server:
       sorting_group_id: desk_group_recovery
       sorting_weight: 10
-  # User controls plus an automatic preset-3 keep-awake after 30 s of inactivity.
+  # Use auto for automatic stock/DT02 selection; see docs/esphome.md.
   experimental_preset_buttons: true
   experimental_target_height: true
   target_height_mode: preset
   keep_awake: auto
+  target_height_backend:
+    name: Target backend
+    web_server:
+      sorting_group_id: desk_group_diagnostics
+      sorting_weight: 25
   min_height: 73.0
   max_height: 118.0
   target_height:

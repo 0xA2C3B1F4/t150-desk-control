@@ -26,7 +26,9 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
 <label><input type="checkbox" id="saved"> I have saved the backup file on my computer and can select it again.</label>
 <div id="prepareControls" hidden>
 <button disabled id="patch">Prepare DT02 patch</button>
-<label>Or select a saved original or DT02 application file:
+<button disabled id="patchChildLock">Prepare panel lock (CL01)</button>
+<p class="note">CL01 includes DT02. With no valid saved lock record, it starts locked. While locked, all physical buttons, including local stopping gestures, are blocked. Remote unlock is required.</p>
+<label>Or select a saved original, DT02 or CL01 application file:
 <input type="file" id="file" accept=".bin,application/octet-stream"></label>
 <button disabled id="stage">Prepare selected file</button>
 </div>
@@ -45,11 +47,11 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
 <details><summary>Maintenance steps and image requirements</summary>
 <p>With controller power off, disconnect the motor cable. Keep the ESP32 powered and UART connected throughout maintenance.</p>
 <ol><li>Enter maintenance and select Read controller firmware. Turn only the controller off and on when the current step asks for it.</li>
-<li>Download the backup and confirm that it is saved on your computer. Prepare DT02 or select a saved application file.</li>
+<li>Download the backup and confirm that it is saved on your computer. Prepare DT02 or CL01, or select a saved application file.</li>
 <li>Confirm and arm installation. Restart the controller when instructed, then leave power connected throughout writing.</li>
 <li>Select Verify by full readback after writing. Restart the controller again when instructed. Only a complete readback verifies the installation.</li>
 <li>Finish maintenance, then restart the controller for normal operation. Reconnect the motor only with controller power off.</li></ol>
-<p>Installation erases application flash. A failed transfer may require restoring the original file. Only exact supported 55,296-byte original or DT02 application files can be installed. Unknown versions can be saved for research.</p>
+<p>Installation erases application flash. A failed transfer may require restoring the original file. Only exact supported 55,296-byte original, DT02 or CL01 application files can be installed. Unknown versions can be saved for research.</p>
 <p>Files in this page are temporary. The computer download is your persistent backup.</p>
 </details>
 <section id="researchSection" hidden><h2>Send an unknown version for research</h2>
@@ -60,6 +62,8 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
+const STOCK='bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf',DT02='e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff',CL01='81933d93b8bc28ef0eb8b29bf7ae1c7b9104f0a8e03c1c2f8096d509de0f75d3';
+const lockNotice='Without a valid saved lock record CL01 starts locked. All physical buttons, including local stopping gestures, are blocked while locked. Use remote unlock to enable them.';
 let status=null,locked=false,original=null,originalHash=null,selected=null,cancelUpload=false,guidanceKey=null,normalBootNeeded=false,sessionOwned=false,connectionError='',clientError='',pendingAction='',lastPhase='',finishedAt=0;
 // Each document owns a distinct session, including duplicated or reloaded tabs.
 const ownerBytes=new Uint8Array(16);crypto.getRandomValues(ownerBytes);
@@ -105,11 +109,12 @@ function render(){
  $('transferProgress').hidden=!status.active&&phase!=='uploading';
  $('progressText').textContent=`${status.progress} / ${status.progress_max||status.size||55296} bytes`;
  renderGuidance();
- for(const id of ['claim','read','patch','stage','install','verify','exit','backupDownload','preparedDownload'])$(id).disabled=locked||status.pending||status.active;
+ for(const id of ['claim','read','patch','patchChildLock','stage','install','verify','exit','backupDownload','preparedDownload'])$(id).disabled=locked||status.pending||status.active;
  $('cancel').disabled=(locked&&phase!=='uploading')||status.pending||(!status.active&&status.state!=='uploading');
  $('backupDownload').disabled=locked||status.state!=='read_complete';
  $('preparedDownload').disabled=locked||!['staged','verified'].includes(status.state);
- $('patch').disabled=locked||status.pending||!status.preflight_seconds||status.state!=='read_complete'||status.sha256!=='bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf';
+ $('patch').disabled=locked||status.pending||!status.preflight_seconds||status.state!=='read_complete'||status.sha256!==STOCK;
+ $('patchChildLock').disabled=locked||status.pending||!status.preflight_seconds||status.state!=='read_complete'||![STOCK,DT02].includes(status.sha256);
  $('install').disabled=locked||status.pending||!status.preflight_seconds||status.state!=='staged';
  $('verify').disabled=locked||!['readback_required','staged'].includes(status.state)||!status.recovery_required;
  $('exit').disabled=locked||status.pending||status.active||status.recovery_required||Date.now()-finishedAt<3000;
@@ -148,17 +153,17 @@ function renderGuidance(){
   attention=true;
  }else if(status.state==='verified'){
   title='All application bytes verified';
-  detail='Select Finish maintenance to release UART and return to normal desk operation. Reconnect the motor only with controller power off.';
+  detail='Select Finish maintenance to release UART and return to normal desk operation. Reconnect the motor only with controller power off.'+(status.sha256===CL01?' '+lockNotice:'');
   attention=true;
  }else if(expired){
   title='Preflight expired. Read the controller again';
   detail='Save any backup you still need, then select Read controller firmware to obtain a fresh preflight before preparing or installing an image.';
   attention=true;
  }else if(status.state==='read_complete'){
-  const alreadyPatched=status.sha256==='e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff';
-  const known=alreadyPatched||status.sha256==='bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf';
-  title=alreadyPatched?'DT02 is already installed':'Read complete. Save the controller backup';
-  detail=alreadyPatched?'The controller read matches DT02. You can save this backup; preparing DT02 again is not needed. Leave controller power on.':'Download the original backup and save it on your computer before preparing an image. Leave controller power on.';
+  const alreadyPatched=status.sha256===DT02,alreadyLocked=status.sha256===CL01;
+  const known=alreadyPatched||alreadyLocked||status.sha256===STOCK;
+  title=alreadyLocked?'CL01 panel lock is already installed':alreadyPatched?'DT02 is already installed':'Read complete. Save the controller backup';
+  detail=alreadyLocked?'The controller read matches CL01. Save this backup. To remove CL01, select your saved original or DT02 application file. '+lockNotice:alreadyPatched?'The controller read matches DT02. Save this backup before preparing CL01 or selecting a saved image. Leave controller power on.':'Download the original backup and save it on your computer before preparing an image. Leave controller power on.';
   if(!known){
    title=status.recovery_required?'Recovery read complete. Save this read':'Unknown firmware. Save the backup';
    detail=status.recovery_required?'Save this read, then select your saved original application file and prepare it for restoration. Desk controls remain paused.':
@@ -166,7 +171,7 @@ function renderGuidance(){
   }
  }else if(status.state==='staged'){
   title='Image prepared. Confirm and arm installation';
-  detail='Installation erases application flash; a failed transfer may require restoring the original file. Confirm installation below and select Arm installation. Leave controller power on until the instruction changes to OFF, then ON.';
+  detail='Installation erases application flash; a failed transfer may require restoring the original file. Confirm installation below and select Arm installation. Leave controller power on until the instruction changes to OFF, then ON.'+(status.sha256===CL01?' '+lockNotice:'');
  }else if(normalBootNeeded&&status.state==='idle'&&!status.claimed){
   title='Maintenance finished. Restart the controller for normal use';
   detail='Turn only the controller off and on once more to start its application. Keep the ESP32 powered. Reconnect the motor only while controller power is off.';
@@ -216,6 +221,7 @@ $('saved').onchange=()=>render();
 $('read').onclick=()=>task(async()=>{original=null;$('saved').checked=false;await action('read');});
 $('backupDownload').onclick=()=>task(async()=>{original=await download();originalHash=status.sha256;save(original,`t150-backup-${status.sha256.slice(0,12)}.bin`);});
 $('patch').onclick=()=>task(async()=>{await confirmBackup();await action('patch');});
+$('patchChildLock').onclick=()=>task(async()=>{await confirmBackup();await action('patch_child_lock');});
 $('file').onchange=async()=>{const f=$('file').files[0];selected=null;clientError='';if(f){if(f.size!==55296){clientError='Select a 55,296-byte application file.';render();return;}selected=new Uint8Array(await f.arrayBuffer());}render();};
 $('stage').onclick=()=>task(async()=>{if(!selected)throw Error('Select an application file first.');await confirmBackup();await action('stage');cancelUpload=false;for(let offset=0;offset<selected.length;offset+=128){const data=Array.from(selected.slice(offset,offset+128),x=>x.toString(16).padStart(2,'0')).join('');if(cancelUpload){await action('cancel');throw Error('File preparation cancelled.');}
  const r=await fetch('/desk-firmware/action',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Desk-CSRF':status.csrf},body:new URLSearchParams({owner,revision:String(status.revision),action:'chunk',offset:String(offset),data})});

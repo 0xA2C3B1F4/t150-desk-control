@@ -30,6 +30,7 @@ Each header includes the one it builds on, so including `presets.h` also makes
 | `desk_protocol/height_profile.h` | standard headers only | Shared display/position conversions, mathematical profile checks and the existing T150 control policy |
 | `desk_protocol/protocol.h` | `height_profile.h` | Framing (`encode`, `Parser`), command builders, typed decoders, `metric_display`, and the small helpers `HeightMonitor`, `AckTracker` and `ButtonPulse` |
 | `desk_protocol/target.h` | `protocol.h` | Metric target conversion (`metric_target_raw`), typed parameter reads, and the `TemporaryPreset` transaction used for target height and keep-awake |
+| `desk_protocol/target_detection.h` | `direct_target.h`, `identity.h` | Read-only stock/DT02 backend selection for the supported identity |
 | `desk_protocol/direct_target.h` | `protocol.h` | Strict DT02 GET/SET with pending-brake output |
 | `desk_protocol/uart_observation.h` | standard headers only | Cumulative diagnostics; no motion decisions |
 | `desk_protocol/presets.h` | `target.h` | Preset height conversion (`preset_height`), preset reads, and the `PresetSettings` read/write transaction |
@@ -547,3 +548,23 @@ The transport must not grant UART ownership elsewhere until that brake is
 handled. It never creates preset writes, EEPROM saves, retries or a retarget
 queue. A known stock image rejects D1 with EE/03; this is not a safe-opcode
 reservation across unknown firmware revisions.
+
+### Automatic target detection
+
+`TargetDetection` owns a read-only transaction: six exact identity reads,
+coefficients 0B/0C, then a nonce-bound DT02 GET. Stock selection requires
+two exact `EE 03 sequence_be16` replies, separated by a fresh model read.
+The error has no nonce; the caller must hold exclusive UART command ownership.
+Accepted sequences advance modulo 16 bits; an error may advance at most 32
+from the latest accepted response or height sample. Replies expire after 800 ms.
+Silence, unsupported identity, a malformed capability reply or conflicting
+probe results leave the backend unknown. No movement or persistence command
+is generated. The adapter cancels detection on other commands, waits at least
+800 ms before restarting, and never carries a requested target across it.
+
+## CL01 panel lock extension
+
+CL01 uses a separate nonce-bound `D3` request and `D4` response. A DT02
+capability reply does not imply CL01 support. See the [CL01 wire format and
+persistence contract](child-lock.md#uart-protocol). Lock changes write EEPROM
+only after idle checks; GET reports cached runtime state.

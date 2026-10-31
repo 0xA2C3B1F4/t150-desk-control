@@ -256,7 +256,8 @@ observation continuity, not physical standstill or firmware attestation.
 | `experimental_preset_buttons` | boolean | `false` | — |
 | `preset_1` / `preset_2` / `preset_3` | button | — | `experimental_preset_buttons: true` |
 | `experimental_target_height` | boolean | `false` | — |
-| `target_height_mode` | `preset` or `direct` | `preset` | Direct requires experimental target opt-in and reviewed DT02 firmware |
+| `target_height_mode` | `auto`, `preset` or `direct` | `preset` | Auto detects the supported stock/DT02 identity; direct requires experimental target opt-in |
+| `target_height_backend` | text sensor | not created | Configured or detected target backend, `Unknown` or `Disabled` |
 | `target_height` | number, 0.1 selected-unit steps | — | `experimental_target_height: true` |
 | `up` / `down` | button, 1 cm target step | — | `experimental_target_height: true` |
 | `min_height` / `max_height` | float, 73.0–118.0 cm | `73.0` / `118.0` | `min_height` below `max_height`; also bounds the height numbers |
@@ -268,6 +269,15 @@ transaction or fault, they also work while height changes; the desk controller
 decides how that press affects movement. During automatic keep-awake, see
 [preset priority](#normal-operation). A target-height transaction has its own
 [braking and restoration sequence](#target-height-and-preset-preservation).
+
+### Panel lock
+
+The optional `child_lock` switch, `child_lock_status` text sensor and
+`child_lock_available` binary sensor require CL01.
+Support is detected by a separate UART query. ON disables physical panel buttons,
+including their ability to stop remote movement; remote Stop remains available.
+Changes are accepted only while idle and are confirmed by the controller. See
+[panel lock](child-lock.md) for first-installation behavior, persistence and faults.
 
 ### Preset heights and recovery
 
@@ -339,6 +349,35 @@ Use a Home Assistant number slider that sends its value on release. Custom
 cards may send intermediate values; the ESP cannot observe pointer release.
 Optional `up`/`down` component buttons request 1 cm targets, not held direction
 keys. The Stamp example intentionally omits them.
+
+### Automatic backend selection
+
+Set `experimental_target_height: true` and `target_height_mode: auto` to enable
+detection. Use `keep_awake: auto` to select the corresponding wake behavior.
+After fresh, settled height arrives, the adapter reads the controller identity
+and height coefficients, then checks for DT02. A valid DT02 reply selects
+`Direct target (DT02)`. The supported stock identity with two explicit
+unsupported-command replies selects `Preset-based`. The optional
+`target_height_backend` diagnostic shows the selection.
+
+Auto currently recognises model `T150-22-03`, manufacturer `LUMI LEGEND GROUP`,
+identity fields 05/06/07 `1.5.0` / `1.6` / `1.9.0118`, date field `21/01/18`,
+and coefficients 24/39. DT02 retains these identity fields. Other identities are not sent the private DT02 query.
+For other stock revisions, select `target_height_mode: preset` explicitly.
+These runtime replies establish compatibility, not a firmware hash match.
+
+While detection is incomplete or a reply is missing, target requests are refused
+and no keep-awake cycle starts. Native preset buttons and Stop remain available. Recovery requests wait for
+the read-only detection transaction to finish. A failed check stays `Unknown` until the connection is re-established
+or firmware maintenance ends. Detection repeats after a telemetry gap or
+maintenance; existing braking and preset recovery finish before the backend
+can change. No target is replayed across detection. Select the target again
+once Control status is ready.
+
+Existing configurations and control examples retain the default `preset` mode.
+Automatic detection has host/PTY coverage; stock detection still needs a
+device check before it becomes the example default. Explicit `preset`
+and `direct` modes remain available without automatic selection.
 
 ### Direct backend
 
@@ -441,14 +480,18 @@ connecting the ESP to another desk.
 ### Enabling it
 
 `keep_awake` defaults to `false`. Values other than `false` require
-`experimental_target_height: true`. The full examples explicitly select preset
-mode and `auto`:
+`experimental_target_height: true`. With automatic backend selection, the workaround
+runs only after stock detection, and DT02 uses its sleep-wrap feature. Unknown
+means neither backend is allowed to start it. For explicit backend settings:
 
 | Value | Preset mode | Direct mode |
 |---|---|---|
 | `false` | Workaround disabled | Workaround disabled |
 | `true` | Existing preset-3 workaround | Configuration error |
 | `auto` | Permission to use the existing preset workaround | Use the verified DT02 sleep-wrap feature; never borrow presets |
+
+In automatic backend mode, `true` also permits the preset workaround only on
+the detected stock backend; it never borrows presets on DT02.
 
 No extra keep-awake entity is created. Logs and existing Control status and
 UART connected diagnostics show readiness. The sleep-wrap feature is separate

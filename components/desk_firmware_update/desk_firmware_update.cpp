@@ -1,5 +1,6 @@
 #include "desk_firmware_update.h"
 #include "dt02_patch.h"
+#include "child_lock_patch.h"
 #include "partial_recovery.h"
 #include "ui.h"
 #include <cstdio>
@@ -14,7 +15,7 @@
 namespace esphome::desk_firmware_update {
 namespace {
 constexpr uint32_t RECOVERY_TAG=0x44543032;
-bool known(const char *hash) { return !std::strcmp(hash,STOCK_SHA) || !std::strcmp(hash,DT02_SHA); }
+bool known(const char *hash) { return !std::strcmp(hash,STOCK_SHA) || !std::strcmp(hash,DT02_SHA) || !std::strcmp(hash,CL01_SHA); }
 bool hex_string(const std::string &s,size_t length) {
   if (s.size()!=length) return false;
   for (char c:s) if (!((c>='0'&&c<='9')||(c>='a'&&c<='f'))) return false;
@@ -24,10 +25,17 @@ unsigned hex_digit(char c) { return c<='9' ? c-'0' : c-'a'+10; }
 }
 void FirmwareUpdate::setup() {
   recovery_preference_=global_preferences->make_preference<RecoveryRecord>(0x71504433);
-  recovery_=recovery_preference_.load(&recovery_record_) && recovery_record_.magic==RECOVERY_TAG &&
+  bool loaded=recovery_preference_.load(&recovery_record_);
+  if (!loaded) {
+    recovery_record_={};
+    auto previous=global_preferences->make_preference<LegacyRecoveryRecord>(0x71504433);
+    loaded=previous.load(static_cast<LegacyRecoveryRecord *>(&recovery_record_));
+  }
+  recovery_=loaded && recovery_record_.magic==RECOVERY_TAG &&
       (recovery_record_.phase==1 || recovery_record_.phase==2) &&
       recovery_record_.source[64]==0 && recovery_record_.target[64]==0 && recovery_record_.write_target[64]==0 &&
-      known(recovery_record_.source) && known(recovery_record_.target) && known(recovery_record_.write_target);
+      known(recovery_record_.source) && known(recovery_record_.target) && known(recovery_record_.write_target) &&
+      recovery_record_.original_blocks_valid<=1;
   if (!recovery_) recovery_record_={};
   if (recovery_) { owned_=desk_->begin_firmware_export(true); phase_=Phase::Error; error_="Previous installation requires readback or original-image recovery"; }
   FirmwareExport::setup();
@@ -43,6 +51,7 @@ bool FirmwareUpdate::save_recovery_(bool value) {
     recovery_record_.phase=2;
     recovery_record_.attempt=esp_random();
     if (!damaged) {
+      recovery_record_.original_blocks_valid=0;
       std::memcpy(recovery_record_.source,source_hash_,65);
       std::memcpy(recovery_record_.source_blocks,preflight_blocks_,sizeof(preflight_blocks_));
       std::memcpy(recovery_record_.target,hash_,65);
@@ -53,6 +62,12 @@ bool FirmwareUpdate::save_recovery_(bool value) {
       // remains bound to its own block hash; the target slot keeps the original.
       std::memcpy(recovery_record_.source,hash_,65);
       block_hashes_(recovery_record_.source_blocks);
+    }
+    // A DT02/CL01 attempt can contain both patched identities. Preserve both
+    // when an original-only recovery is itself interrupted, including reboot.
+    if (damaged && !std::strcmp(hash_,STOCK_SHA)) {
+      block_hashes_(recovery_record_.original_blocks);
+      recovery_record_.original_blocks_valid=1;
     }
     std::memcpy(recovery_record_.write_target,hash_,65);
   } else {
@@ -75,13 +90,15 @@ bool FirmwareUpdate::recovery_source_matches_() {
   if (!recovery_ || recovery_record_.phase!=2 || size_!=IMAGE_SIZE) return false;
   for (size_t block=0;block<54;++block) {
     if (!std::memcmp(preflight_blocks_[block],recovery_record_.source_blocks[block],32) ||
-        !std::memcmp(preflight_blocks_[block],recovery_record_.target_blocks[block],32)) continue;
+        !std::memcmp(preflight_blocks_[block],recovery_record_.target_blocks[block],32) ||
+        (recovery_record_.original_blocks_valid &&
+         !std::memcmp(preflight_blocks_[block],recovery_record_.original_blocks[block],32))) continue;
     bool erased=true;
     for (size_t i=0;i<1024;++i) if (buffer_.get()[block*1024+i]!=255) { erased=false; break; }
     if (erased) continue;
     // Retain at most one torn programmed block. Its contents are NOT admitted
     // until the user supplies the exact stock image at seal/install time.
-    if (block>=PAYLOAD_SIZE/1024 || partial_block_>=0 || !partial_prefix_length(buffer_.get()+block*1024)) {
+    if (block>=recovery_payload_size_()/1024 || partial_block_>=0 || !partial_prefix_length(buffer_.get()+block*1024)) {
       partial_block_=-1; return false;
     }
     partial_block_=int(block);
@@ -91,22 +108,32 @@ bool FirmwareUpdate::recovery_source_matches_() {
 }
 bool FirmwareUpdate::validate_partial_recovery_() const {
   if (!recovery_ || recovery_record_.phase!=2 || partial_block_<0 ||
-      partial_block_>=int(PAYLOAD_SIZE/1024) || std::strcmp(hash_,STOCK_SHA) || !buffer_) return false;
+      partial_block_>=int(recovery_payload_size_()/1024) || std::strcmp(hash_,STOCK_SHA) || !buffer_) return false;
   const size_t base=size_t(partial_block_)*1024;
   // A failed recovery attempt rewrites write_target before erase, so derive
-  // both pinned candidates from the uploaded original. Each is admitted only
+  // all pinned candidates from the uploaded original. Each is admitted only
   // through the block hash recorded for the same persistent identity.
-  for (const char *identity : {STOCK_SHA,DT02_SHA}) {
+  for (const char *identity : {STOCK_SHA,DT02_SHA,CL01_SHA}) {
     const uint8_t *recorded=!std::strcmp(recovery_record_.source,identity) ? recovery_record_.source_blocks[partial_block_]
-        : !std::strcmp(recovery_record_.target,identity) ? recovery_record_.target_blocks[partial_block_] : nullptr;
+        : !std::strcmp(recovery_record_.target,identity) ? recovery_record_.target_blocks[partial_block_]
+        : !std::strcmp(identity,STOCK_SHA) && recovery_record_.original_blocks_valid ? recovery_record_.original_blocks[partial_block_] : nullptr;
     if (!recorded) continue;
     uint8_t expected[1024], digest[32];
-    const bool patched=!std::strcmp(identity,DT02_SHA);
-    for (size_t i=0;i<1024;++i) expected[i]=patched ? dt02_byte(base+i,buffer_.get()[base+i]) : buffer_.get()[base+i];
+    for (size_t i=0;i<1024;++i) {
+      const uint8_t stock=buffer_.get()[base+i];
+      expected[i]=!std::strcmp(identity,CL01_SHA) ? cl01_byte(base+i,stock)
+          : !std::strcmp(identity,DT02_SHA) ? dt02_byte(base+i,stock) : stock;
+    }
     sha256::SHA256 sha; sha.init(); sha.add(expected,sizeof(expected)); sha.calculate(); sha.get_bytes(digest);
     if (!std::memcmp(digest,recorded,32) && partial_prefix_matches(partial_image_,expected)) return true;
   }
   return false;
+}
+size_t FirmwareUpdate::payload_size_() const {
+  return !std::strcmp(hash_,CL01_SHA) ? 26624 : PAYLOAD_SIZE;
+}
+size_t FirmwareUpdate::recovery_payload_size_() const {
+  return !std::strcmp(recovery_record_.source,CL01_SHA) || !std::strcmp(recovery_record_.target,CL01_SHA) ? 26624 : PAYLOAD_SIZE;
 }
 bool FirmwareUpdate::active_() const {
   return phase_==Phase::Reading || phase_==Phase::Writing || phase_==Phase::Verifying;
@@ -175,14 +202,29 @@ void FirmwareUpdate::execute_(const std::string &action) {
     if (phase_!=Phase::Ready || !buffer_) { fail_("Read and save the original backup first"); return; }
     backup_=true; return;
   }
-  if ((action=="patch" || action=="stage") && buffer_ && buffer_.use_count()>1) {
+  if ((action=="patch" || action=="patch_child_lock" || action=="stage") && buffer_ && buffer_.use_count()>1) {
     error_="Wait for the image download to finish"; return;
+  }
+  if ((action=="patch" || action=="patch_child_lock" || action=="stage") && recovery_ && known(source_hash_)) {
+    fail_("Read image is not recorded for this recovery; read a recorded complete image or use external recovery"); return;
   }
   if (action=="patch") {
     if (phase_!=Phase::Ready || !backup_ || std::strcmp(hash_,STOCK_SHA) ||
         !apply_dt02(buffer_.get(),size_)) { fail_("Patch requires the exact supported original and a saved backup"); return; }
     digest_();
     if (std::strcmp(hash_,DT02_SHA)) { fail_("Generated patch hash mismatch"); return; }
+    phase_=Phase::Staged; return;
+  }
+  if (action=="patch_child_lock") {
+    if (phase_!=Phase::Ready || !backup_ || !preflight_ || !tail_erased_ ||
+        uint32_t(millis()-preflight_at_)>300000 ||
+        (std::strcmp(hash_,STOCK_SHA) && std::strcmp(hash_,DT02_SHA))) {
+      fail_("CL01 requires the exact supported original or DT02 and a saved backup"); return;
+    }
+    if ((!std::strcmp(hash_,STOCK_SHA) && !apply_dt02(buffer_.get(),size_)) ||
+        !apply_child_lock(buffer_.get(),size_)) { fail_("CL01 patch precondition failed"); return; }
+    digest_();
+    if (std::strcmp(hash_,CL01_SHA)) { fail_("Generated CL01 hash mismatch"); return; }
     phase_=Phase::Staged; return;
   }
   if (action=="stage") {
@@ -208,7 +250,9 @@ void FirmwareUpdate::execute_(const std::string &action) {
     attempt_had_recovery_=recovery_ && recovery_record_.phase==2;
     if (!save_recovery_(true)) { fail_("Cannot save recovery marker; no write started"); return; }
     error_baseline_=errors_();
-    if (uart_flush_input(port_)!=ESP_OK || !sender_.begin(buffer_.get(),size_,transmit_,this,millis())) {
+    const auto profile=!std::strcmp(hash_,CL01_SHA) ? desk_protocol::FirmwareInstall::Profile::ChildLockCL01
+        : desk_protocol::FirmwareInstall::Profile::OriginalDT02;
+    if (uart_flush_input(port_)!=ESP_OK || !sender_.begin(buffer_.get(),size_,transmit_,this,millis(),profile)) {
       fail_("Cannot arm installation; recovery marker retained"); return;
     }
     preflight_=false; phase_=Phase::Writing; error_=nullptr; fast_loop_.start(); return;
@@ -355,7 +399,7 @@ void FirmwareUpdate::handleRequest(AsyncWebServerRequest *request) {
       ((phase_==Phase::Writing && sender_.state()==desk_protocol::FirmwareInstall::State::Boot) ||
        ((phase_==Phase::Reading || phase_==Phase::Verifying) && receiver_.state()==Receiver::State::Boot)) ? "true":"false",pending_.empty()?"false":"true",recovery_?"true":"false",unsigned(size_),
       unsigned(phase_==Phase::Writing ? sender_.acked_blocks()*1024 : phase_==Phase::Uploading ? upload_offset_ : receiver_.size()),
-      unsigned(phase_==Phase::Writing ? PAYLOAD_SIZE : size_),
+      unsigned(phase_==Phase::Writing ? payload_size_() : size_),
       unsigned(preflight_ && uint32_t(millis()-preflight_at_)<300000 ? (300000-uint32_t(millis()-preflight_at_))/1000 : 0),
       hash_,source_hash_,unsigned(heap_caps_get_free_size(MALLOC_CAP_8BIT)),unsigned(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)),research_url_.c_str());
     if (length<0 || size_t(length)>=json.size()) { send(500,"text/plain","Status response too large"); return; }
@@ -397,7 +441,7 @@ void FirmwareUpdate::handleRequest(AsyncWebServerRequest *request) {
     std::snprintf(accepted,sizeof(accepted),"{\"revision\":%lu}",(unsigned long)revision_);
     send(200,"application/json",accepted); return;
   }
-  if (action!="read" && action!="backup" && action!="patch" && action!="stage" && action!="seal" &&
+  if (action!="read" && action!="backup" && action!="patch" && action!="patch_child_lock" && action!="stage" && action!="seal" &&
       action!="install" && action!="verify" && action!="cancel" && action!="exit") { send(409,"text/plain","Unknown action"); return; }
   if ((action=="install" || action=="backup") && request->arg("confirmed")!="yes") {
     send(409,"text/plain","Explicit confirmation required"); return;

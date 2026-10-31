@@ -36,7 +36,7 @@ for model identifiers and sources.
 - Displays height, targets and preset settings in manually selected cm or inches.
 - Recalls three presets and edits their heights through Configuration entities.
 - Accepts a target height using the default preset-3 backup/restoration path,
-  or an explicitly selected DT02 direct firmware backend.
+  or the DT02 direct firmware backend, with optional [automatic selection](docs/esphome.md#automatic-backend-selection).
 - Sends a controlled Stop, with visible reasons when further control is blocked.
 - Keeps an awake panel active through optional [idle keep-awake](docs/esphome.md#keep-awake).
 - Offers experimental timer buttons and optional raw load-limit settings.
@@ -187,4 +187,8 @@ power cycle while the ESP32 stays powered. The normal examples exclude it.
 Use [stamp-c3-firmware-export.yaml](examples/esphome/stamp-c3-firmware-export.yaml)
 only when the reader is needed.
 
-Optional [firmware maintenance](docs/firmware-update.md) provides backup, DT02 patch preparation, installation and complete application readback from the device web page.
+Optional [firmware maintenance](docs/firmware-update.md) provides backup, DT02 or CL01 patch preparation, installation and complete application readback from the device web page.
+
+The optional [panel lock](docs/child-lock.md) disables physical panel buttons and
+retains the selected state through power loss. It requires CL01 firmware; remote
+controls remain available, while locked panel buttons cannot stop remote movement.
