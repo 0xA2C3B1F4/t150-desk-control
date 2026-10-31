@@ -191,10 +191,14 @@ or the desk settles. Avoid local M/save and preset-3 use until the transaction e
 The controller can autosave all presets while one is borrowed; RAM restoration
 neither checks nor repairs EEPROM.
 
-A new target during an active preset-target move brakes, restores the preset,
-then recalls the latest target. Stop, a fault or lost telemetry cancels the queued
-request. Conflicts during preparation or cleanup are rejected. Long moves and
-full physical retarget behavior remain unverified.
+A different target while monitoring a preset-target move brakes and restores
+the original preset if needed. No replacement target is queued. Wait for settling
+and select the target again to start another move. Repeating the same active
+target does not interrupt it. During preset preparation or restoration, target
+requests are rejected without braking; use Stop to interrupt motion. Requests
+during braking are also rejected.
+Hardware checks on DT02+CL01R3 cover 73–116 cm travel and stopping on a changed
+target; see [validation](validation.md). EEPROM persistence remains unverified.
 
 Editing a preset-height number does not move the desk. The component verifies
 its RAM value; the controller may save it later. Before deliberately changing

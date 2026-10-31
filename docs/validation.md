@@ -7,11 +7,11 @@ Host tests and successful builds do not establish physical behavior.
 
 | Feature | Checked on hardware | Remaining limits |
 |---|---|---|
-| Stamp-C3 controls | Browser login, height, preset recall/editing, Stop, UART reconnect and raw-load reporting | Full-range positioning accuracy unmeasured |
-| Preset target backend | Early restoration during short moves; backup retention across ESP restart; Restore/Accept after controller restart | Long moves, full retarget behavior and EEPROM restoration unverified |
+| Stamp-C3 controls | Browser login, height, native preset 1/2 recalls over 73–116 cm, preset 3 recall, preset editing, Stop, UART reconnect and raw-load reporting | Independent positioning accuracy unmeasured |
+| Preset target backend | 73–116–73 cm on CL01R3; changed-target Stop without automatic restart; early RAM restoration and unchanged preset readbacks; ESP restart backup and Restore/Accept | EEPROM restoration/persistence and other target-change timing cases unverified |
 | Keep-awake | Preset priority, inactivity timing and interruption; patched telemetry continuity | Observed continuity does not prove execution of a particular RTC branch |
-| DT02 direct target | Supervised moves, Stop, target-change stopping, panel interruption and cold-start movement | Full-range positioning accuracy unmeasured |
-| Firmware maintenance | Browser original/DT02 install and complete readback; browser cancellation/retry; partial-block power-loss recovery through the maintenance API | CL01 browser installation is host-tested, not yet device-tested |
+| DT02 direct target | 73–116–73 cm travel on CL01R3, remote Stop, unlocked-panel interruption and unchanged preset readbacks; earlier target-change stopping and cold-start movement | Independent positioning accuracy and travel outside 73–116 cm unmeasured |
+| Firmware maintenance | Browser original/DT02/CL01 install and complete readback; browser cancellation/retry; partial-block power-loss recovery through the maintenance API | Results apply to the tested controller and supported application hashes |
 | CL01 panel lock | Complete firmware readback; button blocking, remote movement/Stop and persistence; ESPHome browser lock/unlock and confirmed-state colors; locking tested with the motor connected | EEPROM brownouts, interrupt latency and held-key contact bounce unmeasured |
 | ESP32-WROOM-32 and inch display | Not hardware-tested | Build and simulated-peer coverage only |
 | Timers and load settings | Raw-load readings checked; controller parameters investigated | Full timer/alarm sequence and downward-threshold adjustment unverified; load units uncalibrated |

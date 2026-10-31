@@ -118,12 +118,9 @@ class DeskUART : public Component, public uart::UARTDevice {
   void controls_loop_(uint32_t now);
   const char *control_reason_(uint32_t now) const;
   bool result_(bool accepted, const char *message);
-  void discard_retarget_(const char *reason);
   text_sensor::TextSensor *control_status_{nullptr}, *command_result_{nullptr};
   binary_sensor::BinarySensor *stop_locked_sensor_{nullptr};
-  bool retarget_pending_{false}, last_stop_locked_{false}, sync_target_{false};
-  float retarget_cm_{0};
-  uint32_t retarget_started_{0};
+  bool last_stop_locked_{false}, sync_target_{false};
   const char *last_control_status_{nullptr};
   void timer_loop_(uint32_t now);
   desk_protocol::TimerSequence timer_{};

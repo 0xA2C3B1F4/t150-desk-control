@@ -57,7 +57,6 @@ bool DeskUART::begin_firmware_export(bool motor_isolated) {
   this->firmware_export_active_ = true;
   if (motor_isolated) {
     this->discard_pending_preset_("Pending preset cancelled by firmware maintenance");
-    this->discard_retarget_("Pending target cancelled by firmware maintenance");
     this->target_move_.connection_lost(now);
     this->preset_settings_.cancel("Firmware maintenance; refresh presets later");
     this->timer_ = {};
@@ -392,7 +391,7 @@ bool DeskUART::recall_preset(uint8_t slot) {
     this->result_(true, "Preset waiting for keep-awake cleanup (maximum 4 seconds)");
     return this->pending_preset_loop_(now);
   }
-  if (this->child_lock_busy_() || this->preset_settings_.busy() || this->retarget_pending_ || this->timer_.busy() || this->target_move_.busy() || this->limit_phase_ != LimitPhase::Idle || this->stop_latched_ || !this->motion_enabled_ || this->release_fault_ || !this->monitor_.fresh(now) ||
+  if (this->child_lock_busy_() || this->preset_settings_.busy() || this->timer_.busy() || this->target_move_.busy() || this->limit_phase_ != LimitPhase::Idle || this->stop_latched_ || !this->motion_enabled_ || this->release_fault_ || !this->monitor_.fresh(now) ||
       this->release_ack_.pending() || slot < 1 || slot > 3) {
     return this->result_(false, this->control_reason_(now));
   }
@@ -443,7 +442,6 @@ bool DeskUART::stop() {
   // Local synchronous transmission: no subscription, ACK wait or motion queue.
   // Repeated detector callbacks must not continually move the braking target.
   this->preset_settings_.cancel(STOP_PRESET_REASON);
-  this->discard_retarget_("Pending target cancelled by Stop");
   this->sync_target_ = true;
   const uint32_t now = millis();
   if (this->accept_current_active_ || this->recovery_check_active_ || this->restore_requested_)
@@ -589,7 +587,7 @@ void DeskUART::limit_loop_(uint32_t now) {
     }
     return;
   }
-  if (this->child_lock_busy_() || this->detection_.busy() || this->preset_settings_.busy() || this->retarget_pending_ || this->timer_.busy() || this->target_move_.busy() || this->direct_.busy() || !this->monitor_.fresh(now) || this->pulse_.active() || this->release_ack_.pending() || this->stop_ack_.pending()) return;
+  if (this->child_lock_busy_() || this->detection_.busy() || this->preset_settings_.busy() || this->timer_.busy() || this->target_move_.busy() || this->direct_.busy() || !this->monitor_.fresh(now) || this->pulse_.active() || this->release_ack_.pending() || this->stop_ack_.pending()) return;
   for (uint8_t offset = 0; offset < 2; ++offset) {
     const uint8_t i = (this->next_limit_ + offset) % 2;
     if (this->limit_numbers_[i] && static_cast<uint32_t>(now - this->last_limit_poll_) >= (this->original_known_[i] ? 5000U : 1000U)) {
@@ -602,7 +600,7 @@ bool DeskUART::preset_access_allowed_(uint32_t now) const {
   return !this->child_lock_busy_() && !this->detection_.busy() && !this->journal_error_() && !this->journal_recheck_pending_ && !this->pending_preset_ && !this->firmware_export_active_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
          static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
          static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000 &&
-         !this->target_move_.busy() && !this->direct_.busy() && !this->retarget_pending_ && !this->timer_.busy() &&
+         !this->target_move_.busy() && !this->direct_.busy() && !this->timer_.busy() &&
          !this->stop_latched_ && !this->release_fault_ && !this->pulse_.active() &&
          !this->release_ack_.pending() && !this->stop_ack_.pending() && this->limit_phase_ == LimitPhase::Idle;
 }
@@ -764,7 +762,6 @@ void DeskUART::invalidate_journal_session_() {
   this->accept_current_active_ = this->restore_requested_ = this->recovery_check_active_ = false;
   this->keep_awake_recovery_ = false;
   this->discard_pending_preset_("Pending preset cancelled by connection loss; press again");
-  this->discard_retarget_("Pending target cancelled by connection loss; request again");
 }
 void DeskUART::check_retained_preset_(uint16_t preset3_raw) {
   if (this->journal_error_()) return;
@@ -872,14 +869,10 @@ bool DeskUART::move_to_height(float cm) {
     return this->result_(false, "Retained preset backup needs a fresh read after connection loss");
   if (this->keep_awake_active_)
     return this->result_(false, "Keep-awake preset transaction in progress; request again after restoration");
-  // Only an already active slider move may be replaced. Never queue across a
-  // stale link, timer operation, boot recovery or a failed transaction.
+  // A different target during an active move is only a Stop request.
+  // A new move requires a fresh request after braking and preset restoration.
   if (this->child_lock_busy_() || this->preset_settings_.busy() || this->release_fault_ || !this->monitor_.fresh(now) || this->timer_.busy())
     return this->result_(false, this->control_reason_(now));
-  if (this->retarget_pending_) {
-    this->retarget_cm_ = cm;  // latest wins; do not extend the original deadline
-    return this->result_(true, "Latest target selected; waiting for brake and preset cleanup");
-  }
   using Phase = desk_protocol::TemporaryPreset::Phase;
   if ((this->target_move_.phase() == Phase::Moving || this->target_move_.phase() == Phase::Monitoring) && !this->stop_latched_) {
     // Identical HA updates must not interrupt an otherwise valid move.
@@ -887,11 +880,9 @@ bool DeskUART::move_to_height(float cm) {
     if (!this->height_profile_.target_raw(static_cast<uint16_t>(std::lround(cm * 10)), raw))
       return this->result_(false, "Target outside supported height profile");
     if (raw == this->target_move_.target()) return this->result_(true, "Target already active");
-    this->stop();
-    this->retarget_cm_ = cm;
-    this->retarget_started_ = now;
-    this->retarget_pending_ = true;
-    return this->result_(true, "New target accepted; braking before a separate recall");
+    const bool stopped = this->stop();
+    return this->result_(false, stopped ? "Stopped; select target again after the desk settles" :
+                         "Stop request not sent; inspect Control status before another target");
   }
   if (this->stop_latched_ || this->stable_ms_(now) < 1500 ||
       this->pulse_.active() || this->release_ack_.pending() || this->stop_ack_.pending() ||
@@ -913,7 +904,6 @@ void DeskUART::invalidate_detection_() {
   this->detection_cancelled_at_ = millis();
   this->discard_pending_preset_("Pending preset cancelled; firmware detection required");
   // Keep ownership of the old backend until its brake/restore has completed.
-  this->discard_retarget_("Pending target cancelled; firmware detection required");
 }
 const char *DeskUART::target_backend_name_() const {
   if (!this->target_enabled_) return "Disabled";
@@ -969,7 +959,7 @@ bool DeskUART::direct_access_allowed_(uint32_t now) const {
       static_cast<uint32_t>(now - this->last_height_received_) <= 750 && this->stable_ms_(now) >= 1500 &&
       !this->stop_latched_ && !this->release_fault_ && !this->timer_.busy() && !this->preset_settings_.busy() &&
       !this->pulse_.active() && !this->release_ack_.pending() && !this->stop_ack_.pending() &&
-      !this->pending_preset_ && !this->retarget_pending_ && this->limit_phase_ == LimitPhase::Idle &&
+      !this->pending_preset_ && this->limit_phase_ == LimitPhase::Idle &&
       this->identity_pending_ == 255 && static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000;
 }
 bool DeskUART::direct_move_(float cm, uint32_t now) {
@@ -1010,7 +1000,7 @@ bool DeskUART::child_lock_access_allowed_(uint32_t now) const {
       static_cast<uint32_t>(now - this->last_height_received_) <= 750 && this->stable_ms_(now) >= 1500 &&
       !this->stop_latched_ && !this->release_fault_ && !this->timer_.busy() && !this->preset_settings_.busy() &&
       !this->pulse_.active() && !this->release_ack_.pending() && !this->stop_ack_.pending() &&
-      !this->pending_preset_ && !this->retarget_pending_ && this->limit_phase_ == LimitPhase::Idle &&
+      !this->pending_preset_ && this->limit_phase_ == LimitPhase::Idle &&
       this->identity_pending_ == 255 && static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000;
 }
 void DeskUART::invalidate_child_lock_(const char *reason, bool publish, bool report_failure) {
@@ -1246,7 +1236,7 @@ bool DeskUART::restore_temporary_preset() {
   return this->result_(retried, retried ? "Preset restoration requested; waiting for readback" : "No failed preset transaction to restore");
 }
 bool DeskUART::recovery_access_allowed_(uint32_t now) const {
-  return !this->child_lock_busy_() && !this->detection_.busy() && !this->journal_error_() && !this->direct_.busy() && !this->firmware_export_active_ && !this->preset_settings_.busy() && !this->timer_.busy() && !this->retarget_pending_ &&
+  return !this->child_lock_busy_() && !this->detection_.busy() && !this->journal_error_() && !this->direct_.busy() && !this->firmware_export_active_ && !this->preset_settings_.busy() && !this->timer_.busy() &&
       !this->release_fault_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
       static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
       static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000 && !this->pulse_.active() &&
@@ -1335,8 +1325,8 @@ void DeskUART::target_loop_(uint32_t now) {
         this->keep_awake_fault_ = true;
         this->soft_abort_error_ = nullptr;
       }
-      // Braking to replace a target is intentional, not a rejected command.
-      if (!(this->retarget_pending_ && std::strcmp(this->last_target_error_, "Target move interrupted") == 0))
+      // A requested Stop can finish preset restoration with an interruption result.
+      if (!(this->stop_latched_ && std::strcmp(this->last_target_error_, "Target move interrupted") == 0))
         this->result_(false, this->last_target_error_);
     }
   }
@@ -1378,7 +1368,7 @@ bool DeskUART::set_timer(uint16_t minutes) {
     this->yield_child_lock_read_();
   const uint32_t now = millis();
   this->last_keep_awake_ = now;
-  if (!this->timer_enabled_ || this->child_lock_busy_() || this->detection_.busy() || this->direct_.busy() || this->preset_settings_.busy() || this->retarget_pending_ || this->stop_latched_ || this->release_fault_ ||
+  if (!this->timer_enabled_ || this->child_lock_busy_() || this->detection_.busy() || this->direct_.busy() || this->preset_settings_.busy() || this->stop_latched_ || this->release_fault_ ||
       this->target_move_.busy() || this->limit_phase_ != LimitPhase::Idle ||
       this->pulse_.active() || this->release_ack_.pending() || this->stop_ack_.pending() ||
       !this->monitor_.fresh(now) || this->stable_ms_(now) < 1500 || !this->timer_.begin(minutes, now)) {
@@ -1415,11 +1405,6 @@ bool DeskUART::result_(bool accepted, const char *message) {
   else ESP_LOGW(TAG, "Command rejected: %s", message);
   return accepted;
 }
-void DeskUART::discard_retarget_(const char *reason) {
-  if (!this->retarget_pending_) return;
-  this->retarget_pending_ = false;
-  this->result_(false, reason);
-}
 const char *DeskUART::control_reason_(uint32_t now) const {
   if (const char *error = this->journal_error_()) return error;
   if (this->firmware_export_active_) return "Firmware read active; desk controls paused";
@@ -1428,7 +1413,6 @@ const char *DeskUART::control_reason_(uint32_t now) const {
   if (!this->monitor_.fresh(now)) return "No fresh UART height; wake panel or check connection";
   if (this->target_move_.phase() == Phase::Fault) return this->target_move_.error();
   if (this->stop_latched_ && !this->stop_acknowledged_) return "Brake ACK missing or pending; movement blocked";
-  if (this->retarget_pending_) return "Changing target: braking, settling and restoring preset";
   if (this->stop_latched_) return "Stop: waiting for settled height and preset cleanup";
   if (this->child_lock_busy_()) return "CL01 child lock transaction pending";
   if (this->auto_target_mode_ && this->target_enabled_ && !this->target_detected_())
@@ -1454,26 +1438,11 @@ const char *DeskUART::control_reason_(uint32_t now) const {
   return "Ready";
 }
 void DeskUART::controls_loop_(uint32_t now) {
-  using Phase = desk_protocol::TemporaryPreset::Phase;
-  if (this->retarget_pending_) {
-    if (!this->monitor_.fresh(now) || this->release_fault_ ||
-        this->target_move_.phase() == Phase::Fault ||
-        (this->target_move_.failed() && std::strcmp(this->target_move_.error(), "Target move interrupted") != 0) ||
-        (this->stop_latched_ && !this->stop_ack_.pending() && !this->stop_acknowledged_) ||
-        static_cast<uint32_t>(now - this->retarget_started_) >= 15000)
-      this->discard_retarget_("Target replacement cancelled by fault, lost telemetry or timeout; request again after recovery");
-  }
   // ACK alone is insufficient. Require post-brake fresh, unchanged raw height,
   // release completion, and verified original-preset cleanup. This is a
   // settling heuristic, not a safety-rated measurement of standstill.
   if (this->stop_latched_) this->clear_stop_latch();
-  if (this->retarget_pending_ && !this->stop_latched_ && !this->target_move_.busy() &&
-      this->limit_phase_ == LimitPhase::Idle && this->stable_ms_(now) >= 1500) {
-    const float next = this->retarget_cm_;
-    this->retarget_pending_ = false;
-    if (this->move_to_height(next) && this->target_number_) this->target_number_->publish_state(this->display_height(next));
-  }
-  if (this->sync_target_ && !this->target_move_.busy() && !this->retarget_pending_ &&
+  if (this->sync_target_ && !this->target_move_.busy() &&
       !this->stop_latched_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500) {
     this->sync_target_ = false;
     // Keep UART precision, as at startup; the panel's whole-cm display is not a target.
