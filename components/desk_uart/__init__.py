@@ -14,6 +14,7 @@ from esphome.const import (
     STATE_CLASS_TOTAL_INCREASING,
 )
 from .web_support import configure_web_controls
+from .source_metadata import source_metadata
 
 DEPENDENCIES = ["uart"]
 AUTO_LOAD = ["sensor", "binary_sensor", "button", "number", "select", "switch", "text_sensor"]
@@ -138,7 +139,7 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional("motion_speed"): select.select_schema(MotionSpeedSelect, icon="mdi:speedometer", entity_category="config"),
         cv.Optional("motion_speed_available"): binary_sensor.binary_sensor_schema(entity_category="diagnostic"),
         **{cv.Optional(key): text_sensor.text_sensor_schema(entity_category="diagnostic")
-           for key in ("controller_model", "controller_manufacturer", "controller_identifiers", "controller_date")},
+           for key in ("source_version", "source_revision", "controller_model", "controller_manufacturer", "controller_identifiers", "controller_date")},
         cv.Optional("stop_locked"): binary_sensor.binary_sensor_schema(entity_category="diagnostic"),
         cv.Optional("stop"): button.button_schema(StopButton, icon="mdi:stop"),
         cv.Optional("experimental_timer_buttons", default=False): cv.boolean,
@@ -174,6 +175,10 @@ FINAL_VALIDATE_SCHEMA = uart.final_validate_device_schema(
 
 
 async def to_code(config):
+    metadata = source_metadata()
+    cg.add_define("DESK_SOURCE_VERSION", metadata["version"])
+    cg.add_define("DESK_SOURCE_REVISION", metadata["revision"])
+    cg.add_define("DESK_SOURCE_STATE", metadata["state"])
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
@@ -187,7 +192,7 @@ async def to_code(config):
         cg.add(var.set_frame_errors_sensor(await sensor.new_sensor(config["uart_frame_errors"])))
     if "height_sample_gap" in config:
         cg.add(var.set_sample_gap_sensor(await sensor.new_sensor(config["height_sample_gap"])))
-    for key in ("control_status", "command_result", "target_height_backend", "child_lock_status", "reset_status", "controller_model", "controller_manufacturer", "controller_identifiers", "controller_date"):
+    for key in ("source_version", "source_revision", "control_status", "command_result", "target_height_backend", "child_lock_status", "reset_status", "controller_model", "controller_manufacturer", "controller_identifiers", "controller_date"):
         if key in config:
             cg.add(getattr(var, "set_" + key)(await text_sensor.new_text_sensor(config[key])))
     if "stop_locked" in config:

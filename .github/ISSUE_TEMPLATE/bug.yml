@@ -1,0 +1,23 @@
+name: Bug report
+description: Report a reproducible problem with controls, builds or maintenance.
+body:
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions and hardware
+      description: Project version and source revision, ESPHome version, ESP board, desk and controller model, and controller firmware identity if known.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps and observed behavior
+      description: What did you do, what happened, and what did you expect? Distinguish physical observations from logs.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log excerpt
+      description: Remove passwords, API keys, network details and other private information. Do not attach manufacturer firmware images here.
+      render: text

@@ -1,5 +1,16 @@
 name: Tests
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      source-ref:
+        type: string
+        default: ""
+      external-ref:
+        type: string
+        default: ""
 permissions:
   contents: read
 jobs:
@@ -10,7 +21,11 @@ jobs:
       matrix:
         build_type: [Debug, Release]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.source-ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
       - name: Firmware UI state transitions
         if: matrix.build_type == 'Debug'
         run: node tests/esphome/firmware_ui_test.cjs
@@ -20,13 +35,17 @@ jobs:
           TMPDIR: ${{ runner.temp }}
           PYTHONDONTWRITEBYTECODE: "1"
         run: python3 tools/test_child_lock_builder.py
+      - name: Install hash-pinned LLVM for patch reproduction
+        if: matrix.build_type == 'Debug'
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: python3 tools/install_ci_llvm.py
       - name: Reproduce embedded firmware patches
         if: matrix.build_type == 'Debug'
         env:
           TMPDIR: ${{ runner.temp }}
           PYTHONDONTWRITEBYTECODE: "1"
         run: |
-          sudo apt-get update && sudo apt-get install -y clang llvm lld
           python3 tools/verify_dt02_assembly.py
           python3 tools/embed_child_lock_patch.py --check
           python3 tools/generate_reset_speed_core.py --check
@@ -42,7 +61,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: [component_packaging, component_layout, config_validation, identity_integration, firmware_export_config, firmware_export_integration, firmware_export_lifecycle, firmware_update_lifecycle, firmware_update_config, firmware_profile_integration, integration, stop_integration, load_limits_integration, load_raw_integration, target_integration, retarget_integration, retarget_phase_integration, auto_target_integration, child_lock_integration, reset_speed_integration, direct_target_integration, direct_target_review_integration, preset_settings_integration, timer_integration, keep_awake_integration, preset_persistence_integration, profile_journal_integration, display_units_integration]
+        test: [existing_device_config, source_metadata_integration, component_packaging, component_layout, config_validation, identity_integration, firmware_export_config, firmware_export_integration, firmware_export_lifecycle, firmware_update_lifecycle, firmware_update_config, firmware_profile_integration, integration, stop_integration, load_limits_integration, load_raw_integration, target_integration, retarget_integration, retarget_phase_integration, auto_target_integration, child_lock_integration, reset_speed_integration, direct_target_integration, direct_target_review_integration, preset_settings_integration, timer_integration, keep_awake_integration, preset_persistence_integration, profile_journal_integration, display_units_integration]
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
@@ -50,8 +69,12 @@ jobs:
         run: |
           echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
           echo "PIP_CACHE_DIR=$RUNNER_TEMP/pip-cache" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.source-ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements-dev.txt
@@ -70,7 +93,7 @@ jobs:
           fi
       - name: Preserve test diagnostics on failure
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: diagnostics-${{ matrix.test }}
           path: |
@@ -97,20 +120,77 @@ jobs:
         run: |
           echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
           echo "PIP_CACHE_DIR=$RUNNER_TEMP/pip-cache" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.source-ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements-dev.txt
       - name: Build example from the checked-out GitHub revision
-        run: python tests/esphome/github_example_build.py --example "${{ matrix.example }}" --work-dir "$TMPDIR/desk-example/run"
+        run: python tests/esphome/github_example_build.py --example "${{ matrix.example }}" --work-dir "$TMPDIR/desk-example/run" --ref "${{ inputs.external-ref || inputs.source-ref || github.sha }}" --expected-commit "${{ inputs.source-ref || github.sha }}"
       - name: Preserve example diagnostics on failure
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: diagnostics-github-example-${{ matrix.example }}
           path: |
             ${{ runner.temp }}/desk-example/run/*.log
             ${{ runner.temp }}/desk-example/run/summary.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  release-checks:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Configure temporary directories
+        run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "PIP_CACHE_DIR=$RUNNER_TEMP/pip-cache" >> "$GITHUB_ENV"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.source-ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-dev.txt
+      - run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+      - run: python -m unittest discover -s tests/release -v
+      - run: python tools/check_firmware_catalog.py
+
+  release-examples:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Configure temporary directories
+        run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "PIP_CACHE_DIR=$RUNNER_TEMP/pip-cache" >> "$GITHUB_ENV"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.source-ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python tests/esphome/release_examples.py --work-dir "$TMPDIR/desk-release-examples/run" --ref "${{ inputs.external-ref || inputs.source-ref || github.sha }}" --expected-commit "${{ inputs.source-ref || github.sha }}"
+      - name: Preserve release example diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: diagnostics-release-examples
+          path: |
+            ${{ runner.temp }}/desk-release-examples/run/**/*.log
+            ${{ runner.temp }}/desk-release-examples/run/summary.json
           if-no-files-found: ignore
           retention-days: 7

@@ -1,0 +1,158 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Calendar version, without the v prefix
+        required: true
+        type: string
+      commit:
+        description: Full candidate SHA already on main
+        required: true
+        type: string
+      stage:
+        description: Validate candidate or build a tagged draft
+        required: true
+        type: choice
+        options: [candidate-check, tagged-draft]
+      candidate-run:
+        description: Successful candidate-check run ID, required for tagged-draft
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    outputs:
+      external-ref: ${{ steps.check.outputs.external_ref }}
+    env:
+      VERSION: ${{ inputs.version }}
+      CANDIDATE: ${{ inputs.commit }}
+      STAGE: ${{ inputs.stage }}
+      WORKFLOW_SHA: ${{ github.sha }}
+      CANDIDATE_RUN: ${{ inputs.candidate-run }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate dispatch inputs before checkout
+        run: |
+          python - <<'PY'
+          import os, re
+          assert re.fullmatch(r'[0-9a-f]{40}', os.environ['CANDIDATE'])
+          assert re.fullmatch(r'[0-9]{4}\.(?:[1-9]|1[0-2])\.(?:0|[1-9][0-9]*)', os.environ['VERSION'])
+          assert os.environ['STAGE'] in ('candidate-check', 'tagged-draft')
+          if os.environ['STAGE'] == 'tagged-draft':
+              assert re.fullmatch(r'[1-9][0-9]*', os.environ['CANDIDATE_RUN'])
+          PY
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.commit }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - id: check
+        name: Validate source, ancestry, tool identity and existing tag
+        run: |
+          python control/tools/release.py validate --source-root candidate --version "$VERSION" --commit "$CANDIDATE"
+          python control/tools/release.py infrastructure --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --workflow-commit "$WORKFLOW_SHA"
+          if [ "$STAGE" = tagged-draft ]; then
+            python control/tools/release.py verify-tag --source-root candidate --version "$VERSION" --commit "$CANDIDATE"
+            echo "external_ref=v$VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "external_ref=$CANDIDATE" >> "$GITHUB_OUTPUT"
+          fi
+
+  tests:
+    if: github.ref == 'refs/heads/main'
+    needs: preflight
+    uses: ./.github/workflows/test.yml
+    with:
+      source-ref: ${{ inputs.commit }}
+      external-ref: ${{ needs.preflight.outputs.external-ref }}
+    permissions:
+      contents: read
+
+  package:
+    if: github.ref == 'refs/heads/main'
+    needs: [preflight, tests]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    env:
+      VERSION: ${{ inputs.version }}
+      CANDIDATE: ${{ inputs.commit }}
+      STAGE: ${{ inputs.stage }}
+      WORKFLOW_SHA: ${{ github.sha }}
+      CANDIDATE_RUN: ${{ inputs.candidate-run }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.commit }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Package with the checked dispatch tools
+        run: |
+          python control/tools/release.py infrastructure --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --workflow-commit "$WORKFLOW_SHA"
+          python control/tools/release.py package --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --output "$RUNNER_TEMP/output/package"
+          report_args=()
+          if [ "$STAGE" = tagged-draft ]; then
+            report_args+=(--candidate-run "$CANDIDATE_RUN")
+            python control/tools/release_github.py candidate-download --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --workflow-commit "$WORKFLOW_SHA" --run-id "$CANDIDATE_RUN" --output "$RUNNER_TEMP/previous"
+          fi
+          python control/tools/release_github.py report --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --workflow-commit "$WORKFLOW_SHA" --run-id "$GITHUB_RUN_ID" --stage "$STAGE" --output "$RUNNER_TEMP/output/validation-report.json" "${report_args[@]}"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-package
+          path: ${{ runner.temp }}/output/
+          if-no-files-found: error
+          retention-days: 14
+
+  draft:
+    if: github.ref == 'refs/heads/main' && inputs.stage == 'tagged-draft'
+    needs: [preflight, tests, package]
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+      actions: read
+    env:
+      VERSION: ${{ inputs.version }}
+      CANDIDATE: ${{ inputs.commit }}
+      WORKFLOW_SHA: ${{ github.sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.commit }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-package
+          path: ${{ runner.temp }}/incoming
+      - name: Verify and create or update a draft only
+        run: |
+          python control/tools/release.py infrastructure --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --workflow-commit "$WORKFLOW_SHA"
+          python control/tools/release_github.py draft --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --workflow-commit "$WORKFLOW_SHA" --run-id "$GITHUB_RUN_ID" --output "$RUNNER_TEMP/incoming"

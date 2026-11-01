@@ -8,6 +8,13 @@
 #include <cstring>
 #include <cinttypes>
 
+// Native test consumers may compile the adapter without ESPHome code generation.
+#ifndef DESK_SOURCE_VERSION
+#define DESK_SOURCE_VERSION "unknown"
+#define DESK_SOURCE_REVISION "unknown"
+#define DESK_SOURCE_STATE "unknown"
+#endif
+
 namespace esphome { namespace desk_uart {
 static const char *const TAG = "desk_uart";
 
@@ -213,6 +220,9 @@ void DeskUART::subscribe_(uint32_t now) {
   this->last_subscribe_ = now;
 }
 void DeskUART::setup() {
+  if (this->source_version_) this->source_version_->publish_state(DESK_SOURCE_VERSION);
+  if (this->source_revision_)
+    this->source_revision_->publish_state(DESK_SOURCE_REVISION " (" DESK_SOURCE_STATE ")");
   const uint32_t boot = random_uint32();
   this->uart_observation_.reset(boot ? boot : 1, millis());
   this->direct_.seed(static_cast<uint16_t>(boot));
@@ -1837,6 +1847,7 @@ void DeskUART::on_shutdown() {
   this->flush();
 }
 void DeskUART::dump_config() {
+  ESP_LOGCONFIG(TAG, "Source: %s, %s (%s)", DESK_SOURCE_VERSION, DESK_SOURCE_REVISION, DESK_SOURCE_STATE);
   ESP_LOGCONFIG(TAG, "Desk UART: T150-PJ-V1.5 experimental metric profile");
   ESP_LOGCONFIG(TAG, "Display unit: %s (independent of panel setting)", this->display_inches_ ? "in" : "cm");
   ESP_LOGCONFIG(TAG, "  Telemetry: channel 2, 500 ticks; stale after 3000 ms");

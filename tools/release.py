@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Validate a clean release candidate and produce deterministic text assets.
+
+This tool never creates tags or publishes releases. It uses only the standard
+library. GitHub draft handling lives in release_github.py and is checked as
+part of the release infrastructure before either workflow stage runs.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+REPOSITORY = "0xA2C3B1F4/t150-desk-control"
+VERSION = r"[0-9]{4}\.(?:[1-9]|1[0-2])\.(?:0|[1-9][0-9]*)"
+SHA = r"[0-9a-f]{40}"
+VERSION_FILE = "components/desk_uart/project_version.json"
+YAMLS = {
+    name: "examples/esphome/" + name for name in
+    ("stamp-c3.yaml", "esp32.yaml", "existing-device.yaml", "secrets.example.yaml",
+     "stamp-c3-firmware-export.yaml", "stamp-c3-firmware-update.yaml")
+}
+YAMLS.update({name: "examples/esphome/packages/" + name for name in
+              ("child-lock.yaml", "reset-speed.yaml", "firmware-export.yaml", "firmware-update.yaml")})
+ASSETS = frozenset(YAMLS) | {"firmware-catalog.json", "release-notes.md", "INSTALL.md",
+                            "release-manifest.json", "SHA256SUMS"}
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def json_bytes(data):
+    return (json.dumps(data, sort_keys=True, indent=2, ensure_ascii=False) + "\n").encode()
+
+
+def git(root, *args):
+    env = {k:v for k,v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0")
+    return subprocess.check_output(["git", "-C", str(root), *args], env=env,
+                                   stderr=subprocess.PIPE, timeout=30)
+
+
+def text(root, *args):
+    return git(root, *args).decode().strip()
+
+
+def validate(root, version, commit):
+    if not re.fullmatch(VERSION, version) or not re.fullmatch(SHA, commit):
+        raise ValueError("Expected YYYY.M.N version and full lowercase commit SHA")
+    root = Path(root).resolve()
+    if Path(text(root,"rev-parse","--show-toplevel")).resolve() != root:
+        raise ValueError("Source root must be the repository root")
+    if text(root,"rev-parse","HEAD") != commit:
+        raise ValueError("Candidate HEAD differs from expected commit")
+    if text(root,"status","--porcelain","--untracked-files=all"):
+        raise ValueError("Candidate source tree must be clean")
+    data = json.loads((root / VERSION_FILE).read_text())
+    if data != {"schema_version":1,"version":version} or type(data["schema_version"]) is not int:
+        raise ValueError("Candidate version metadata differs")
+    # Read committed bytes, not ignored local substitutes.
+    for path in [VERSION_FILE, "metadata/firmware-catalog.json", "CHANGELOG.md", "requirements-dev.txt", *YAMLS.values()]:
+        if (root/path).is_symlink() or (root/path).read_bytes() != git(root,"show",f"{commit}:{path}"):
+            raise ValueError("Source differs from committed regular file: " + path)
+    return root
+
+
+def verify_tag(root, version, commit):
+    if not re.fullmatch(VERSION, version) or not re.fullmatch(SHA, commit):
+        raise ValueError("Invalid version or commit")
+    ref = "refs/tags/v" + version
+    if text(root,"cat-file","-t",ref) != "tag":
+        raise ValueError("Release tag must be annotated")
+    if text(root,"rev-parse",ref + "^{commit}") != commit:
+        raise ValueError("Release tag points to another commit")
+
+
+def infrastructure(root, candidate, workflow):
+    if not re.fullmatch(SHA,candidate) or not re.fullmatch(SHA,workflow):
+        raise ValueError("Infrastructure comparison requires full SHAs")
+    git(root,"merge-base","--is-ancestor",candidate,workflow)
+    def files(ref):
+        return {p for p in text(root,"ls-tree","-r","--name-only",ref).splitlines()
+                if (p.startswith(".github/workflows/") or
+                    p.startswith("tools/release") and p.endswith(".py"))}
+    paths = files(candidate)
+    if paths != files(workflow):
+        raise ValueError("Release infrastructure file set changed")
+    result = {}
+    for path in sorted(paths):
+        a = text(root,"rev-parse",candidate + ":" + path)
+        if a != text(root,"rev-parse",workflow + ":" + path):
+            raise ValueError("Release infrastructure changed: " + path)
+        result[path] = a
+    if not {"tools/release.py", ".github/workflows/test.yml", ".github/workflows/release.yml"} <= paths:
+        raise ValueError("Release infrastructure missing")
+    return result
+
+
+def tagged_yaml(name, original, ref):
+    source = f"github://{REPOSITORY}@{ref}"
+    if name in ("stamp-c3.yaml", "esp32.yaml"):
+        pattern = (r"  - <<:\n      source:\n        type: local\n        path: ../../components[^\n]*\n"
+                   r"(?:    #[^\n]*\n)*")
+        original, count = re.subn(pattern, "  - source: " + source + "\n", original)
+        if count != 1:
+            raise ValueError("Expected documented component source in " + name)
+    elif name == "existing-device.yaml":
+        pattern = r"source: github://" + re.escape(REPOSITORY) + r"@[A-Za-z0-9._/-]+"
+        original, count = re.subn(pattern, "source: " + source, original)
+        if count != 1:
+            raise ValueError("Expected existing-device source")
+    elif name in ("firmware-export.yaml", "firmware-update.yaml"):
+        old = "  - source:\n      type: local\n      path: ${firmware_components_path}"
+        if original.count(old) != 1:
+            raise ValueError("Expected maintenance source in " + name)
+        original = original.replace(old,"  - source: " + source)
+    # Assets are flat GitHub release attachments, kept together after download.
+    original = original.replace("!include packages/", "!include ")
+    # Keep executable YAML and meaningful comments; remove checkout-only advice.
+    lines = [line for line in original.splitlines() if not line.startswith("#")]
+    return ("# Release v" + ref.removeprefix("v") + ". Keep downloaded YAML files together.\n" +
+            "\n".join(lines).lstrip() + "\n").encode()
+
+
+def package_bytes(root, version, commit):
+    root = validate(root,version,commit)
+    tag = "v" + version
+    data = {name:tagged_yaml(name,(root/path).read_text(),tag) for name,path in YAMLS.items()}
+    data["firmware-catalog.json"] = (root / "metadata/firmware-catalog.json").read_bytes()
+    changelog = (root / "CHANGELOG.md").read_text()
+    match = re.search(r"^## " + re.escape(version) + r"\n(.*?)(?=^## |\Z)",changelog,re.M|re.S)
+    if not match:
+        raise ValueError("Candidate changelog section missing")
+    notes = re.sub(r"\]\((docs/[^)]+)\)", lambda m: "](" + f"https://github.com/{REPOSITORY}/blob/{tag}/" + m.group(1) + ")", match.group(1).rstrip())
+    data["release-notes.md"] = ("# " + version + "\n" + notes + "\n").encode()
+    data["INSTALL.md"] = (f"# Install {tag}\n\n"
+        "Download the YAML files into one directory and create your own secrets.yaml.\n"
+        "Use stamp-c3.yaml or esp32.yaml for a new device. Merge existing-device.yaml\n"
+        "into an existing configuration while keeping its network and OTA settings.\n"
+        "Adjust UART pins for your board before compiling.\n\n"
+        "The maintenance variants are separate builds. Read the wiring, motor\n"
+        "isolation, backup and recovery instructions before using them:\n\n"
+        f"https://github.com/{REPOSITORY}/blob/{tag}/docs/firmware-update.md\n\n"
+        "This release contains source configurations and metadata, not controller\n"
+        "firmware images or preconfigured ESP binaries.\n").encode()
+    requirement = re.search(r"^esphome==([^\s]+)$",(root/"requirements-dev.txt").read_text(),re.M)
+    if not requirement:
+        raise ValueError("ESPHome version pin missing")
+    manifest = {"schema_version":1,"version":version,"tag":tag,"commit":commit,
+                "esphome":requirement.group(1),"catalog_sha256":digest(data["firmware-catalog.json"]),
+                "assets":{name:digest(content) for name,content in sorted(data.items())}}
+    data["release-manifest.json"] = json_bytes(manifest)
+    data["SHA256SUMS"] = "".join(f"{digest(content)}  {name}\n" for name,content in sorted(data.items())).encode()
+    if set(data) != ASSETS:
+        raise ValueError("Unexpected package contents")
+    return data
+
+
+def verify_package(directory, version, commit):
+    directory = Path(directory)
+    if {p.name for p in directory.iterdir()} != ASSETS:
+        raise ValueError("Unexpected or missing release asset")
+    if any(p.is_symlink() or not p.is_file() for p in directory.iterdir()):
+        raise ValueError("Assets must be regular files")
+    manifest = json.loads((directory/"release-manifest.json").read_text())
+    if (manifest.get("version"),manifest.get("tag"),manifest.get("commit")) != (version,"v"+version,commit):
+        raise ValueError("Package identity mismatch")
+    if set(manifest["assets"]) != ASSETS - {"release-manifest.json","SHA256SUMS"}:
+        raise ValueError("Manifest asset allowlist differs")
+    for name,expected in manifest["assets"].items():
+        if digest((directory/name).read_bytes()) != expected:
+            raise ValueError("Asset digest mismatch: " + name)
+    expected = "".join(f"{digest((directory/name).read_bytes())}  {name}\n"
+                       for name in sorted(ASSETS - {"SHA256SUMS"}))
+    if (directory/"SHA256SUMS").read_text() != expected:
+        raise ValueError("SHA256SUMS differs")
+    return manifest
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("command",choices=["validate","package","verify-tag","verify-package","infrastructure"])
+    p.add_argument("--source-root",type=Path,required=True)
+    p.add_argument("--version",required=True)
+    p.add_argument("--commit",required=True)
+    p.add_argument("--output",type=Path)
+    p.add_argument("--workflow-commit")
+    args = p.parse_args()
+    if args.command == "validate":
+        validate(args.source_root,args.version,args.commit)
+    elif args.command == "verify-tag":
+        verify_tag(args.source_root,args.version,args.commit)
+    elif args.command == "infrastructure":
+        print(json.dumps(infrastructure(args.source_root,args.commit,args.workflow_commit)))
+    elif args.command == "verify-package":
+        verify_package(args.output,args.version,args.commit)
+    else:
+        data = package_bytes(args.source_root,args.version,args.commit)
+        if not args.output or args.output.exists():
+            raise ValueError("Package output must be a new directory")
+        args.output.mkdir(parents=True)
+        for name,content in data.items():
+            (args.output/name).write_bytes(content)
+        verify_package(args.output,args.version,args.commit)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (ValueError,OSError,subprocess.SubprocessError) as error:
+        sys.exit(str(error))

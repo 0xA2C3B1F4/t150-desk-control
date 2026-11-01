@@ -119,7 +119,7 @@ class Probe : public esphome::desk_uart::DeskUART {
       p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
       p.cached_journal_.profile = p.height_profile_.identity();
       p.cached_journal_.original = 456; p.cached_journal_.temporary = 122;
-      const uint32_t now = esphome::millis();
+      uint32_t now = esphome::millis();
       auto h = desk_protocol::Frame{};
       h.size = 32; h.bytes[0] = 5; h.bytes[20] = 75;
       require(p.monitor_.observe(h, now), "stop restore height");
@@ -128,7 +128,11 @@ class Probe : public esphome::desk_uart::DeskUART {
       p.last_preset_recall_ = now - 4000;
       auto &t = p.target_move_;
       t.recover(456, 122);
+      // The public method timestamps its request with the real clock. Force a
+      // tick to exercise that distinction, then timestamp replies after the call.
+      esphome::delay(2);
       require(p.restore_temporary_preset(), "explicit restore accepted");
+      now = esphome::millis();
       desk_protocol::Frame f;
       require(t.take_frame(f), "restore first read");
       f = value(0x1F, 122); f.bytes[5] = 1; t.accept(f, now);
@@ -146,6 +150,7 @@ class Probe : public esphome::desk_uart::DeskUART {
       }
       const size_t sent_before = wire.sent.size();
       require(p.stop(), "stop accepted during explicit restore");
+      now = esphome::millis();
       require(t.dirty(), "stop retains unresolved backup");
       // Deliver late ACK/readback and pass the old two-second cleanup delay.
       f = {}; f.size = 5; f.bytes[0] = 0x1A; f.bytes[1] = 0x1F; t.accept(f, now + 1);

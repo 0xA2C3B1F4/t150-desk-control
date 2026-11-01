@@ -1,0 +1,21 @@
+# Merge these sections into your existing ESPHome device configuration.
+# Keep your own esphome, Wi-Fi, API, OTA and logger settings.
+# Development source. Released copies pin every component to a release tag.
+external_components:
+  - source: github://0xA2C3B1F4/t150-desk-control@main
+    components: [desk_uart]
+
+# Choose free 3.3 V UART pins for your board and cross TX/RX at the desk.
+# If this UART already exists, reuse its ID instead of defining it twice.
+uart:
+  id: desk_serial
+  tx_pin: GPIO4
+  rx_pin: GPIO5
+  baud_rate: 115200
+  rx_buffer_size: 512
+
+desk_uart:
+  id: desk
+  uart_id: desk_serial
+  height:
+    name: Desk height
