@@ -633,12 +633,11 @@ CANCEL=4 and SPEED=5. SPEED accepts Normal=0 or Slow=1 in RAM only.
 `D6` replies include the echoed operation/nonce, result, reset phase,
 eligibility, next token, remaining lease, encoder speed, PWM and internal
 position. A matching fresh reply is required before any dependent operation.
-R4 and later advertise capability mask `0x1F`; bytes 46/47 carry START/RESUME admission
+R7 advertises capability mask `0x1F`; bytes 46/47 carry START/RESUME admission
 results (0 OK, 1 BAD, 2 STALE, 3 INELIGIBLE, 4 BUSY, 5 LOCKED, 6 GUARD).
-Legacy `0x0F` replies keep both bytes zero. Admission results must agree with
-the eligibility flags. They describe admission after the request; byte 4 is
-the request's result. A successful START or RESUME can therefore report BUSY
-in bytes 46/47 while the reset is active.
+Admission results must agree with the eligibility flags. They describe
+admission after the request; byte 4 is the request's result. A successful START
+or RESUME can therefore report BUSY in bytes 46/47 while the reset is active.
 GET never starts or renews movement. CANCEL needs no token. Other mutations
 consume a current token; an accepted renewal supplies the next one.
 

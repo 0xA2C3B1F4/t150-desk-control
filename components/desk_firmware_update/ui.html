@@ -25,7 +25,7 @@
 <button disabled id="patch">Prepare DT02 patch</button>
 <button disabled id="patchChildLock">Prepare panel lock (CL01)</button>
 <button disabled id="patchResetSpeed">Prepare reset and speed controls (RS01)</button>
-<p class="note">RS01 includes CL01, guarded reset controls and a Normal/Slow speed choice. The bundled R7 image is an offline-tested candidate; hardware validation is pending. Reset requires an unlocked panel. Normal movements retain the panel-lock behavior below.</p>
+<p class="note">RS01 R7 includes CL01, guarded reset controls, a Normal/Slow speed choice and the UART receive fix. Use it with the ESPHome adapter from the same version. Reset requires an unlocked panel. Normal movements retain the panel-lock behavior below.</p>
 <p class="note">CL01 includes DT02. With no valid saved lock record, it starts locked. While locked, all physical buttons, including local stopping gestures, are blocked. Remote unlock is required.</p>
 <label>Or select a saved original, DT02, CL01 or RS01 application file:
 <input type="file" id="file" accept=".bin,application/octet-stream"></label>

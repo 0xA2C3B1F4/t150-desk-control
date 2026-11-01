@@ -1,10 +1,9 @@
 # Reset and motion speed
 
-RS01 adds guarded desk calibration and a Normal/Slow speed choice to DT02 and
-CL01. Install it through [firmware maintenance](firmware-update.md).
-
-The current R7 candidate has only been tested offline. See [validation status](validation.md#controller-firmware-fixes)
-before installing it.
+RS01 R7 includes DT02 and CL01 and adds guarded desk calibration, a Normal/Slow
+speed choice and the UART receive fix. Install it through
+[firmware maintenance](firmware-update.md) and use the ESPHome adapter from
+the same version. See [test coverage and known limits](validation.md).
 
 ## Enable the controls
 
@@ -36,17 +35,11 @@ resume the saved phase; a connection returning never resumes it automatically.
 The panel remains inactive while the remote reset is paused or faulted, until
 continuation or a controller restart.
 When continuation is blocked, fresh controller diagnostics distinguish held
-physical keys, the panel lock and other controller guards. Older replies use
-a general unavailable message.
+physical keys, the panel lock and other controller guards.
 
-Existing configurations may retain `continue_reset` as a separate continuation-only
-button and the optional reset/speed status and availability entities. The supplied
-package uses one Reset button for both actions and the existing Control status row.
-
-RS01 R4 can remain at **Continue unavailable** after Stop. The tested recovery
-procedure is to power-cycle the controller, then hold Down on the panel to
-complete calibration. A power cycle alone does not complete it. After physical
-calibration, use **Stop** if the remote controls still report an uncertain state.
+Custom configurations can expose `continue_reset` as a separate continuation
+button and add reset/speed status and availability entities. The supplied package
+uses one Reset button for both actions and the existing Control status row.
 
 Normal movement commands are blocked during calibration. A short, renewable
 controller-side command lease releases remote control if ESP32/UART communication
@@ -59,6 +52,10 @@ While idle, choose **Normal** for the original speed control or **Slow** for an
 additional upper limit on the normal movement speed request. The controller's
 existing lower limits and approach braking still apply. Reset uses its original
 speed regardless of this selection.
+
+Target-position differences were observed with both speeds. Slow upward moves
+stopped below the requested height in preset and direct-target tests, including
+after calibration and with longer travel. Preset values remained unchanged.
 
 The selection changes only after a matching controller reply. It is stored in
 RAM and returns to Normal when the desk controller restarts. ESPHome does not

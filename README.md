@@ -13,7 +13,7 @@ Basic control works with supported stock firmware; patches are optional. Develop
 ## What it does
 
 - ESP32 controls provide height in cm or inches, preset recall and editing, target-height moves, controlled Stop, UART status and preset recovery through ESPHome, the browser and Home Assistant. Optional controls cover keep-awake, load telemetry, load settings and timers.
-- Controller firmware extensions add [direct height commands](docs/esphome.md#direct-backend), a persistent [panel lock](docs/child-lock.md), and [calibration and speed controls](docs/esphome.md#optional-reset-and-speed-controls).
+- Controller firmware extensions add [direct height commands](docs/esphome.md#direct-backend), a persistent [panel lock](docs/child-lock.md), and [RS01 R7 calibration and speed controls](docs/reset-speed.md).
 - Targeted [controller firmware fixes](docs/validation.md#controller-firmware-fixes) address sleep logic at the RTC hour boundary and UART receive parsing.
 
 The optional [firmware maintenance tools](docs/firmware-update.md) provide backup, patching, installation and recovery.
@@ -50,6 +50,7 @@ Firmware tools are separate optional builds:
 | Read and download only | [Firmware reader](docs/firmware-export.md) |
 | Read, patch, install and verify | [Firmware maintenance](docs/firmware-update.md) |
 | Enable CL01 lock controls | [Panel lock](docs/child-lock.md) |
+| Enable RS01 R7 calibration and speed controls | [Reset and motion speed](docs/reset-speed.md) |
 
 ## Use the C++ library elsewhere
 

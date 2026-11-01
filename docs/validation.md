@@ -2,43 +2,64 @@
 
 Hardware results apply to the [tested controller](hardware.md#desk-and-controller-compatibility).
 Host tests and successful builds do not establish physical behavior.
-The hardware checks below predate the new `FA FA` sender and current Control
-status layout; those changes have only been tested offline.
 
 ## Hardware validation
+
+### RS01 R7 with the current ESPHome adapter
+
+These checks used the R7 image and the updated `FA FA` sender together.
+
+| Feature | Checked on hardware |
+|---|---|
+| Installation | Browser preparation from CL01, installation and comparison of all application bytes by full readback |
+| UART and controls | Controller discovery, telemetry, preset and load-setting readbacks, and remote Stop during a preset move |
+| Reset | Stop during descent, a stationary pause, explicit continuation and completed calibration with controller outputs off; physical movement confirmed by the operator |
+| Motion speed | Normal/Slow selection and comparison runs in both directions, with short and longer direct-target moves; preset values unchanged. Target-position differences remained, including Slow upward moves stopping below the requested height. See [positioning observations](reset-speed.md#motion-speed). |
+| Control status | Ready displayed in the browser; reset, pause, continuation and completion states observed through the ESPHome API |
+| Standby and wake | Panel display went dark while ESPHome was stopped for the test. A local button woke the panel; UART, identification and Ready returned. Target movement and Stop worked after waking, with operator confirmation. Presets and load limits were unchanged. |
+| Patched keep-awake | Stationary telemetry stayed continuous in automatic direct mode, without new UART errors or gaps. This mode uses the firmware sleep fix and does not borrow a preset. |
+| Timer controls | All four menu selections and cancellation, including operator confirmation of the panel display; alarm expiry was not tested |
+| Downward load base | Stationary write, controller readback and restoration of the original value; force response and homing with a changed value were not tested |
+
+### Original, DT02 and CL01
+
+These results apply to the original, DT02 and CL01 configurations with earlier
+ESPHome software. They do not validate the current sender or Control status
+layout with those images, or establish R7 coverage.
 
 | Feature | Checked on hardware |
 |---|---|
 | Stamp-C3 controls | Browser login, height display, preset recall and editing, Stop, UART reconnect and raw-load reporting |
-| Preset target backend, DT02+CL01R3 | Upward and downward target moves, changed-target Stop, restored presets retained across power cycles, backup recovery after ESP restart, and Restore/Accept |
+| Preset target backend with CL01 | Upward and downward target moves, changed-target Stop, restored presets retained across power cycles, backup recovery after ESP restart, and Restore/Accept |
 | Keep-awake | Preset priority, inactivity timing and interruption; patched telemetry continuity |
-| DT02 direct target, DT02+CL01R3 | Upward and downward target moves, cold-start movement, remote Stop, target changes, unlocked-panel interruption and unchanged presets |
-| Firmware maintenance | Installation and full application readback for original, DT02, CL01 and RS01 R3–R5; browser cancellation/retry; interrupted-write recovery through the maintenance API |
+| DT02 direct target with CL01 | Upward and downward target moves, cold-start movement, remote Stop, target changes, unlocked-panel interruption and unchanged presets |
+| Firmware maintenance | Installation and full application readback for original, DT02 and CL01; browser cancellation/retry; interrupted-write recovery through the maintenance API |
 | CL01 panel lock | Physical button blocking, remote movement and Stop, lock persistence, browser lock/unlock and confirmed-state display |
-| RS01 reset and speed, R3–R5 | Completed calibration; preset moves at Normal and Slow speeds with unchanged presets; Stop during calibration and explicit continuation on R5; preset recall and Stop after calibration |
 
 ## Controller firmware fixes
 
-The sleep fix is included in DT02 and the cumulative CL01 and RS01 patches.
-The original firmware's RTC hour-wrap branch could request sleep while channel-2
-telemetry was active. The patch makes that branch use the same telemetry check
-as the ordinary sleep path. Arithmetic and instruction tests cover the change;
-patched firmware has also been installed, read back and observed for telemetry
-continuity. Those observations do not establish execution at a specific internal
-RTC boundary. The fix does not wake an already sleeping controller.
+The sleep fix is included in DT02, CL01 and RS01 R7. The original firmware's
+RTC hour-wrap branch could request sleep while channel-2 telemetry was active.
+The patch makes that branch use the same telemetry check as the ordinary sleep
+path. Arithmetic and instruction tests cover the branch. Hardware checks cover
+installation, full readback and telemetry continuity. The R7 panel standby and
+wake test also confirmed that restarting the adapter did not restore telemetry
+until a local button was pressed. These observations do not measure the MCU's
+internal STOP state or RTC phase. Use the physical panel to wake the controller.
 
-The UART receive fix is an **unreleased RS01 R7 candidate, tested offline**.
-It limits parsing to received bytes, retains partial frames across ring wrap
-and clears parser state when UART reception is reinitialized. It also rejects
-wrong-length kind 17 commands. The updated ESPHome sender adds a second FA
-start byte so a truncated escape cannot consume the next command's start.
+RS01 R7 limits UART parsing to received bytes, retains partial frames across
+ring wrap and clears parser state when UART reception is reinitialized. It also
+rejects wrong-length kind 17 commands. The updated ESPHome sender adds a second
+FA start byte so a truncated escape cannot consume the next command's start.
 Use both changes together; older single-FA senders can still lose Stop and
 apply a merged kind 19 write. See [framing](protocol.md#framing).
 
-R7 passes instruction and host tests. It has not been installed or tested on
-the physical controller. DMA timing, sleep/wake behavior and physical Stop
-remain hardware checks. An unnoticed full 256-byte DMA-ring lap is still
-indistinguishable with the current 8-bit cursors.
+Instruction tests cover split frames, stale ring contents, escaping and
+exactly-once dispatch. The R7 hardware checks above cover installation and
+normal command handling, including Stop, calibration and control after panel
+wake. Malformed-frame injection and DMA timing under sustained traffic have not
+been tested on the physical controller. An unnoticed full 256-byte DMA-ring lap
+remains indistinguishable with the current 8-bit cursors.
 
 ## Automated tests
 

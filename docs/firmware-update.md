@@ -18,9 +18,10 @@ network; `web_server.auth` is required. Reload after updating the ESP32.
 
 The example includes `stamp-c3.yaml` and the `firmware-update.yaml`,
 `child-lock.yaml` and `reset-speed.yaml` files under `packages/`. Keep that layout
-and place `secrets.yaml` beside the device YAML when copying. For Device Builder, replace both local component sources with the
-same GitHub revision: `desk_uart` in the base YAML and
-`desk_firmware_export, desk_firmware_update` in the maintenance package.
+and place `secrets.yaml` beside the device YAML when copying. For Device Builder,
+replace the local source with the same GitHub revision in both component entries:
+`desk_uart` in the base YAML and `desk_firmware_export, desk_firmware_update`
+in the maintenance package.
 For a moved local checkout, update the base source and `firmware_components_path`;
 both resolve from the main device YAML. See [configuration paths](esphome.md#configuration-paths).
 
@@ -30,8 +31,8 @@ OTA; return to the normal build over USB. After installing CL01 or RS01, keep th
 
 ## Read, patch and verify
 
-The bundled RS01 R7 image is an offline-tested candidate; [hardware validation](validation.md#controller-firmware-fixes)
-is pending. Use it with the updated ESPHome adapter.
+RS01 R7 requires the ESPHome adapter from the same version for UART frame recovery.
+See [test coverage and known limits](validation.md).
 
 Follow the active instruction panel. Keep the ESP32 powered throughout.
 
@@ -63,15 +64,11 @@ keep both devices powered until status returns. Writes never retry automatically
 
 ## Accepted images and storage
 
-Writing accepts only the exact supported original, DT02, CL01 and RS01 applications.
-CL01 can be prepared from the original or DT02; RS01 also accepts CL01. A fresh read identifies an
-already installed patch. Other revisions need a separately reviewed patch;
-profile recognition alone does not authorize writing.
-
-To upgrade RS01, use the ESP32 build that recognizes the installed revision to
-back up the controller, then install and verify a saved CL01 image. Update the
-ESP32 software, then prepare, install and verify RS01 R7 from CL01.
-The R7 maintenance build does not recognize earlier RS01 application hashes.
+Writing accepts only the exact supported original, DT02, CL01 and RS01 R7 applications.
+CL01 can be prepared from the original or DT02; RS01 R7 can be prepared from
+any of those three images. A fresh read identifies an already installed patch.
+Other images need a separately reviewed patch; profile recognition alone does
+not authorize writing.
 
 To remove reset and speed support, install a saved CL01, DT02 or original image.
 To remove panel locking as well, install and verify your saved original or DT02 application.
