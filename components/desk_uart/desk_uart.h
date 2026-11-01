@@ -38,6 +38,8 @@ class DeskUART : public Component, public uart::UARTDevice {
   void setup() override;
   void loop() override;
   void dump_config() override;
+  void set_source_version(text_sensor::TextSensor *s) { source_version_ = s; }
+  void set_source_revision(text_sensor::TextSensor *s) { source_revision_ = s; }
   void on_shutdown() override;
   float get_setup_priority() const override { return setup_priority::DATA; }
   void set_height_sensor(sensor::Sensor *s) { height_sensor_ = s; }
@@ -115,6 +117,7 @@ class DeskUART : public Component, public uart::UARTDevice {
   void send_(const desk_protocol::Frame &frame);
   void identity_loop_(uint32_t now);
   void identity_frame_(const desk_protocol::Frame &frame, uint32_t now);
+  text_sensor::TextSensor *source_version_{nullptr}, *source_revision_{nullptr};
   text_sensor::TextSensor *identity_sensors_[4]{nullptr, nullptr, nullptr, nullptr};
   char identity_values_[3][18]{};
   uint8_t identity_received_{0}, identity_pending_{255}, identity_next_{0};

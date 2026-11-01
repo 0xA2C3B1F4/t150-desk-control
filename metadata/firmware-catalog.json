@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "images": [
+    {
+      "id": "stock",
+      "name": "Original T150-PJ-V1.5",
+      "sha256": "bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf",
+      "application_size": 55296,
+      "application_offset": 10240,
+      "flash_size": 65536,
+      "features": [],
+      "validation": "docs/validation.md"
+    },
+    {
+      "id": "dt02",
+      "name": "DT02",
+      "sha256": "e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff",
+      "application_size": 55296,
+      "application_offset": 10240,
+      "flash_size": 65536,
+      "features": [
+        "direct-height",
+        "sleep-fix"
+      ],
+      "validation": "docs/validation.md"
+    },
+    {
+      "id": "cl01",
+      "name": "DT02 + CL01",
+      "sha256": "81933d93b8bc28ef0eb8b29bf7ae1c7b9104f0a8e03c1c2f8096d509de0f75d3",
+      "application_size": 55296,
+      "application_offset": 10240,
+      "flash_size": 65536,
+      "features": [
+        "direct-height",
+        "sleep-fix",
+        "panel-lock"
+      ],
+      "validation": "docs/validation.md"
+    },
+    {
+      "id": "rs01-r7",
+      "name": "DT02 + CL01 + RS01 R7",
+      "sha256": "ad1f321c570de25abef0f106175a5722d709b92e5db6d3da792bed9cc55fe78b",
+      "application_size": 55296,
+      "application_offset": 10240,
+      "flash_size": 65536,
+      "features": [
+        "direct-height",
+        "sleep-fix",
+        "panel-lock",
+        "reset-control",
+        "motion-speed",
+        "uart-parser-fix"
+      ],
+      "validation": "docs/validation.md"
+    }
+  ],
+  "prepare": {
+    "dt02": [
+      "stock"
+    ],
+    "cl01": [
+      "stock",
+      "dt02"
+    ],
+    "rs01-r7": [
+      "stock",
+      "dt02",
+      "cl01"
+    ]
+  },
+  "install": [
+    [
+      "stock",
+      "stock"
+    ],
+    [
+      "stock",
+      "dt02"
+    ],
+    [
+      "stock",
+      "cl01"
+    ],
+    [
+      "stock",
+      "rs01-r7"
+    ],
+    [
+      "dt02",
+      "stock"
+    ],
+    [
+      "dt02",
+      "dt02"
+    ],
+    [
+      "dt02",
+      "cl01"
+    ],
+    [
+      "dt02",
+      "rs01-r7"
+    ],
+    [
+      "cl01",
+      "stock"
+    ],
+    [
+      "cl01",
+      "dt02"
+    ],
+    [
+      "cl01",
+      "cl01"
+    ],
+    [
+      "cl01",
+      "rs01-r7"
+    ],
+    [
+      "rs01-r7",
+      "stock"
+    ],
+    [
+      "rs01-r7",
+      "dt02"
+    ],
+    [
+      "rs01-r7",
+      "cl01"
+    ],
+    [
+      "rs01-r7",
+      "rs01-r7"
+    ]
+  ],
+  "recovery": {
+    "target": "stock",
+    "documentation": "docs/firmware-update.md"
+  }
+}

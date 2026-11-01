@@ -1,1 +1,2 @@
 esphome==2026.4.2
+jsonschema==4.26.0

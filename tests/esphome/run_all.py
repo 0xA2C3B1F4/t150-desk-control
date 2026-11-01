@@ -16,6 +16,8 @@ import time
 from desk_test_support import parse_args
 
 TESTS = [
+    "existing_device_config",
+    "source_metadata_integration",
     "component_packaging",
     "component_layout",
     "config_validation",

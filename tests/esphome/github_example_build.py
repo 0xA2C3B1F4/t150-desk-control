@@ -22,6 +22,8 @@ def main():
     parser.add_argument("--example", choices=("stamp-c3", "esp32"),
                         default="stamp-c3")
     parser.add_argument("--source-mode", choices=("github", "local"), default="github")
+    parser.add_argument("--ref", help="Literal published ref to test without rewriting it")
+    parser.add_argument("--expected-commit", help="Expected peeled commit for --ref")
     args = parse_args(parser=parser)
     work = args.work_dir
     env = test_env(work)
@@ -29,25 +31,19 @@ def main():
     assert not (work / "data").exists(), "Use a fresh work directory to verify a real GitHub fetch"
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     assert re.fullmatch(r"[0-9a-f]{40}", revision), revision
-    # actions/checkout stores its read-only job credential in Git configuration.
-    # Forward it only through the child process environment so ESPHome's fresh
-    # clone can access this private repo. Never print or persist the header.
-    auth = subprocess.run(
-        ["git", "config", "--get-urlmatch", "http.extraheader",
-         "https://github.com/0xA2C3B1F4/t150-desk-control.git"],
-        cwd=ROOT, text=True, capture_output=True,
-    )
-    if auth.returncode == 0 and auth.stdout.strip():
-        count = int(env.get("GIT_CONFIG_COUNT", "0"))
-        env[f"GIT_CONFIG_KEY_{count}"] = "http.https://github.com/0xA2C3B1F4/t150-desk-control.git.extraheader"
-        env[f"GIT_CONFIG_VALUE_{count}"] = auth.stdout.strip()
-        env["GIT_CONFIG_COUNT"] = str(count + 1)
+    expected = args.expected_commit or revision
+    assert re.fullmatch(r"[0-9a-f]{40}", expected)
+    assert expected == revision, "Compare generated sources with the exact candidate checkout"
+    assert not args.ref or args.source_mode == "github"
+    source_ref = args.ref or revision
+    assert re.fullmatch(r"[A-Za-z0-9._/-]+", source_ref)
+    # Public component sources are fetched without forwarding a job credential.
     source = ROOT / f"examples/esphome/{args.example}.yaml"
     text = source.read_text()
     example_config = yaml.load(text, Loader=yaml.BaseLoader)
     web_version = int(example_config["web_server"]["version"])
     assert web_version in (2, 3), web_version
-    github_source = f"github://0xA2C3B1F4/t150-desk-control@{revision}"
+    github_source = f"github://0xA2C3B1F4/t150-desk-control@{source_ref}"
     if args.source_mode == "github":
         text, replacements = re.subn(
             r"^    # source: github://0xA2C3B1F4/t150-desk-control@[^\s]+$",
@@ -79,7 +75,7 @@ def main():
         assert len(clones) == 1, clones
         clone = clones[0].parent
         commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=clone, text=True).strip()
-        assert commit == revision, f"Fetched {commit}, expected checkout {revision}"
+        assert commit == expected, f"Fetched {commit}, expected {expected}"
         remote = subprocess.check_output(["git", "remote", "get-url", "origin"], cwd=clone, text=True).strip()
         assert remote in ("https://github.com/0xA2C3B1F4/t150-desk-control",
                           "https://github.com/0xA2C3B1F4/t150-desk-control.git")
@@ -108,7 +104,7 @@ def main():
                "source": github_source if args.source_mode == "github" else str(ROOT / "components"),
                "checkout_commit": revision, "working_tree": args.source_mode == "local",
                "resolved_commit": commit, "example": source.name, "example_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
-               "credentials": "dummy device values; Git authentication inherited without credential output",
+               "credentials": "dummy device values; public Git source without forwarded job credentials",
                "matching_compiled_files": checks, "firmware_bytes": firmware.stat().st_size,
                "web_server": {"version": web_version, "local_assets": True, "authentication": True,
                               "browser_tested": False},

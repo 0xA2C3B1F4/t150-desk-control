@@ -63,6 +63,17 @@ remains indistinguishable with the current 8-bit cursors.
 
 ## Automated tests
 
+Release tests cover source and annotated-tag validation, repeatable assets,
+checksum and allowed-file failures, and draft-only API operations. Synthetic inputs
+check the firmware catalog against compiled install and patch-preparation guards.
+Copied components, Git fixtures and a host UART peer cover source diagnostics.
+The existing-device snippet compiles without a web server and retains the user's
+project, network, API and OTA settings.
+
+The first release still requires a stationary Stamp-C3 smoke test of its exact
+ESPHome candidate. The earlier R7 hardware results above apply to the unchanged
+controller image. See [release procedure](releases.md#maintainer-workflow).
+
 The CI workflow defines Debug/Release native tests with ASan/UBSan, ESPHome host
 UART tests and Stamp-C3/ESP32 builds. Tests use dummy credentials and never upload firmware.
 

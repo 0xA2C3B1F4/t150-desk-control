@@ -1,0 +1,71 @@
+// Compile the production admission code with the existing host stand-ins.
+#include "desk_firmware_update.cpp"
+#include <iostream>
+namespace fw = esphome::desk_firmware_update;
+struct Probe : fw::FirmwareUpdate {
+  bool prepares(const char *source, const char *action) {
+    preflight_ = tail_erased_ = backup_ = true;
+    preflight_at_ = esphome::millis();
+    size_ = fw::IMAGE_SIZE;
+    phase_ = Phase::Ready;
+    std::strcpy(hash_, source);
+    buffer_ = std::shared_ptr<uint8_t>(new uint8_t[size_], std::default_delete<uint8_t[]>());
+    std::memset(buffer_.get(), 255, size_);
+    // Synthetic input reaches the existing DT02 transformation. It is not a
+    // supported image and must fail the complete output hash check.
+    const uint8_t sleep[] = {0x18,0x18,0x3c,0x28}, hook[] = {0xca,0x48,0x02,0x68};
+    std::memcpy(buffer_.get()+0x1656, sleep, sizeof(sleep));
+    std::memcpy(buffer_.get()+0x53ae, hook, sizeof(hook));
+    execute_(action);
+    if (!error_) std::exit(3);
+    if (!std::strcmp(action,"patch")) return !std::strcmp(error_,"Generated patch hash mismatch");
+    if (!std::strcmp(action,"patch_child_lock"))
+      return !std::strcmp(error_,"CL01 patch precondition failed") || !std::strcmp(error_,"Generated CL01 hash mismatch");
+    return !std::strcmp(error_,"RS01 patch precondition failed") || !std::strcmp(error_,"Generated RS01 hash mismatch");
+  }
+  bool admits(const char *source, const char *target) {
+    preflight_ = tail_erased_ = backup_ = true;
+    preflight_at_ = esphome::millis();
+    size_ = fw::IMAGE_SIZE;
+    std::strcpy(source_hash_, source);
+    std::strcpy(hash_, target);
+    return admit_();
+  }
+};
+int main() {
+  const char *ids[] = {"stock", "dt02", "cl01", "rs01-r7"};
+  const char *hashes[] = {fw::STOCK_SHA, fw::DT02_SHA, fw::CL01_SHA, fw::RS01_SHA};
+  Probe probe;
+  std::cout << "{\"application_size\":" << fw::IMAGE_SIZE << ",\"images\":{";
+  for (unsigned i=0; i<4; ++i) {
+    if (i) std::cout << ',';
+    if (!fw::known(hashes[i])) return 1;
+    std::cout << '"' << ids[i] << "\":\"" << hashes[i] << '"';
+  }
+  std::cout << "},\"install\":[";
+  bool first = true;
+  for (unsigned i=0; i<4; ++i) for (unsigned j=0; j<4; ++j) {
+    if (!probe.admits(hashes[i], hashes[j])) continue;
+    if (!first) std::cout << ',';
+    first = false;
+    std::cout << "[\"" << ids[i] << "\",\"" << ids[j] << "\"]";
+  }
+  for (const char *hash : hashes)
+    if (probe.admits("unknown", hash) || probe.admits(hash, "unknown")) return 2;
+  std::cout << "],\"prepare\":{";
+  const char *actions[] = {"patch", "patch_child_lock", "patch_reset_speed"};
+  for (unsigned target=1; target<4; ++target) {
+    if (target>1) std::cout << ',';
+    std::cout << '"' << ids[target] << "\":[";
+    bool initial = true;
+    for (unsigned source=0; source<4; ++source) {
+      if (!probe.prepares(hashes[source], actions[target-1])) continue;
+      if (!initial) std::cout << ',';
+      initial = false;
+      std::cout << '"' << ids[source] << '"';
+    }
+    if (probe.prepares("unknown", actions[target-1])) return 4;
+    std::cout << ']';
+  }
+  std::cout << "}}\n";
+}

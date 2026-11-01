@@ -8,6 +8,7 @@ import select
 import struct
 import subprocess
 import time
+import termios
 import yaml
 
 from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
@@ -192,6 +193,10 @@ desk_uart:
         with (work / "build.log").open("w") as log:
             build_host(cfg, work, env, log, uart_port=os.ttyname(slave))
         for case in cases:
+            # Each process is a fresh simulated controller session. Discard
+            # bytes left in either PTY direction after the previous process exited.
+            termios.tcflush(master, termios.TCIOFLUSH)
+            termios.tcflush(slave, termios.TCIOFLUSH)
             run = work / case
             run.mkdir(exist_ok=True)
             raw, seen = bytearray(), []

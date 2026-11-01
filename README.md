@@ -24,12 +24,19 @@ For related desks, see [untested compatibility candidates and how to contribute 
 
 ## Install
 
+The examples use development sources on `main` until the first release.
+See [release preparation](docs/releases.md) for versioning and validation.
+
 You need a compatible controller, a Wi-Fi ESP32 and three UART wires. [Connect TX, RX and ground](docs/hardware.md#uart-wiring); power the ESP32 separately through USB.
 
 | Board | Configuration | ESP32 TX / RX | Coverage |
 |---|---|---|---|
 | M5Stack Stamp-C3, 4 MB | [stamp-c3.yaml](examples/esphome/stamp-c3.yaml) | GPIO4 / GPIO5 | Hardware tested |
 | ESP32-WROOM-32, 4 MB | [esp32.yaml](examples/esphome/esp32.yaml) | GPIO17 / GPIO16 | Build tested |
+
+For an existing ESPHome device, merge [existing-device.yaml](examples/esphome/existing-device.yaml)
+into your configuration and keep your network, API and OTA settings.
+See [existing devices](docs/esphome.md#existing-device).
 
 ### ESPHome Device Builder
 

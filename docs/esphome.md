@@ -5,6 +5,26 @@ The examples use ESPHome 2026.4.2. Choose a board configuration from the
 
 ## Setup
 
+### Existing device
+
+Merge [existing-device.yaml](../examples/esphome/existing-device.yaml) into your
+existing configuration. Reuse an existing UART ID or choose unused pins for a new
+UART. Keep your own `esphome`, Wi-Fi, API, OTA, logger and web settings.
+The snippet enables height reporting. Add `stop` to `desk_uart` for remote Stop;
+movement controls require the existing experimental options documented below.
+
+The development snippet follows `main`. [Release assets](releases.md) will pin
+component sources to their release tag.
+
+### Source diagnostics
+
+Optional `source_version` and `source_revision` entries under `desk_uart` create
+read-only diagnostic text sensors. Give each a `name`, as with other text sensors.
+The revision includes `clean`, `dirty` or `unknown`. Startup configuration logs
+show the same information without requiring either sensor. Copied components can
+report an unknown revision. Neither sensor sends UART commands or changes
+`esphome.project`.
+
 ### Configuration paths
 
 The main YAML is the file passed to `esphome` or opened in Device Builder.

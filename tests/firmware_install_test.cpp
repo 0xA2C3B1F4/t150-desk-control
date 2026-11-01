@@ -35,7 +35,8 @@ int main(){
   {Rig r;r.image[25600]=0x42;CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now));
    r.header(Sender::Profile::ChildLockCL01);
    const std::string header(r.writes[1].begin()+3,r.writes[1].begin()+131);CHECK(header.find("26624 ")!=std::string::npos);
-   for(int i=0;i<26;++i)r.feed(6);CHECK(r.sender.acked_blocks()==26);CHECK(r.writes.back()==std::vector<uint8_t>{4});
+   for(int i=0;i<26;++i) { r.feed(6); }
+   CHECK(r.sender.acked_blocks()==26);CHECK(r.writes.back()==std::vector<uint8_t>{4});
    r.feed(6);r.feed(6);CHECK(r.sender.complete());CHECK(r.writes.size()==30);
    auto &last=r.writes[27];CHECK(last[1]==26);CHECK(last[3]==0x42);CHECK(desk_protocol::FirmwareExport::crc(last.data()+3,1024)==(unsigned(last[1027])<<8|last[1028]));}
   {Rig r;r.image[26624]=0;CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now,Sender::Profile::ChildLockCL01));CHECK(r.writes.empty());}
@@ -47,7 +48,8 @@ int main(){
    CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now,Sender::Profile::ChildLockCL01));
    r.header(Sender::Profile::ResetSpeedRS01);
    const std::string header(r.writes[1].begin()+3,r.writes[1].begin()+131);CHECK(header.find("32768 ")!=std::string::npos);
-   for(int i=0;i<32;++i)r.feed(6);CHECK(r.sender.acked_blocks()==32);CHECK(r.writes.back()==std::vector<uint8_t>{4});
+   for(int i=0;i<32;++i) { r.feed(6); }
+   CHECK(r.sender.acked_blocks()==32);CHECK(r.writes.back()==std::vector<uint8_t>{4});
    r.feed(6);r.feed(6);CHECK(r.sender.complete());CHECK(r.writes.size()==36);
    for(size_t i=2;i<34;++i){const auto &p=r.writes[i];CHECK(p[1]==i-1);CHECK(std::equal(p.begin()+3,p.begin()+1027,r.image.begin()+(i-2)*1024));CHECK(desk_protocol::FirmwareExport::crc(p.data()+3,1024)==(unsigned(p[1027])<<8|p[1028]));}}
   {Rig r;r.image[Sender::RESET_SPEED_PAYLOAD_SIZE]=0;CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now,Sender::Profile::ResetSpeedRS01));CHECK(r.writes.empty());}
