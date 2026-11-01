@@ -18,11 +18,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
-      TMPDIR: ${{ runner.temp }}
-      PIP_CACHE_DIR: ${{ runner.temp }}/desk-style/pip-cache
-      RUFF_CACHE_DIR: ${{ runner.temp }}/desk-style/ruff-cache
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
+      - name: Configure temporary directories
+        run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "PIP_CACHE_DIR=$RUNNER_TEMP/desk-style/pip-cache" >> "$GITHUB_ENV"
+          echo "RUFF_CACHE_DIR=$RUNNER_TEMP/desk-style/ruff-cache" >> "$GITHUB_ENV"
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ inputs.source-ref || github.sha }}
