@@ -27,7 +27,7 @@ wifi:
   password: "test-only-password"
 api:
   encryption:
-    key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+    key: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=
 ota:
   - platform: esphome
     password: test-only-ota-password

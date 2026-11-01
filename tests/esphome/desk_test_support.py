@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 import pty
 import subprocess
+import sys
 import termios
 import tty
 
@@ -94,6 +95,9 @@ def test_env(work):
         PIP_CACHE_DIR=str(work.parent / "pip-cache"),
         UV_CACHE_DIR=str(work.parent / "uv-cache"),
         IDF_TOOLS_PATH=str(work.parent / "idf-tools"),
+        ESPHOME_ESP_IDF_PREFIX=str(work.parent / "native-idf"),
+        ESPHOME_HOST_PREFIX=str(work.parent / "native-host"),
+        CCACHE_DIR=str(work.parent / "ccache"),
         DESK_TEST_PREFS_HOME=str(work / "preferences"),
         PYTHONDONTWRITEBYTECODE="1",
     )
@@ -109,8 +113,8 @@ def open_pty():
 def build_host(config, work, env, log, *, uart_port=None, uart_expr=None, edit_main=None):
     """Generate, adapt and compile the host program for ``config``.
 
-    The YAML must use ``port: /dev/null``: ESPHome 2026.4.2 rejects Linux
-    /dev/pts/N paths during validation, although the host UART accepts them.
+    The YAML uses ``port: /dev/null`` during validation. The generated
+    test program receives its actual synthetic PTY path below.
     The placeholder in the generated main.cpp is replaced with ``uart_port``
     (a path) or ``uart_expr`` (a C++ expression evaluated at run time).
     ``edit_main`` may change the generated main.cpp source first.
@@ -120,12 +124,23 @@ def build_host(config, work, env, log, *, uart_port=None, uart_expr=None, edit_m
     """
     assert (uart_port is None) != (uart_expr is None), "Pass uart_port or uart_expr"
     subprocess.run(
-        ["esphome", "compile", str(config), "--only-generate"],
+        [sys.executable, "-m", "esphome", "compile", str(config), "--only-generate"],
         env=env,
         stdout=log,
         stderr=subprocess.STDOUT,
         check=True,
     )
+    # Tests terminate the synthetic process after the peer stops reading.
+    # ESPHome now handles SIGTERM as a graceful shutdown, whose UART tcdrain
+    # can wait on that peer. Keep cleanup abrupt as in the original harness;
+    # explicit App shutdown scenarios still run their normal hooks.
+    host_core = work / "build/src/esphome/components/host/core.cpp"
+    core_source = host_core.read_text()
+    signal = "std::signal(SIGTERM, signal_handler);"
+    assert core_source.count(signal) == 1
+    if host_core.is_symlink():
+        host_core.unlink()
+    host_core.write_text(core_source.replace(signal, "std::signal(SIGTERM, SIG_DFL);"))
     main = work / "build/src/main.cpp"
     source = main.read_text()
     if edit_main is not None:
@@ -139,6 +154,24 @@ def build_host(config, work, env, log, *, uart_port=None, uart_expr=None, edit_m
     if pref.is_symlink():
         pref.unlink()
     pref.write_text(source.replace('getenv("HOME")', 'getenv("DESK_TEST_PREFS_HOME")'))
+    # Recreate the pinned codegen state in memory, then invoke the native host
+    # builder directly. Do not call write_cpp_file: it would erase the fixture
+    # edits, and a preliminary compile cannot build fixtures needing edit_main.
+    compile_only = """
+import sys
+from pathlib import Path
+from esphome.core import CORE
+from esphome.config import read_config
+from esphome.__main__ import generate_cpp_contents
+from esphome.host.toolchain import run_compile
+CORE.config_path = Path(sys.argv[1])
+config = read_config({})
+assert config is not None
+CORE.config = config
+generate_cpp_contents(config)
+raise SystemExit(run_compile(config, False))
+"""
     subprocess.run(
-        ["platformio", "run", "-d", str(work / "build")], env=env, stdout=log, stderr=subprocess.STDOUT, check=True
+        [sys.executable, "-c", compile_only, str(config)], env=env,
+        stdout=log, stderr=subprocess.STDOUT, check=True,
     )

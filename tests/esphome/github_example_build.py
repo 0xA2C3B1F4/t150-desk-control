@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 
 import yaml
 
@@ -21,6 +22,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--example", choices=("stamp-c3", "esp32"),
                         default="stamp-c3")
+    parser.add_argument("--maintenance", action="store_true", help="Include firmware maintenance and confirmed web controls")
     parser.add_argument("--source-mode", choices=("github", "local"), default="github")
     parser.add_argument("--ref", help="Literal published ref to test without rewriting it")
     parser.add_argument("--expected-commit", help="Expected peeled commit for --ref")
@@ -53,6 +55,12 @@ def main():
     else:
         assert text.count("path: ../../components") == 1
         text = text.replace("path: ../../components", f"path: {ROOT}/components")
+    if args.maintenance:
+        assert args.example == "stamp-c3", "Maintenance build uses the tested Stamp-C3 board"
+        text = text.replace("components: [desk_uart]", "components: [desk_uart, desk_firmware_export, desk_firmware_update]")
+        text = text.replace("desk_uart:\n", "desk_uart:\n  child_lock:\n    name: Panel lock\n  motion_speed:\n    name: Motion speed\n")
+        text = text.replace("  rx_buffer_size: 512", "  rx_buffer_size: 4096\n  rx_full_threshold: 64\n  rx_timeout: 2")
+        text += "\ndesk_firmware_update:\n  id: firmware_maintenance\n  desk_id: desk\n"
     # Relocate generated data independently of the selected component source.
     text = re.sub(r"  build_directory: .*", f"  build_directory: {work}/build", text)
     cfg = work / f"{args.example}.yaml"
@@ -60,14 +68,14 @@ def main():
     (work / "secrets.yaml").write_text(
         'wifi_ssid: "isolated-test-network"\n'
         'wifi_password: "dummy-not-a-device-password"\n'
-        'api_encryption_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="\n'
+        'api_encryption_key: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="\n'
         'ota_password: "dummy-not-a-device-password"\n'
         'web_username: "desk-test"\n'
         'web_password: "dummy-not-a-device-password"\n'
     )
     for action in ("config", "compile"):
         with (work / f"{action}.log").open("w") as log:
-            subprocess.run(["esphome", action, str(cfg)], cwd=work, env=env,
+            subprocess.run([sys.executable, "-m", "esphome", action, str(cfg)], cwd=work, env=env,
                            stdout=log, stderr=subprocess.STDOUT, check=True)
     clone, commit = ROOT, None
     if args.source_mode == "github":
@@ -93,12 +101,24 @@ def main():
         checks.append({"file": str(original.relative_to(clone)),
                        "sha256": hashlib.sha256(generated.read_bytes()).hexdigest()})
     assert not (work / "build/src/desk_protocol").exists()
-    device_name = re.search(r"^  device_name: (.+)$", text, re.MULTILINE).group(1)
-    firmware = work / f"build/.pioenvs/{device_name}/firmware.ota.bin"
+    firmware = work / "build/build/firmware.ota.bin"
     assert firmware.is_file()
     defines = (work / "build/src/esphome/core/defines.h").read_text()
     for flag in ("USE_WEBSERVER_LOCAL", "USE_WEBSERVER_AUTH", f"USE_WEBSERVER_VERSION {web_version}"):
         assert f"#define {flag}\n" in defines, flag
+    if args.maintenance:
+        for domain in ("desk_firmware_export", "desk_firmware_update"):
+            for original in (clone / "components" / domain).iterdir():
+                if original.suffix not in (".h", ".cpp"):
+                    continue
+                generated = work / "build/src/esphome/components" / domain / original.name
+                assert original.read_bytes() == generated.read_bytes()
+                assert (ROOT / original.relative_to(clone)).read_bytes() == original.read_bytes()
+                checks.append({"file": str(original.relative_to(clone)),
+                               "sha256": hashlib.sha256(generated.read_bytes()).hexdigest()})
+        ota_source = (work / "build/src/esphome/components/esphome/ota/ota_esphome.cpp").read_text()
+        assert "desk_firmware_export::OTAOperation desk_ota;" in ota_source
+        assert "t150_ota_patch_guard();" in (work / "build/src/main.cpp").read_text()
     assert "#define USE_WEBSERVER_OTA" not in defines
     summary = {"passed": True, "source_mode": args.source_mode,
                "source": github_source if args.source_mode == "github" else str(ROOT / "components"),
@@ -108,7 +128,7 @@ def main():
                "matching_compiled_files": checks, "firmware_bytes": firmware.stat().st_size,
                "web_server": {"version": web_version, "local_assets": True, "authentication": True,
                               "browser_tested": False},
-               "uploaded": False}
+               "maintenance": args.maintenance, "uploaded": False}
     (work / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary))
 

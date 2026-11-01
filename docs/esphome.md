@@ -1,7 +1,8 @@
 # ESPHome setup and controls
 
-The examples use ESPHome 2026.4.2. Choose a board configuration from the
-[README](../README.md#install); `desk.yaml` is the monitoring-only alternative.
+The examples use ESPHome 2026.10.1 with the default native ESP-IDF toolchain.
+Choose a board configuration from the [README](../README.md#install); `desk.yaml`
+is the monitoring-only alternative.
 
 ## Setup
 
@@ -62,12 +63,12 @@ add-on uses `/data`. The examples' `.esphome/build/...` values therefore create
 ### Standalone install
 
 Save the board YAML and secrets file together and enable the GitHub source.
-From that directory, install ESPHome with Python 3.11–3.14:
+From that directory, install ESPHome with Python 3.12–3.15:
 
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
-pip install esphome==2026.4.2
+pip install esphome==2026.10.1
 esphome config stamp-c3.yaml
 esphome compile stamp-c3.yaml
 esphome upload stamp-c3.yaml

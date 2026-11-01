@@ -78,10 +78,10 @@ def decorate_header(source):
 def patch_file(path):
     temporary = None
     try:
-        source = path.read_text()
+        source = path.read_text(encoding="utf-8")
         result = decorate_header(source)
         if source != result:
-            with tempfile.NamedTemporaryFile(mode='w', dir=path.parent,
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
                                              prefix=path.name + '.', delete=False) as output:
                 temporary = Path(output.name)
                 output.write(result)
@@ -93,8 +93,3 @@ def patch_file(path):
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
-
-
-if 'Import' in globals():  # PlatformIO pre-build hook; importable by host tests.
-    Import('env')
-    patch_file(Path(env.subst('$PROJECT_DIR')) / 'src/esphome/components/web_server/server_index_v3.h')

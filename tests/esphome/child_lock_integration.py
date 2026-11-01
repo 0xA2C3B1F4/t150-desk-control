@@ -171,17 +171,7 @@ desk_uart:
         if args.trace_timing:
             from child_lock_timing import instrument
             instrument(work)
-        # ESPHome 2026.4.2 host flush purges TX; ESP32 flush drains. Preserve TX
-        # in this generated synthetic transport so shutdown ordering is visible
-        # to the peer. This shim proves writes, not hardware TX-drain semantics.
-        # Installed ESPHome and repo sources stay intact.
-        uart_source = work / "build/src/esphome/components/uart/uart_component_host.cpp"
-        original = uart_source.read_text()
-        assert original.count("tcflush(this->file_descriptor_, TCIOFLUSH);") == 1
-        if uart_source.is_symlink():
-            uart_source.unlink()
-        uart_source.write_text(original.replace("tcflush(this->file_descriptor_, TCIOFLUSH);",
-                                                "tcflush(this->file_descriptor_, TCIFLUSH);"))
+        # Current upstream uses tcdrain, so no TX-purging workaround is needed.
         return "#include <unistd.h>\n" + source
     try:
         with (work / "build.log").open("w") as log:

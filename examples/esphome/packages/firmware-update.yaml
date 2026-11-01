@@ -1,7 +1,6 @@
 # Optional maintenance build. Use instead of firmware-export.yaml.
 # Open http://<device-address>/desk-firmware after installation.
-# Return to normal ESPHome firmware over USB after maintenance.
-ota: !remove
+# ESPHome OTA remains available between controller firmware operations.
 substitutions:
   # Relative to the main device YAML. Override when copying it elsewhere.
   firmware_components_path: ../../components

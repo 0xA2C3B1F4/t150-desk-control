@@ -12,11 +12,14 @@ FirmwareExport = ns.class_("FirmwareExport", cg.Component)
 CONFIG_SCHEMA = cv.All(cv.Schema({
     cv.GenerateID(): cv.declare_id(FirmwareExport),
     cv.Optional("desk_id"): cv.use_id(desk_uart.DeskUART),
-}).extend(cv.COMPONENT_SCHEMA), cv.only_with_esp_idf)
+}).extend(cv.COMPONENT_SCHEMA), cv.only_with_framework("esp-idf"))
 
 def validate_reader(config):
     if "desk_id" not in config and "desk_firmware_update" not in fv.full_config.get():
         raise cv.Invalid("desk_id is required for the standalone firmware reader")
+    for ota in fv.full_config.get().get("ota", []):
+        if ota["platform"] != "esphome":
+            raise cv.Invalid("Desk firmware operations support only the guarded esphome OTA platform")
     return config
 FINAL_VALIDATE_SCHEMA = validate_reader
 

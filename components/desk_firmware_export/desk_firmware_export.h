@@ -14,6 +14,9 @@ namespace esphome::desk_firmware_export {
 class FirmwareExport : public Component, public AsyncWebHandler {
  public:
   void set_desk(desk_uart::DeskUART *desk) { desk_ = desk; }
+  // Called by the guarded ESPHome OTA entry point on the main loop.
+  static bool begin_ota();
+  static void end_ota();
   void setup() override;
   void loop() override;
   float get_setup_priority() const override { return setup_priority::WIFI; }
@@ -30,6 +33,8 @@ class FirmwareExport : public Component, public AsyncWebHandler {
   float progress();
   bool image_ready();
  protected:
+  virtual bool blocks_ota_() const;  // mutex_ held by the caller
+  bool ota_active_{false};
   using Receiver = desk_protocol::FirmwareExport;
   enum class Command { None, Start, Cancel, Clear };
   struct Snapshot {
@@ -66,5 +71,16 @@ class FirmwareExport : public Component, public AsyncWebHandler {
   uint32_t error_baseline_{0}, finished_at_{0};
   bool owned_{false}, finishing_{false}, cancelled_{false};
   HighFrequencyLoopRequester fast_loop_;
+};
+// Keep admission reserved through every return path of the blocking OTA call.
+class OTAOperation {
+ public:
+  OTAOperation() : admitted_(FirmwareExport::begin_ota()) {}
+  ~OTAOperation() { if (admitted_) FirmwareExport::end_ota(); }
+  OTAOperation(const OTAOperation &) = delete;
+  OTAOperation &operator=(const OTAOperation &) = delete;
+  explicit operator bool() const { return admitted_; }
+ private:
+  bool admitted_;
 };
 }  // namespace esphome::desk_firmware_export

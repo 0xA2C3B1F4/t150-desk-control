@@ -197,3 +197,10 @@ frames with the saved original firmware:
 python3 tools/test_uart_parser_boundary.py --image /path/to/new-full-rs01.bin \
   --stock-image /path/to/saved-full-original.bin
 ```
+
+## ESPHome 2026.10.1
+
+Configuration and host tests cover native ESP-IDF generation, firmware maintenance
+with ESPHome OTA, and mutual exclusion between OTA and controller operations.
+A complete Stamp-C3 build includes the local web UI, panel lock, motion speed and
+encrypted OTA. These checks do not establish on-device OTA or browser behavior.

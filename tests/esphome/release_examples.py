@@ -39,7 +39,7 @@ def main():
             text=text.replace(f"github://{release.REPOSITORY}@v{version}",f"github://{release.REPOSITORY}@{ref}")
             text=re.sub(r"  build_directory: .*",f"  build_directory: {run}/build",text)
             (run/filename).write_text(text)
-        secrets=(run/'secrets.example.yaml').read_text().replace('REPLACE_WITH_GENERATED_BASE64_KEY','AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=')
+        secrets=(run/'secrets.example.yaml').read_text().replace('REPLACE_WITH_GENERATED_BASE64_KEY','AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=')
         (run/'secrets.yaml').write_text(secrets)
         config=run/(name+'.yaml')
         for action in ('config','compile'):

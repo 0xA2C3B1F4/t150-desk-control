@@ -30,6 +30,7 @@ class FirmwareUpdate : public desk_firmware_export::FirmwareExport {
   size_t payload_size_() const;
   void fail_(const char *reason);
   bool active_() const;
+  bool blocks_ota_() const override;
   bool admit_() const;
   bool save_recovery_(bool value);
   const char *phase_name_() const;

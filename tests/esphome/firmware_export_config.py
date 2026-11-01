@@ -21,7 +21,7 @@ base = base.replace("build_directory: .esphome/build/t150-desk-control-stamp-c3"
 optional = (examples / "stamp-c3-firmware-export.yaml").read_text()
 optional += f"\nsubstitutions:\n  firmware_components_path: {ROOT}/components\n"
 (work / "stamp-c3-firmware-export.yaml").write_text(optional)
-secrets = (examples / "secrets.example.yaml").read_text().replace("REPLACE_WITH_GENERATED_BASE64_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+secrets = (examples / "secrets.example.yaml").read_text().replace("REPLACE_WITH_GENERATED_BASE64_KEY", "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
 (work / "secrets.yaml").write_text(secrets)
 results = []
 for enabled, name in [(False, "stamp-c3"), (True, "stamp-c3-firmware-export"), (False, "stamp-c3")]:
