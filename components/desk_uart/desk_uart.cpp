@@ -20,10 +20,12 @@ bool ChildLockSwitch::is_instance(const switch_::Switch *candidate) {
 }
 
 void ChildLockSwitch::invalidate() {
+#if defined(USE_CONTROLLER_REGISTRY) && defined(USE_SWITCH)
   const bool changed = this->has_state();
+#endif
   this->set_has_state(false);
   this->publish_dedup_.next_unknown();
-#ifdef USE_CONTROLLER_REGISTRY
+#if defined(USE_CONTROLLER_REGISTRY) && defined(USE_SWITCH)
   // Notify the web server even though there is no new boolean state. Its local
   // renderer uses has_state() to clear the last confirmed color. The native API
   // still needs the companion status/availability entities for unknown states.
@@ -32,7 +34,34 @@ void ChildLockSwitch::invalidate() {
 }
 // Interruptions caused by a successful Stop are logged, not published as
 // command results, so they cannot replace that Stop's own result.
+MotionSpeedSelect *MotionSpeedSelect::first_ = nullptr;
+MotionSpeedSelect::MotionSpeedSelect() : next_(first_) { first_ = this; }
+bool MotionSpeedSelect::is_instance(const select::Select *candidate) {
+  for (auto *item = first_; item != nullptr; item = item->next_)
+    if (item == candidate) return true;
+  return false;
+}
+void MotionSpeedSelect::invalidate() {
+#if defined(USE_CONTROLLER_REGISTRY) && defined(USE_SELECT)
+  const bool changed = this->has_state();
+#endif
+  this->set_has_state(false);
+#if defined(USE_CONTROLLER_REGISTRY) && defined(USE_SELECT)
+  if (changed) ControllerRegistry::notify_select_update(this);
+#endif
+}
 static const char *const STOP_PRESET_REASON = "Preset setting interrupted by Stop; readback required";
+static const char *reset_continuation_blocked(const desk_protocol::ResetSpeedReply &reply) {
+  if (reply.admission_diagnostics) {
+    switch (reply.resume_result) {
+      case 4: return "Reset paused; release physical keys to continue";
+      case 5: return "Reset paused; panel lock blocks continuation";
+      case 6: return "Reset paused; controller guard blocks continuation";
+    }
+  }
+  if (reply.child_lock) return "Reset paused; panel lock blocks continuation";
+  return "Reset paused; continuation unavailable; inspect the desk";
+}
 
 void DeskUART::invalidate_load_raw_() {
   if (!this->load_raw_valid_) return;
@@ -42,6 +71,14 @@ void DeskUART::invalidate_load_raw_() {
 
 bool DeskUART::begin_firmware_export(bool motor_isolated) {
   const uint32_t now = millis();
+  const bool reset_link_stale = !this->height_seen_ || !this->monitor_.fresh(now) ||
+      static_cast<uint32_t>(now - this->last_height_received_) > 750;
+  // motor_isolated is the caller's explicit physical recovery precondition.
+  // Host time proves only that this adapter has stopped sending lease grants;
+  // it cannot prove MCU tick progress or that a hung controller cut outputs.
+  const bool isolated_reset_recovery = motor_isolated && reset_link_stale && !this->reset_speed_.owned() &&
+      !this->reset_speed_.busy() && static_cast<uint32_t>(now - this->last_reset_lease_tx_) >= 1500;
+  if (!this->reset_speed_.maintenance_safe(now) && !isolated_reset_recovery) return false;
   if (this->firmware_export_active_ || (!motor_isolated && (this->direct_.busy() || this->direct_.set_sent() || !this->preset_access_allowed_(now) ||
       this->preset_settings_.busy() || this->target_move_.dirty() || this->keep_awake_active_ ||
       this->keep_awake_fault_ || this->recovery_check_active_ || this->accept_current_active_ ||
@@ -55,6 +92,7 @@ bool DeskUART::begin_firmware_export(bool motor_isolated) {
   // Isolated maintenance may start while the application is absent. Drop
   // queued work without transmitting anything; never replay it on exit.
   this->firmware_export_active_ = true;
+  this->reset_speed_confirmed_ = false;
   if (motor_isolated) {
     this->discard_pending_preset_("Pending preset cancelled by firmware maintenance");
     this->target_move_.connection_lost(now);
@@ -69,6 +107,7 @@ bool DeskUART::begin_firmware_export(bool motor_isolated) {
     this->identity_pending_ = 255;
     this->limit_phase_ = LimitPhase::Idle;
   }
+  this->invalidate_reset_speed_("RS01 unavailable during firmware maintenance");
   this->invalidate_journal_session_();
   this->uart_observation_.handoff();
   this->invalidate_detection_();
@@ -112,9 +151,14 @@ void DeskUART::send_(const desk_protocol::Frame &frame) {
   if (this->detection_.busy() && !this->detection_sending_) this->invalidate_detection_();
   if (this->child_lock_busy_() && !this->child_lock_sending_)
     this->invalidate_child_lock_("CL01 transaction interrupted; state unknown, no retry");
+  if (this->reset_speed_.busy() && !this->reset_speed_sending_ && this->reset_speed_.operation() == desk_protocol::ResetSpeed::Get)
+    this->reset_speed_.yield_read();
   if (this->firmware_export_active_) return;
   desk_protocol::Packet wire;
-  if (desk_protocol::encode(frame, wire)) {
+  if (desk_protocol::encode_resync(frame, wire)) {
+    if (frame.size == 10 && frame.bytes[0] == 0xD5 &&
+        frame.bytes[2] >= desk_protocol::ResetSpeed::Start && frame.bytes[2] <= desk_protocol::ResetSpeed::Renew)
+      this->last_reset_lease_tx_ = millis();
     this->uart_observation_.transmitted();
     this->write_array(wire.bytes, wire.size);
   }
@@ -174,6 +218,12 @@ void DeskUART::setup() {
   this->direct_.seed(static_cast<uint16_t>(boot));
   this->detection_.seed(static_cast<uint16_t>(boot));
   this->child_lock_.seed(static_cast<uint16_t>(boot >> 16));
+  this->reset_speed_.seed(static_cast<uint16_t>(boot ^ (boot >> 16)));
+  this->last_reset_lease_tx_ = millis();
+  if (this->motion_speed_select_) this->motion_speed_select_->invalidate();
+  if (this->reset_available_) this->reset_available_->publish_state(false);
+  if (this->motion_speed_available_) this->motion_speed_available_->publish_state(false);
+  if (this->reset_status_) this->reset_status_->publish_state("Unknown; RS01 discovery required");
   this->child_lock_detection_.seed(static_cast<uint16_t>(boot));
   if (this->child_lock_switch_) this->child_lock_switch_->invalidate();
   if (this->child_lock_available_) this->child_lock_available_->publish_state(false);
@@ -220,6 +270,7 @@ void DeskUART::loop() {
     if (!this->read_byte(&byte)) break;
     const uint32_t now = millis();
     if (this->height_seen_ && static_cast<uint32_t>(now - this->last_height_received_) > 750) {
+      this->invalidate_reset_speed_("RS01 UART unavailable; fresh status required");
       this->invalidate_child_lock_("CL01 UART unavailable; state unknown");
       this->invalidate_detection_();
       if (this->firmware_export_active_) return;
@@ -250,6 +301,11 @@ void DeskUART::loop() {
       this->child_lock_result_();
       if (this->firmware_export_active_) return;
     }
+    if (this->reset_speed_enabled_()) {
+      this->reset_speed_.accept(frame, now);
+      this->reset_speed_result_();
+      if (this->firmware_export_active_) return;
+    }
     this->identity_frame_(frame, now);
     this->limit_frame_(frame, now);
     this->preset_settings_.accept(frame, now);
@@ -266,10 +322,12 @@ void DeskUART::loop() {
     if (this->monitor_.observe(frame, now)) {
       if (this->height_seen_ &&
           static_cast<uint16_t>(this->monitor_.height().sequence - previous_sequence) >= 0x8000) {
+        this->invalidate_reset_speed_("RS01 controller sequence reset; fresh status required");
         this->invalidate_child_lock_("CL01 controller sequence reset; rediscovery required");
         if (this->firmware_export_active_) return;
       }
       this->child_lock_.observe_sequence(this->monitor_.height().sequence);
+      this->reset_speed_.observe_sequence(this->monitor_.height().sequence);
       const uint16_t q = this->monitor_.height().q;
       this->uart_observation_.observe_height(millis(), q, this->monitor_.height().sequence);
       if (this->height_seen_ && static_cast<uint32_t>(now - this->last_height_received_) > 750)
@@ -320,6 +378,8 @@ void DeskUART::loop() {
     this->status_set_warning();
     ESP_LOGE(TAG, "No brake ACK; no retry. Remote presets remain locked. Check desk locally.");
   }
+  this->reset_speed_loop_(now);
+  if (this->firmware_export_active_) return;
   this->detection_loop_(now);
   if (this->firmware_export_active_) return;
   this->keep_awake_loop_(now);
@@ -361,6 +421,8 @@ void DeskUART::loop() {
       static_cast<uint32_t>(now - this->last_subscribe_) >= 5000) this->subscribe_(now);
 }
 bool DeskUART::recall_preset(uint8_t slot) {
+  this->yield_reset_speed_read_();
+  if (this->reset_speed_blocking_()) return this->result_(false, this->control_reason_(millis()));
   if (this->direct_mode_ && this->direct_.brake_pending())
     return this->result_(false, "Direct safety brake pending; select preset again after settling");
   if (const char *error = this->journal_error_()) return this->result_(false, error);
@@ -398,7 +460,12 @@ bool DeskUART::recall_preset(uint8_t slot) {
   desk_protocol::Frame press;
   if (!this->pulse_.begin(static_cast<desk_protocol::Button>(slot + 5), now, press)) return this->result_(false, "Preset button pulse already active");
   this->last_preset_recall_ = now;
-  if (this->direct_mode_) this->direct_.cancel();  // Native preset button preempts our ownership; no second brake.
+  if (this->direct_mode_) {
+    // Native preset preempts ownership without a second brake. Keep a canceled
+    // read-only probe pending for the normal idle arbiter.
+    if (this->direct_.phase() == desk_protocol::DirectTarget::Phase::Probe) this->direct_probe_done_ = false;
+    this->direct_.cancel();
+  }
   this->send_(press);
   return this->result_(true, "Preset button sent");
 }
@@ -426,6 +493,8 @@ bool DeskUART::pending_preset_loop_(uint32_t now) {
 }
 bool DeskUART::stop() {
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
+  // Reserve a fail-safe reset cancellation before any callback can issue work.
+  const bool reset_cancel_requested = this->reset_speed_.cancel(millis());
   // A rejected reply may have ended the transaction earlier in this RX batch.
   // Its deferred failure must never overwrite this newer Stop result.
   this->child_lock_.take_failure();
@@ -433,7 +502,11 @@ bool DeskUART::stop() {
   // Do not run child-lock sensor automations until the brake owns the UART.
   // A synchronous maintenance handoff here could otherwise swallow send_().
   if (this->child_lock_busy_()) this->invalidate_child_lock_("CL01 transaction cancelled by Stop; state unknown, no retry", false, false);
-  if (this->direct_mode_) this->direct_.cancel();
+  if (this->direct_mode_) {
+    // Only an interrupted read-only probe is retried after Stop settles.
+    if (this->direct_.phase() == desk_protocol::DirectTarget::Phase::Probe) this->direct_probe_done_ = false;
+    this->direct_.cancel();
+  }
   this->discard_pending_preset_("Pending preset cancelled by Stop");
   // A user's Stop (and any fault brake) must never inherit quiet presentation.
   this->keep_awake_active_ = false;
@@ -444,6 +517,12 @@ bool DeskUART::stop() {
   this->preset_settings_.cancel(STOP_PRESET_REASON);
   this->sync_target_ = true;
   const uint32_t now = millis();
+  desk_protocol::Frame reset_cancel;
+  if (this->reset_speed_.take_frame(reset_cancel)) {
+    this->reset_speed_sending_ = true;
+    this->send_(reset_cancel);
+    this->reset_speed_sending_ = false;
+  }
   if (this->accept_current_active_ || this->recovery_check_active_ || this->restore_requested_)
     this->target_move_.abort_recovery(now);
   // Suppress a burst of duplicate requests, not all later explicit Stops.
@@ -470,7 +549,9 @@ bool DeskUART::stop() {
   this->stop_latched_ = true;
   this->stop_acknowledged_ = false;
   this->last_stop_ = now;
-  this->stop_ack_.begin(0x18, 1, 0, now);
+  this->reset_stop_pending_ = reset_cancel_requested;
+  if (reset_cancel_requested) this->stop_ack_ = {};
+  else this->stop_ack_.begin(0x18, 1, 0, now);
   // A stop never waits behind parameter ACK/readback. Do not queue a write retry.
   if (this->limit_phase_ != LimitPhase::Idle) {
     ESP_LOGW(TAG, "Parameter transaction interrupted by stop; current setting needs refresh");
@@ -491,14 +572,14 @@ bool DeskUART::stop() {
 bool DeskUART::clear_stop_latch() {
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   const uint32_t now = millis();
-  if (!this->stop_latched_ || !this->stop_acknowledged_ || this->stop_ack_.pending() ||
+  if (!this->stop_latched_ || !this->stop_acknowledged_ || this->reset_stop_pending_ || this->stop_ack_.pending() ||
       this->timer_.busy() || this->pulse_.active() || this->release_ack_.pending() || this->release_fault_ ||
       !this->monitor_.fresh(now) || static_cast<uint32_t>(now - this->last_height_received_) > 750 || this->stable_ms_(now) < 1500 ||
       this->target_move_.busy() || this->target_move_.dirty() || static_cast<uint32_t>(now - this->last_stop_) < 2000)
     return false;
   // No motion is sent, and no request is replayed by clearing the interlock.
   this->stop_latched_ = false;
-  return this->result_(true, this->journal_error_() ?
+  return this->result_(true, this->reset_speed_.blocking() ? "Stop completed; reset remains incomplete, see Control status" : this->journal_error_() ?
       "Stop completed; preset backup still blocks controls, see control status" : "Stop completed; remote controls ready");
 }
 void LoadLimitNumber::control(float value) {
@@ -587,7 +668,7 @@ void DeskUART::limit_loop_(uint32_t now) {
     }
     return;
   }
-  if (this->child_lock_busy_() || this->detection_.busy() || this->preset_settings_.busy() || this->timer_.busy() || this->target_move_.busy() || this->direct_.busy() || !this->monitor_.fresh(now) || this->pulse_.active() || this->release_ack_.pending() || this->stop_ack_.pending()) return;
+  if (this->reset_speed_blocking_() || this->child_lock_busy_() || this->detection_.busy() || this->preset_settings_.busy() || this->timer_.busy() || this->target_move_.busy() || this->direct_.busy() || !this->monitor_.fresh(now) || this->pulse_.active() || this->release_ack_.pending() || this->stop_ack_.pending()) return;
   for (uint8_t offset = 0; offset < 2; ++offset) {
     const uint8_t i = (this->next_limit_ + offset) % 2;
     if (this->limit_numbers_[i] && static_cast<uint32_t>(now - this->last_limit_poll_) >= (this->original_known_[i] ? 5000U : 1000U)) {
@@ -597,7 +678,7 @@ void DeskUART::limit_loop_(uint32_t now) {
   }
 }
 bool DeskUART::preset_access_allowed_(uint32_t now) const {
-  return !this->child_lock_busy_() && !this->detection_.busy() && !this->journal_error_() && !this->journal_recheck_pending_ && !this->pending_preset_ && !this->firmware_export_active_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
+  return !this->reset_speed_blocking_() && !this->child_lock_busy_() && !this->detection_.busy() && !this->journal_error_() && !this->journal_recheck_pending_ && !this->pending_preset_ && !this->firmware_export_active_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
          static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
          static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000 &&
          !this->target_move_.busy() && !this->direct_.busy() && !this->timer_.busy() &&
@@ -852,6 +933,8 @@ void DeskUART::keep_awake_loop_(uint32_t now) {
   ESP_LOGD(TAG, "Keep-awake: reading current raw position and borrowing preset 3");
 }
 bool DeskUART::move_to_height(float cm) {
+  this->yield_reset_speed_read_();
+  if (this->reset_speed_blocking_()) return this->result_(false, this->control_reason_(millis()));
   if (const char *error = this->journal_error_()) return this->result_(false, error);
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   if (this->target_enabled_ && std::isfinite(cm) && cm >= this->min_height_ && cm <= this->max_height_)
@@ -952,7 +1035,7 @@ void DeskUART::detection_loop_(uint32_t now) {
   }
 }
 bool DeskUART::direct_access_allowed_(uint32_t now) const {
-  return !this->child_lock_busy_() && this->target_enabled_ && !this->journal_error_() && !this->journal_recheck_pending_ &&
+  return !this->reset_speed_blocking_() && !this->child_lock_busy_() && this->target_enabled_ && !this->journal_error_() && !this->journal_recheck_pending_ &&
       !this->accept_current_active_ && !this->recovery_check_active_ && !this->restore_requested_ &&
       !this->target_move_.dirty() && !this->target_move_.busy() && !this->firmware_export_active_ &&
       this->monitor_.fresh(now) && this->height_seen_ &&
@@ -991,17 +1074,235 @@ bool DeskUART::direct_move_(float cm, uint32_t now) {
   return this->result_(true, "Direct target requested; checking DT02 capability and idle guards");
 }
 
-bool DeskUART::child_lock_access_allowed_(uint32_t now) const {
-  return !this->firmware_export_active_ && !this->detection_.busy() && !this->journal_error_() &&
+bool DeskUART::reset_speed_access_allowed_(uint32_t now, bool reset, bool read, bool presentation) const {
+  const bool recovery_read = read && this->reset_stop_pending_;
+  // Only availability publication skips read-only bus occupancy. Command
+  // admission and polling always use the default, fully serialized path.
+  return !this->firmware_export_active_ &&
+      (!this->reset_speed_.busy() || (presentation && this->reset_speed_.operation() == desk_protocol::ResetSpeed::Get)) &&
+      !this->detection_.busy() &&
+      (!this->child_lock_busy_() || (presentation && !this->child_lock_detection_.busy() &&
+       this->child_lock_.operation() == 0 && this->child_lock_.state_known())) &&
+      (recovery_read || (!this->journal_error_() && !this->journal_recheck_pending_ &&
+      !this->keep_awake_active_ && !this->keep_awake_recovery_ && !this->keep_awake_fault_ &&
+      !this->accept_current_active_ && !this->recovery_check_active_ && !this->restore_requested_ &&
+      !this->target_move_.dirty())) && !this->target_move_.busy() && !this->direct_.busy() &&
+      this->height_seen_ && this->monitor_.fresh(now) &&
+      static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
+      // The fresh D6 carries all CL01 inhibit bits. A background D4 read may
+      // yield here, so its older cached state cannot veto this newer proof.
+      (!reset || (this->reset_speed_.known() && !this->reset_speed_.reply().child_lock)) &&
+      this->stable_ms_(now) >= 1500 && (!this->stop_latched_ || recovery_read) && !this->release_fault_ &&
+      !this->timer_.busy() && (!this->preset_settings_.busy() || (presentation && !this->preset_settings_.writing())) && !this->pulse_.active() &&
+      !this->release_ack_.pending() && !this->stop_ack_.pending() && !this->pending_preset_ &&
+      (this->limit_phase_ == LimitPhase::Idle || (presentation && this->limit_phase_ == LimitPhase::Read)) &&
+      (this->identity_pending_ == 255 || presentation) &&
+      static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000;
+}
+void DeskUART::yield_reset_speed_read_() {
+  if (this->reset_speed_.busy() && this->reset_speed_.operation() == desk_protocol::ResetSpeed::Get) {
+    this->reset_speed_.yield_read();
+    this->last_reset_speed_query_ = millis();
+  }
+}
+void DeskUART::invalidate_reset_speed_(const char *reason) {
+  if (!this->reset_speed_enabled_()) return;
+  this->reset_speed_.disconnect(reason);
+  this->last_reset_speed_query_ = millis();
+  if (this->motion_speed_select_) this->motion_speed_select_->invalidate();
+}
+bool DeskUART::reset_desk(bool resume) {
+  this->yield_child_lock_read_();
+  const uint32_t now = millis();
+  // The same user command resumes a paused reset. Cached status cannot choose
+  // an operation, and begin() independently checks fresh controller admission.
+  const bool continue_reset = resume || (this->reset_speed_.fresh(now) && this->reset_speed_.reply().state == 3);
+  if (!this->reset_enabled_ || !this->reset_speed_access_allowed_(now, true) ||
+      !this->reset_speed_.begin(continue_reset, now)) {
+    const auto &reply = this->reset_speed_.reply();
+    return this->result_(false, this->reset_enabled_ && this->reset_speed_.fresh(now) &&
+        reply.state == 3 && !(reply.flags & 2) ? this->reset_speed_status_(now) :
+        "Reset unavailable; require fresh RS01 eligibility, unlocked panel and idle controls");
+  }
+  this->last_keep_awake_ = now;
+  desk_protocol::Frame frame;
+  if (this->reset_speed_.take_frame(frame)) {
+    this->reset_speed_sending_ = true;
+    this->send_(frame);
+    this->reset_speed_sending_ = false;
+  }
+  this->result_(true, continue_reset ? "Reset continuation requested; awaiting RS01 acknowledgement" :
+                                     "Reset requested; awaiting RS01 acknowledgement");
+  this->publish_reset_speed_(millis());
+  return true;
+}
+bool DeskUART::set_motion_speed(bool slow) {
+  this->yield_child_lock_read_();
+  const uint32_t now = millis();
+  if (!this->motion_speed_select_ || !this->reset_speed_access_allowed_(now) ||
+      !this->reset_speed_.set_speed(slow, now))
+    return this->result_(false, "Motion speed unavailable; require fresh RS01 status and idle controls");
+  this->last_keep_awake_ = now;
+  desk_protocol::Frame frame;
+  if (this->reset_speed_.take_frame(frame)) {
+    this->reset_speed_sending_ = true;
+    this->send_(frame);
+    this->reset_speed_sending_ = false;
+  }
+  this->result_(true, "Motion speed requested; awaiting confirmed controller state");
+  this->publish_reset_speed_(millis());
+  return true;
+}
+void DeskUART::reset_speed_result_() {
+  const char *failure = this->reset_speed_.take_failure();
+  const bool completed = this->reset_speed_.take_completed();
+  const auto &reply = this->reset_speed_.reply();
+  const uint8_t operation = this->reset_speed_.operation();
+  if (completed) {
+    this->reset_speed_confirmed_ = true;
+    ESP_LOGD(TAG, "RS01 reply op=%u result=%u state=%u reason=%u flags=0x%02x mode=%u previous=%u lock=0x%02x "
+                  "stock_891=%u stock_8b9=%u error=%u stock_88e=%u position=0x%08" PRIx32 " pwm=%u lease=%u sequence=%u tick=%" PRIu32
+                  " admission_diagnostics=%d start_result=%u resume_result=%u",
+             operation, reply.result, reply.state, reply.reason, reply.flags, reply.mode, reply.previous,
+             reply.child_lock, reply.fault_a, reply.fault_b, reply.error, reply.direction,
+             reply.position_bits, reply.pwm, reply.lease, reply.sequence, reply.tick,
+             reply.admission_diagnostics, reply.start_result, reply.resume_result);
+  }
+  // A post-Stop GET can independently prove cancellation when its ACK was
+  // lost with telemetry. Stop cancelled all older GETs, so this nonce-bound
+  // proof is necessarily newer. It clears only the reset-specific ACK wait.
+  if (completed && this->reset_stop_pending_ &&
+      (operation == desk_protocol::ResetSpeed::Cancel || operation == desk_protocol::ResetSpeed::Get) &&
+      !reply.result && reply.outputs_off() && !reply.lease_active() && !reply.active()) {
+    this->reset_stop_pending_ = false;
+    this->stop_acknowledged_ = true;
+    this->stop_ack_ = {};
+  }
+  if (failure) this->result_(false, failure);
+  else if (completed && operation == desk_protocol::ResetSpeed::Renew && reply.state == 4 &&
+           reply.outputs_off() && !reply.lease_active() && !this->reset_speed_.error()) {
+    // Calibration can clear controller inhibits cached by the startup GET.
+    // The normal idle arbiter will refresh them with a read-only DT02 probe.
+    this->direct_probe_done_ = false;
+    this->result_(true, "Reset completed; controller reports outputs off");
+  }
+  else if (completed && operation != desk_protocol::ResetSpeed::Get && operation != desk_protocol::ResetSpeed::Renew) {
+    if (reply.result) this->result_(false, "RS01 request rejected; no retry");
+    else if (operation == desk_protocol::ResetSpeed::Speed)
+      this->result_(true, reply.speed ? "Slow speed confirmed; runtime setting" : "Normal speed confirmed; runtime setting");
+    else if (operation == desk_protocol::ResetSpeed::Cancel)
+      this->result_(true, reply.state == 5 ? "Reset cancellation confirmed; power-cycle the controller" :
+          reply.state == 3 && !(reply.flags & 2) ? reset_continuation_blocked(reply) :
+          "Reset cancellation confirmed; see Control status before continuing");
+    else this->result_(true, "Reset admitted; Stop pauses, completion requires explicit controller state");
+  }
+}
+void DeskUART::publish_reset_speed_(uint32_t now) {
+  if (!this->reset_speed_enabled_()) return;
+  const bool link_fresh = !this->firmware_export_active_ && this->height_seen_ && this->monitor_.fresh(now) &&
+      static_cast<uint32_t>(now - this->last_height_received_) <= 750;
+  const bool fresh = link_fresh && this->reset_speed_.fresh(now);
+  const auto &reply = this->reset_speed_.reply();
+  if (this->motion_speed_select_) {
+    // Normal movement suspends RS01 polling but cannot change the confirmed
+    // runtime speed. Keep that value while telemetry remains fresh. Admission
+    // still requires a fresh RS01 reply; loss or an unconfirmed SET is unknown.
+    if (!link_fresh || !this->reset_speed_.known() ||
+        (this->reset_speed_.busy() && this->reset_speed_.operation() == desk_protocol::ResetSpeed::Speed))
+      this->motion_speed_select_->invalidate();
+    else {
+      const size_t index = reply.speed;
+      if (!this->motion_speed_select_->has_state() || this->motion_speed_select_->active_index().value() != index)
+        this->motion_speed_select_->publish_state(index);
+    }
+  }
+  // Publication callbacks may synchronously call Stop or begin maintenance.
+  const uint32_t current = millis();
+  const uint8_t reset_eligibility = reply.state == 3 ? 2 : 1;
+  const bool available = fresh && this->reset_enabled_ && this->reset_speed_.fresh(current) &&
+      this->reset_speed_access_allowed_(current, true, false, true) && (reply.flags & reset_eligibility) && !reply.child_lock && reply.token;
+  const bool speed_available = fresh && this->reset_speed_.fresh(current) && this->motion_speed_select_ &&
+      this->reset_speed_access_allowed_(current, false, false, true) && !this->reset_speed_.blocking() && reply.token && reply.outputs_off() && !reply.mode && !reply.previous;
+  if (available != this->last_reset_available_) {
+    this->last_reset_available_ = available;
+    if (this->reset_available_) this->reset_available_->publish_state(available);
+  }
+  if (speed_available != this->last_speed_available_) {
+    this->last_speed_available_ = speed_available;
+    if (this->motion_speed_available_) this->motion_speed_available_->publish_state(speed_available);
+  }
+  const char *status = this->reset_speed_status_(now);
+  if (status != this->last_reset_status_) {
+    this->last_reset_status_ = status;
+    if (this->reset_status_) this->reset_status_->publish_state(status);
+  }
+}
+const char *DeskUART::reset_speed_status_(uint32_t now) const {
+  const bool fresh = !this->firmware_export_active_ && this->height_seen_ && this->monitor_.fresh(now) &&
+      static_cast<uint32_t>(now - this->last_height_received_) <= 750 && this->reset_speed_.fresh(now);
+  const auto &reply = this->reset_speed_.reply();
+  const char *status = this->reset_speed_.error();
+  if (fresh && reply.state == 5) status = "Reset fault; power-cycle the controller";
+  else if (fresh && reply.state == 3 && !(reply.flags & 2)) status = reset_continuation_blocked(reply);
+  if (!status) {
+    if (!fresh) status = "Unknown; fresh RS01 status required";
+    else if (this->reset_speed_.busy() && this->reset_speed_.operation() != desk_protocol::ResetSpeed::Get &&
+             this->reset_speed_.operation() != desk_protocol::ResetSpeed::Renew) status = "RS01 request pending";
+    else if (reply.state == 1) status = this->reset_speed_.owned() ? "Reset descending; Stop pauses" : "Reset descending; ownership unverified";
+    else if (reply.state == 2) status = this->reset_speed_.owned() ? "Reset rebound; Stop pauses" : "Reset rebound; ownership unverified";
+    else if (reply.state == 3) status = "Reset paused; select Reset to continue";
+    else if (reply.state == 4) status = "Reset completed; controller reports outputs off";
+    else if (reply.state == 5) status = "Reset fault; power-cycle the controller";
+    else if (reply.flags & 1) status = "Reset available";
+    else status = "Ready; reset not eligible";
+  }
+  return status;
+}
+void DeskUART::reset_speed_loop_(uint32_t now) {
+  if (!this->reset_speed_enabled_()) return;
+  const bool fresh = this->height_seen_ && this->monitor_.fresh(now) &&
+      static_cast<uint32_t>(now - this->last_height_received_) <= 750;
+  this->reset_speed_.tick(now, fresh);
+  if (this->reset_speed_.take_brake()) {
+    const char *reason = this->reset_speed_.error();
+    this->stop();
+    this->result_(false, reason ? reason : "RS01 reset ownership lost; pausing");
+  }
+  this->reset_speed_result_();
+  // GET discovers status and rotates a challenge. It never acquires or renews
+  // an operation. Reconnection only makes an explicit Reset command available.
+  if (fresh && !this->reset_speed_.busy() && !this->reset_speed_.owned() &&
+      this->child_lock_dt02_ && this->child_lock_.supported() &&
+      this->reset_speed_access_allowed_(now, false, true) && !this->available() &&
+      static_cast<uint32_t>(now - this->last_reset_speed_query_) >=
+          ((this->reset_speed_.supported() || this->reset_stop_pending_) ? 500U : 5000U)) {
+    this->last_reset_speed_query_ = now;
+    this->reset_speed_.probe(now);
+  }
+  desk_protocol::Frame frame;
+  if (this->reset_speed_.take_frame(frame)) {
+    this->reset_speed_sending_ = true;
+    this->send_(frame);
+    this->reset_speed_sending_ = false;
+  }
+  this->publish_reset_speed_(millis());
+}
+
+bool DeskUART::child_lock_access_allowed_(uint32_t now, bool read, bool presentation) const {
+  const bool recovery_read = read && this->reset_stop_pending_;
+  return (!this->reset_speed_blocking_() || (!this->reset_speed_.owned() && !this->reset_speed_.busy()) ||
+      (presentation && !this->reset_speed_.blocking() && this->reset_speed_.operation() == desk_protocol::ResetSpeed::Get)) &&
+      !this->firmware_export_active_ && !this->detection_.busy() && (recovery_read || (!this->journal_error_() &&
       !this->journal_recheck_pending_ && !this->keep_awake_recovery_ && !this->keep_awake_active_ &&
       !this->accept_current_active_ && !this->recovery_check_active_ && !this->restore_requested_ &&
-      !this->target_move_.dirty() && !this->target_move_.busy() && !this->direct_.busy() &&
+      !this->target_move_.dirty())) && !this->target_move_.busy() && !this->direct_.busy() &&
       this->monitor_.fresh(now) && this->height_seen_ &&
       static_cast<uint32_t>(now - this->last_height_received_) <= 750 && this->stable_ms_(now) >= 1500 &&
-      !this->stop_latched_ && !this->release_fault_ && !this->timer_.busy() && !this->preset_settings_.busy() &&
+      (!this->stop_latched_ || recovery_read) && !this->release_fault_ && !this->timer_.busy() &&
+      (!this->preset_settings_.busy() || (presentation && !this->preset_settings_.writing())) &&
       !this->pulse_.active() && !this->release_ack_.pending() && !this->stop_ack_.pending() &&
-      !this->pending_preset_ && this->limit_phase_ == LimitPhase::Idle &&
-      this->identity_pending_ == 255 && static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000;
+      !this->pending_preset_ && (this->limit_phase_ == LimitPhase::Idle || (presentation && this->limit_phase_ == LimitPhase::Read)) &&
+      (this->identity_pending_ == 255 || presentation) && static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000;
 }
 void DeskUART::invalidate_child_lock_(const char *reason, bool publish, bool report_failure) {
   if (!this->child_lock_enabled_()) return;
@@ -1015,6 +1316,7 @@ void DeskUART::invalidate_child_lock_(const char *reason, bool publish, bool rep
   if (publish) this->publish_child_lock_(millis());
 }
 void DeskUART::yield_child_lock_read_() {
+  this->yield_reset_speed_read_();
   if (!this->child_lock_detection_.busy() && !(this->child_lock_.busy() && this->child_lock_.operation() == 0)) return;
   // GET/preflight has no side effects. Yield before a user control's admission
   // checks, without invoking callbacks until that control owns its transaction.
@@ -1034,16 +1336,27 @@ void DeskUART::publish_child_lock_(uint32_t now) {
       this->child_lock_switch_->publish_confirmed(this->child_lock_.reply().locked);
   }
   // Switch callbacks can synchronously start another SET or maintenance session.
-  const bool available = this->child_lock_.state_known() && !this->child_lock_busy_() &&
-      this->child_lock_access_allowed_(millis());
+  const bool available = this->child_lock_.state_known() && !this->reset_speed_.blocking() &&
+      (!this->child_lock_busy_() || (!this->child_lock_detection_.busy() && this->child_lock_.operation() == 0)) &&
+      this->child_lock_access_allowed_(millis(), false, true);
   if (available != this->last_child_lock_available_) {
     this->last_child_lock_available_ = available;
     if (this->child_lock_available_) this->child_lock_available_->publish_state(available);
   }
+  const char *status = this->child_lock_status_text_(now);
+  if (status != this->last_child_lock_status_) {
+    this->last_child_lock_status_ = status;
+    if (this->child_lock_status_) this->child_lock_status_->publish_state(status);
+  }
+}
+const char *DeskUART::child_lock_status_text_(uint32_t now) const {
+  const bool fresh = !this->firmware_export_active_ && this->height_seen_ && this->monitor_.fresh(now) &&
+      static_cast<uint32_t>(now - this->last_height_received_) <= 750;
   const char *status = this->child_lock_detection_.busy() ? "Checking DT02 prerequisite for CL01" : this->child_lock_.error();
   if (!status) {
     if (!fresh || this->firmware_export_active_) status = "Unavailable; CL01 state unknown";
-    else if (this->child_lock_.busy()) status = this->child_lock_.operation() == 0 ? "Checking CL01" :
+    else if (this->child_lock_.busy() && (this->child_lock_.operation() != 0 || !this->child_lock_.state_known()))
+      status = this->child_lock_.operation() == 0 ? "Checking CL01" :
         this->child_lock_.operation() == 1 ? "Lock requested; awaiting CL01 acknowledgement" :
                                            "Unlock requested; awaiting CL01 acknowledgement";
     else if (!this->child_lock_.supported()) status = "Unknown; CL01 discovery required";
@@ -1051,12 +1364,11 @@ void DeskUART::publish_child_lock_(uint32_t now) {
     else if (this->child_lock_.reply().locked) status = "Locked";
     else status = this->child_lock_.reply().physical_gate ? "Unlocked; release all physical keys" : "Unlocked";
   }
-  if (status != this->last_child_lock_status_) {
-    this->last_child_lock_status_ = status;
-    if (this->child_lock_status_) this->child_lock_status_->publish_state(status);
-  }
+  return status;
 }
 bool DeskUART::set_child_lock(bool locked) {
+  this->yield_reset_speed_read_();
+  if (this->reset_speed_blocking_()) return this->result_(false, this->control_reason_(millis()));
   const uint32_t now = millis();
   if (!this->child_lock_switch_) return this->result_(false, "Child lock switch not configured");
   if (!this->child_lock_.supported()) return this->result_(false, "CL01 capability unverified; child lock unavailable");
@@ -1083,7 +1395,8 @@ void DeskUART::child_lock_loop_(uint32_t now) {
   if (!fresh) this->invalidate_child_lock_("CL01 UART unavailable; state unknown");
   this->child_lock_.tick(now, fresh);
   this->child_lock_result_();
-  if (this->child_lock_busy_() && !this->child_lock_access_allowed_(now))
+  if (this->child_lock_busy_() && !this->child_lock_access_allowed_(now,
+      this->child_lock_detection_.busy() || this->child_lock_.operation() == 0))
     this->invalidate_child_lock_("CL01 interrupted by changed interlock; state unknown, no retry");
   // Reuse auto detection, including a conclusive stock/preset result.
   // Polling a validated DT02 prerequisite never implies CL01 support.
@@ -1094,7 +1407,7 @@ void DeskUART::child_lock_loop_(uint32_t now) {
     this->child_lock_detection_.reset();
     this->child_lock_probed_ = false;
   }
-  if (fresh && !this->child_lock_dt02_ && !this->child_lock_probed_ && this->child_lock_access_allowed_(now)) {
+  if (fresh && !this->child_lock_dt02_ && !this->child_lock_probed_ && this->child_lock_access_allowed_(now, true)) {
     // A configured direct/auto backend may already have validated DT02. With
     // preset/monitor-only configurations, verify the exact identity, scale and
     // DT02 capability first. Fresh height alone never authorizes D3 probing.
@@ -1129,7 +1442,7 @@ void DeskUART::child_lock_loop_(uint32_t now) {
       }
     }
   }
-  if (fresh && this->child_lock_dt02_ && !this->child_lock_busy_() && this->child_lock_access_allowed_(now) && !this->available() &&
+  if (fresh && this->child_lock_dt02_ && !this->child_lock_busy_() && this->child_lock_access_allowed_(now, true) && !this->available() &&
       ((!this->child_lock_probed_ && static_cast<uint32_t>(now - this->last_child_lock_query_) >= 800) ||
        static_cast<uint32_t>(now - this->last_child_lock_query_) >= 5000)) {
     // A lost/invalid GET or SET reply recovers through a new nonce-bound GET
@@ -1236,7 +1549,7 @@ bool DeskUART::restore_temporary_preset() {
   return this->result_(retried, retried ? "Preset restoration requested; waiting for readback" : "No failed preset transaction to restore");
 }
 bool DeskUART::recovery_access_allowed_(uint32_t now) const {
-  return !this->child_lock_busy_() && !this->detection_.busy() && !this->journal_error_() && !this->direct_.busy() && !this->firmware_export_active_ && !this->preset_settings_.busy() && !this->timer_.busy() &&
+  return !this->reset_speed_blocking_() && !this->child_lock_busy_() && !this->detection_.busy() && !this->journal_error_() && !this->direct_.busy() && !this->firmware_export_active_ && !this->preset_settings_.busy() && !this->timer_.busy() &&
       !this->release_fault_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
       static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
       static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000 && !this->pulse_.active() &&
@@ -1261,6 +1574,7 @@ bool DeskUART::accept_current_preset() {
   return this->result_(true, "Checking current preset twice before discarding backup; no movement");
 }
 void DeskUART::target_loop_(uint32_t now) {
+  if (this->reset_speed_blocking_()) return;
   if (this->journal_error_()) return;
   if (!this->target_enabled_ && !this->target_move_.busy()) return;
   using Phase = desk_protocol::TemporaryPreset::Phase;
@@ -1363,6 +1677,8 @@ void DeskUART::target_loop_(uint32_t now) {
   }
 }
 bool DeskUART::set_timer(uint16_t minutes) {
+  this->yield_reset_speed_read_();
+  if (this->reset_speed_blocking_()) return this->result_(false, this->control_reason_(millis()));
   if (this->firmware_export_active_) return this->result_(false, "Firmware read active; desk controls paused");
   if (this->timer_enabled_ && (minutes == 0 || minutes == 30 || minutes == 60 || minutes == 90 || minutes == 120))
     this->yield_child_lock_read_();
@@ -1405,8 +1721,12 @@ bool DeskUART::result_(bool accepted, const char *message) {
   else ESP_LOGW(TAG, "Command rejected: %s", message);
   return accepted;
 }
-const char *DeskUART::control_reason_(uint32_t now) const {
+const char *DeskUART::control_reason_(uint32_t now, bool presentation) const {
   if (const char *error = this->journal_error_()) return error;
+  if (this->reset_speed_.blocking())
+    return this->reset_speed_.busy() && this->reset_speed_.operation() == desk_protocol::ResetSpeed::Speed ?
+        "Updating motion speed; awaiting acknowledgement" : this->reset_speed_status_(now);
+  if (!presentation && this->reset_speed_.busy()) return "Reading RS01 status";
   if (this->firmware_export_active_) return "Firmware read active; desk controls paused";
   using Phase = desk_protocol::TemporaryPreset::Phase;
   if (this->release_fault_) return "Button release uncertain; inspect desk and restart ESP";
@@ -1414,7 +1734,9 @@ const char *DeskUART::control_reason_(uint32_t now) const {
   if (this->target_move_.phase() == Phase::Fault) return this->target_move_.error();
   if (this->stop_latched_ && !this->stop_acknowledged_) return "Brake ACK missing or pending; movement blocked";
   if (this->stop_latched_) return "Stop: waiting for settled height and preset cleanup";
-  if (this->child_lock_busy_()) return "CL01 child lock transaction pending";
+  if (this->child_lock_busy_() && (!presentation || this->child_lock_detection_.busy() ||
+      this->child_lock_.operation() != 0 || !this->child_lock_.state_known()))
+    return presentation ? this->child_lock_status_text_(now) : "CL01 child lock transaction pending";
   if (this->auto_target_mode_ && this->target_enabled_ && !this->target_detected_())
     return this->detection_.error() ? this->detection_.error() : "Detecting target backend; target control unavailable";
   if (this->direct_mode_) {
@@ -1427,14 +1749,24 @@ const char *DeskUART::control_reason_(uint32_t now) const {
   }
   if (this->keep_awake_fault_) return "Keep-awake failed; inspect last command result, restore preset or restart ESP";
   if (this->timer_.busy()) return "Timer button sequence active; leave physical keys untouched";
-  if (this->preset_settings_.busy()) return "Reading or updating preset height";
+  if (this->preset_settings_.busy() && (!presentation || this->preset_settings_.writing()))
+    return "Reading or updating preset height";
   if (this->pending_preset_) return "Preset waiting for keep-awake cleanup";
   if (this->keep_awake_active_) return "Keep-awake preset transaction in progress";
   if (this->target_move_.phase() == Phase::Moving || this->target_move_.phase() == Phase::Monitoring) return "Target move active";
   if (this->target_move_.busy()) return "Preparing target or restoring original preset";
   if (this->pulse_.active() || this->release_ack_.pending()) return "Button release pending";
   if (this->stable_ms_(now) < 1500) return "Waiting for height to settle";
-  if (this->limit_phase_ != LimitPhase::Idle) return "Load setting read or write in progress";
+  if (this->limit_phase_ != LimitPhase::Idle && (!presentation || this->limit_phase_ != LimitPhase::Read))
+    return "Load setting read or write in progress";
+  // Optional capability discovery must not replace normal desk/lock status on
+  // older firmware. Once RS01 has replied, losing that capability is a fault.
+  if (presentation && this->reset_speed_enabled_() && this->reset_speed_.error() &&
+      (this->reset_speed_confirmed_ || this->reset_speed_.operation() != desk_protocol::ResetSpeed::Get))
+    return this->reset_speed_.error();
+  if (presentation && this->child_lock_enabled_() && (this->child_lock_.error() ||
+      !this->child_lock_.state_known() || (this->child_lock_.reply().physical_gate && !this->child_lock_.reply().locked)))
+    return this->child_lock_status_text_(now);
   return "Ready";
 }
 void DeskUART::controls_loop_(uint32_t now) {
@@ -1461,6 +1793,9 @@ void DeskUART::controls_loop_(uint32_t now) {
              this->pulse_.active() || this->release_ack_.pending());
   }
   // Presentation only. All interlocks and internal phases continue to run.
+  // Periodic reads do not replace the desk's status with transaction chatter.
+  // Evaluate the other guards rather than holding a possibly stale Ready label.
+  reason = this->control_reason_(now, true);
   if (this->keep_awake_active_ && !this->pending_preset_ && !this->keep_awake_fault_ && !this->target_move_.failed() &&
       !this->release_fault_ && !this->stop_latched_ && this->monitor_.fresh(now)) reason = "Ready";
   if (!this->last_control_status_ || std::strcmp(reason, this->last_control_status_) != 0) {
@@ -1489,6 +1824,8 @@ void DeskUART::uart_observation_log_() {
 }
 
 void DeskUART::on_shutdown() {
+  if (this->reset_speed_.owned() || this->reset_speed_.blocking()) this->stop();
+  this->invalidate_reset_speed_("RS01 ESP shutdown; fresh status required");
   this->invalidate_child_lock_("CL01 ESP shutdown; state unknown", false, false);
   if (this->direct_mode_ && (this->direct_.active() || this->direct_.set_sent() || this->direct_.brake_pending())) this->stop();
   desk_protocol::Frame frame;
@@ -1510,6 +1847,10 @@ void DeskUART::dump_config() {
   ESP_LOGCONFIG(TAG, "  Keep-awake via preset 3 after 30 s of inactivity: %s", this->keep_awake_enabled_ ? "enabled" : "disabled");
   LOG_SENSOR("  ", "Height", this->height_sensor_);
   LOG_SENSOR("  ", "Load (raw)", this->load_raw_sensor_);
+  LOG_SELECT("  ", "Motion speed", this->motion_speed_select_);
+  LOG_TEXT_SENSOR("  ", "Reset status", this->reset_status_);
+  LOG_BINARY_SENSOR("  ", "Reset available", this->reset_available_);
+  LOG_BINARY_SENSOR("  ", "Motion speed available", this->motion_speed_available_);
   LOG_SWITCH("  ", "Physical child lock", this->child_lock_switch_);
   LOG_TEXT_SENSOR("  ", "Child lock status", this->child_lock_status_);
   LOG_BINARY_SENSOR("  ", "Child lock available", this->child_lock_available_);

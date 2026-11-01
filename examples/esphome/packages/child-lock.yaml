@@ -8,13 +8,3 @@ desk_uart:
     web_server:
       sorting_group_id: desk_group_control
       sorting_weight: 30
-  child_lock_available:
-    name: Panel lock available
-    web_server:
-      sorting_group_id: desk_group_diagnostics
-      sorting_weight: 27
-  child_lock_status:
-    name: Panel lock status
-    web_server:
-      sorting_group_id: desk_group_diagnostics
-      sorting_weight: 26

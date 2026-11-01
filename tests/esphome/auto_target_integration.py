@@ -13,6 +13,26 @@ from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_
 IDENTITY = {3: (16, "T150-22-03"), 4: (17, "LUMI LEGEND GROUP"), 5: (5, "1.5.0"),
             6: (5, "1.6"), 7: (8, "1.9.0118"), 9: (8, "21/01/18")}
 
+REQUEST_READY_ACCESS = """#include <unistd.h>
+#include <cstring>
+#include "esphome.h"
+
+class AutoTargetAccess : public esphome::desk_uart::DeskUART {
+ public:
+  static bool request_ready(esphome::desk_uart::DeskUART *desk, bool direct) {
+    const uint32_t now = esphome::millis();
+    auto reason = &AutoTargetAccess::control_reason_;
+    auto detected = &AutoTargetAccess::target_detected_;
+    auto mode = &AutoTargetAccess::direct_mode_;
+    auto direct_access = &AutoTargetAccess::direct_access_allowed_;
+    return (desk->*detected)() && (desk->*mode) == direct &&
+        std::strcmp((desk->*reason)(now, false), "Ready") == 0 &&
+        (!direct || (desk->*direct_access)(now));
+  }
+};
+
+"""
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -28,8 +48,19 @@ def main():
     priority: -100
     then:
       - delay: 5s
+      # The 5 s load poll can overlap this action. Wait for internal admission
+      # to be idle, then issue one request. Public Ready hides read occupancy.
+      - wait_until:
+          condition:
+            lambda: |-
+              const std::string scenario = getenv("DESK_AUTO_CASE");
+              if (scenario != "direct_move" && scenario != "preset_move" && scenario != "preset_gap") return true;
+              return AutoTargetAccess::request_ready(id(desk), scenario == "direct_move");
+          timeout: 1s
       - lambda: |-
           const std::string scenario = getenv("DESK_AUTO_CASE");
+          if (scenario == "direct_move" || scenario == "preset_move" || scenario == "preset_gap")
+            ESP_LOGI("auto_test", "request_ready=%d", AutoTargetAccess::request_ready(id(desk), scenario == "direct_move"));
           if (scenario == "direct_move" || scenario == "preset_move" || scenario == "preset_gap" || scenario == "silent" || scenario == "unknown")
             ESP_LOGI("auto_test", "request=%d", id(desk)->move_to_height(78));
       - delay: 3s
@@ -103,7 +134,7 @@ desk_uart:
     try:
         with (work / "build.log").open("w") as log:
             build_host(cfg, work, env, log, uart_port=os.ttyname(slave),
-                       edit_main=lambda source: "#include <unistd.h>\n" + source)
+                       edit_main=lambda source: REQUEST_READY_ACCESS + source)
         for scenario, duration in [("direct_move", 12), ("preset_move", 12), ("silent", 33),
                                    ("unknown", 9), ("reconnect", 16), ("maintenance", 14),
                                    ("disconnect_active", 22), ("direct_idle", 33), ("preset_idle", 38), ("cancel_probe", 14), ("preset_gap", 21)]:
@@ -123,6 +154,7 @@ desk_uart:
             banks = [8, 456, 180]
             wire = bytearray()
             events = []
+            preset_gap = {}
             proc = None
 
             def reply(body):
@@ -151,13 +183,18 @@ desk_uart:
                     while time.monotonic() - start < duration:
                         elapsed = time.monotonic() - start
                         assert proc.poll() is None
-                        gap = (scenario == "reconnect" and 7 <= elapsed < 9) or (scenario == "disconnect_active" and 13.3 <= elapsed < 16) or (scenario == "preset_gap" and 5.3 <= elapsed < 9) or (scenario == "cancel_probe" and 5 <= elapsed < 6.2)
+                        gap = (scenario == "reconnect" and 7 <= elapsed < 9) or (scenario == "disconnect_active" and 13.3 <= elapsed < 16) or (scenario == "preset_gap" and "starts_at" in preset_gap and preset_gap["starts_at"] <= elapsed < preset_gap["ends_at"]) or (scenario == "cancel_probe" and 5 <= elapsed < 6.2)
                         stock = scenario in ("preset_move", "preset_idle", "cancel_probe", "preset_gap") or (scenario == "reconnect" and elapsed < 7) or (scenario in ("maintenance", "disconnect_active") and elapsed >= (8 if scenario == "maintenance" else 16))
                         for deadline, body in list(delayed):
                             if elapsed >= deadline:
                                 reply(body); delayed.remove((deadline, body))
                         if elapsed >= next_height:
                             q += max(-2, min(2, goal - q))
+                            if scenario == "preset_gap" and preset_gap:
+                                if gap:
+                                    preset_gap.setdefault("first_skipped_height_at", elapsed)
+                                elif "first_skipped_height_at" in preset_gap:
+                                    preset_gap.setdefault("first_resumed_height_at", elapsed)
                             if not gap:
                                 body = bytearray(30); body[0] = 5; body[19:21] = q.to_bytes(2, "big"); reply(body)
                             next_height = elapsed + .1
@@ -198,60 +235,72 @@ desk_uart:
                                     reply(bytes([0x18, 6, frame[2], 0]))
                                 elif frame[:2] == bytes.fromhex("17 08"):
                                     assert stock
-                                    if frame[2]: goal = banks[2] * 24 // 39
+                                    if frame[2]:
+                                        goal = banks[2] * 24 // 39
+                                        if scenario == "preset_gap" and not preset_gap:
+                                            # Lose telemetry during this actual recall, for the original 3.7 s.
+                                            preset_gap = {"recall_at": elapsed, "starts_at": elapsed + .3, "ends_at": elapsed + 4}
                                     reply(bytes([0x18, 8, frame[2], 0]))
                                 else:
                                     raise AssertionError(frame.hex())
                             processed = len(found)
-                    proc.terminate(); proc.wait(timeout=5)
-                out = (case / "runtime.log").read_text()
-                writes = [e for e in events if e["body_hex"].startswith("19")]
-                if scenario in ("silent", "unknown"):
-                    assert "request=0" in out and not writes and not sets
-                    assert "Target backend: Preset-based" not in out and "Target backend: Direct" not in out
-                    if scenario == "unknown": assert not any(e["body_hex"].startswith("d1") for e in events)
-                if scenario in ("direct_move", "preset_move"):
-                    assert "request=1" in out
-                    assert (sets == 1 and not writes) if scenario == "direct_move" else (sets == 0 and len(writes) == 2 and banks[2] == 180)
-                if scenario in ("reconnect", "maintenance", "disconnect_active"):
-                    assert "Target backend: Direct target (DT02)" in out and "Target backend: Preset-based" in out
-                    assert not writes  # Never replay the old request or borrow presets during detection.
-                if scenario == "maintenance": assert "handoff=1" in out and "post_handoff_blocked=1" in out
-                if scenario == "disconnect_active": assert sets == 1 and brakes == 1
-                if scenario == "direct_idle": assert not sets and not writes
-                if scenario == "preset_idle": assert not sets and len(writes) == 2 and banks[2] == 180
-                if scenario not in ("unknown",):
-                    first_probe = next(i for i,e in enumerate(events) if e["body_hex"].startswith("d1"))
-                    assert [e["body_hex"] for e in events[first_probe-8:first_probe]] == [
-                        "11030000", "11040000", "11050000", "11060000", "11070000", "11090000", "150b0000", "150c0000"]
-                    # Background load/preset/identity diagnostics resume outside the exclusive transaction.
-                    assert any(e["body_hex"] == "150e0000" for e in events)
-                    assert any(e["body_hex"] == "151f0000" for e in events)
-                if scenario == "cancel_probe":
-                    for marker in ("timer_blocked=1", "preset_edit_blocked=1", "limit_blocked=1", "recovery_blocked=1", "native_preempts=1"):
-                        assert marker in out, marker
-                    assert out.count("Target backend: Preset-based") >= 2 and probe_count >= 5 and not writes and not sets
-                    for reason in ("Preset edit blocked:", "Load edit blocked:", "Preset recovery blocked:"):
-                        assert reason in out, reason
-                    press = next(e["seconds"] for e in events if e["body_hex"] == "170601")
-                    assert not any(press < e["seconds"] < press + 2.9 and e["body_hex"].startswith("d1") for e in events)
-                if scenario in ("preset_move", "preset_idle", "preset_gap", "reconnect"):
-                    assert events[first_probe+1]["body_hex"] == "11030000"
-                    assert events[first_probe+2]["body_hex"].startswith("d10100")
-                if scenario == "preset_gap":
-                    assert "request=1" in out and not sets and brakes == 1
-                    assert sum(e["body_hex"] == "170801" for e in events) == 1
-                    assert banks[2] == 180
-                    assert any(e["seconds"] > 9 and e["body_hex"] == "151f0000" for e in events)
-                    assert out.count("Target backend: Preset-based") >= 2
-                    assert out.rindex("Target backend: Preset-based") > out.index("Original preset RAM checked")
-                result = dict(case=scenario, passed=True, sets=sets, brakes=brakes, writes=len(writes), events=events)
-                (case / "summary.json").write_text(json.dumps(result, indent=2) + "\n")
-                results.append({k:v for k,v in result.items() if k != "events"})
-                print(json.dumps(results[-1]), flush=True)
             finally:
                 if proc and proc.poll() is None:
                     proc.terminate(); proc.wait(timeout=5)
+                (case / "events.json").write_text(json.dumps(events, indent=2) + "\n")
+                (case / "wire.bin").write_bytes(wire)
+                if scenario == "preset_gap":
+                    (case / "telemetry-gap.json").write_text(json.dumps(preset_gap, indent=2) + "\n")
+            out = (case / "runtime.log").read_text()
+            writes = [e for e in events if e["body_hex"].startswith("19")]
+            if scenario in ("silent", "unknown"):
+                assert "request=0" in out and not writes and not sets
+                assert "Target backend: Preset-based" not in out and "Target backend: Direct" not in out
+                if scenario == "unknown": assert not any(e["body_hex"].startswith("d1") for e in events)
+            if scenario in ("direct_move", "preset_move"):
+                assert "request_ready=1" in out
+                assert "request=1" in out
+                assert (sets == 1 and not writes) if scenario == "direct_move" else (sets == 0 and len(writes) == 2 and banks[2] == 180)
+            if scenario in ("reconnect", "maintenance", "disconnect_active"):
+                assert "Target backend: Direct target (DT02)" in out and "Target backend: Preset-based" in out
+                assert not writes  # Never replay the old request or borrow presets during detection.
+            if scenario == "maintenance": assert "handoff=1" in out and "post_handoff_blocked=1" in out
+            if scenario == "disconnect_active": assert sets == 1 and brakes == 1
+            if scenario == "direct_idle": assert not sets and not writes
+            if scenario == "preset_idle": assert not sets and len(writes) == 2 and banks[2] == 180
+            if scenario not in ("unknown",):
+                first_probe = next(i for i,e in enumerate(events) if e["body_hex"].startswith("d1"))
+                assert [e["body_hex"] for e in events[first_probe-8:first_probe]] == [
+                    "11030000", "11040000", "11050000", "11060000", "11070000", "11090000", "150b0000", "150c0000"]
+                # Background load/preset/identity diagnostics resume outside the exclusive transaction.
+                assert any(e["body_hex"] == "150e0000" for e in events)
+                assert any(e["body_hex"] == "151f0000" for e in events)
+            if scenario == "cancel_probe":
+                for marker in ("timer_blocked=1", "preset_edit_blocked=1", "limit_blocked=1", "recovery_blocked=1", "native_preempts=1"):
+                    assert marker in out, marker
+                assert out.count("Target backend: Preset-based") >= 2 and probe_count >= 5 and not writes and not sets
+                for reason in ("Preset edit blocked:", "Load edit blocked:", "Preset recovery blocked:"):
+                    assert reason in out, reason
+                press = next(e["seconds"] for e in events if e["body_hex"] == "170601")
+                assert not any(press < e["seconds"] < press + 2.9 and e["body_hex"].startswith("d1") for e in events)
+            if scenario in ("preset_move", "preset_idle", "preset_gap", "reconnect"):
+                assert events[first_probe+1]["body_hex"] == "11030000"
+                assert events[first_probe+2]["body_hex"].startswith("d10100")
+            if scenario == "preset_gap":
+                assert round(preset_gap["recall_at"], 3) == next(e["seconds"] for e in events if e["body_hex"] == "170801")
+                assert preset_gap["starts_at"] <= preset_gap["first_skipped_height_at"] < preset_gap["ends_at"]
+                assert preset_gap["first_resumed_height_at"] >= preset_gap["ends_at"]
+                assert "request_ready=1" in out
+                assert "request=1" in out and not sets and brakes == 1
+                assert sum(e["body_hex"] == "170801" for e in events) == 1
+                assert len(writes) == 2 and banks[2] == 180
+                assert any(e["seconds"] > preset_gap["ends_at"] and e["body_hex"] == "151f0000" for e in events)
+                assert out.count("Target backend: Preset-based") >= 2
+                assert out.rindex("Target backend: Preset-based") > out.index("Original preset RAM checked")
+            result = dict(case=scenario, passed=True, sets=sets, brakes=brakes, writes=len(writes), events=events)
+            (case / "summary.json").write_text(json.dumps(result, indent=2) + "\n")
+            results.append({k:v for k,v in result.items() if k != "events"})
+            print(json.dumps(results[-1]), flush=True)
         (work / "summary.json").write_text(json.dumps(results, indent=2) + "\n")
     finally:
         os.close(master); os.close(slave)

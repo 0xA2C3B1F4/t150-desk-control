@@ -38,11 +38,11 @@ class WebTest(unittest.TestCase):
     def test_installed_assets_and_idempotence(self):
         patched = web.decorate_header(self.header)
         self.assertEqual(web.decorate_header(patched), patched)
-        self.assertEqual(decode(patched).replace(web.RENDER, web.OLD_RENDER).replace(web.DISCONNECT, '').replace(web.NEW_LOGO_INIT, web.OLD_LOGO_INIT).replace(web.NEW_LOGO_RENDER, web.OLD_LOGO_RENDER), decode(self.header))
+        self.assertEqual(decode(patched).replace(web.RENDER, web.OLD_RENDER).replace(web.SELECT, web.OLD_SELECT).replace(web.SPEED_MARKER, '').replace(web.DISCONNECT, '').replace(web.NEW_LOGO_INIT, web.OLD_LOGO_INIT).replace(web.NEW_LOGO_RENDER, web.OLD_LOGO_RENDER), decode(self.header))
         self.assertEqual(patched.split('#else')[1:], self.header.split('#else')[1:])
         server = web.decorate_server(self.server)
         self.assertEqual(web.decorate_server(server), server)
-        self.assertEqual(server.replace(web.NEW_JSON, web.OLD_JSON).removeprefix(web.INCLUDE), self.server)
+        self.assertEqual(server.replace(web.NEW_JSON, web.OLD_JSON).replace(web.NEW_SELECT_JSON, web.OLD_SELECT_JSON).removeprefix(web.INCLUDE), self.server)
 
     def test_full_modules_parse_and_static_logo_is_a_tagged_template(self):
         html = decode(web.decorate_header(self.header))
@@ -104,6 +104,41 @@ assert.equal(result,logo.render());
             web.decorate_server(self.server.replace(web.OLD_JSON, 'changed'))
         with self.assertRaises(ValueError):
             web.replace_once('twice twice', 'twice', 'new')
+        with self.assertRaises(ValueError):
+            web.decorate_server(self.server.replace(web.OLD_SELECT_JSON, 'changed'))
+
+    def test_confirmed_speed_and_unknown_placeholder(self):
+        script = r'''
+const assert=require('node:assert/strict');
+const input=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+const S=(strings,...values)=>({strings,values});
+const Renderer=new Function('S','return class {'+input+'}')(S);
+const r=new Renderer(), sent=[];
+r.actioner={restAction:(entity,action)=>sent.push([entity.name,action])};
+r._select=(...args)=>args;
+for(const value of [null,undefined,'','UNKNOWN','Normal','Slow']){
+ r.entity={name:'Motion speed',desk_motion_speed:true,value};
+ const t=r.render_select(), known=value==='Normal'||value==='Slow';
+ if(!known){
+  assert.match(t.strings.join(''),/>Unknown<\/span>/);
+  assert.doesNotMatch(t.strings.join(''),/<select|<option/);
+  continue;
+ }
+ assert.deepEqual(t.values.filter(x=>typeof x==='boolean'),[value==='Normal',value==='Slow']);
+ assert.equal(t.values[1],value);
+ assert.doesNotMatch(t.strings.join(''),/Unknown/); // Only real choices in the menu.
+ const callback=t.values.find(x=>typeof x==='function');
+ r.entity={name:'Unrelated select',value:'other'}; // Shared renderer moved rows.
+ const event={target:{value:'Slow'}};callback(event);
+ assert.deepEqual(sent.at(-1),['Motion speed','set?option=Slow']);
+ assert.equal(event.target.value,known?value:''); // Await server confirmation.
+ const count=sent.length;callback({target:{value:''}});assert.equal(sent.length,count);
+}
+r.entity={name:'Ordinary',option:['a','b'],value:'b'};
+assert.deepEqual(r.render_select(),[r.entity,'set','option',['a','b'],'b']);
+console.log('PASS: speed selection confirmation, unknown placeholder, row binding, ordinary selects');
+'''
+        subprocess.run(['node', '-e', script], input=json.dumps(web.SELECT), text=True, check=True)
 
     def test_actual_render_and_disconnect(self):
         # Execute the exact renderer inserted into the bundled Lit application.
@@ -141,7 +176,9 @@ assert.deepEqual(r.render_switch().values,['turn_off','turn_on']);
 const entities=[{domain:'switch',assumed_state:true,desk_panel_lock:true,state:'ON'},
  {domain:'switch',assumed_state:true,desk_panel_lock:true,state:'OFF'},{domain:'sensor',state:'73.0'},
  {domain:'switch',assumed_state:true,state:'OFF'},
- {domain:'switch',assumed_state:false,state:'ON'}];
+ {domain:'switch',assumed_state:false,state:'ON'},
+ {domain:'select',desk_motion_speed:true,state:'Slow',value:'Slow'},
+ {domain:'select',state:'Normal',value:'Normal'}];
 let updates=0,listener;
 const table={entities,requestUpdate:()=>updates++};
 const app={updateComplete:Promise.resolve(),shadowRoot:{querySelector:()=>table}};
@@ -149,7 +186,8 @@ const run=new Function('customElements','document','window', 'return (async()=>{
 run({whenDefined:()=>Promise.resolve()},{querySelector:()=>app},
  {source:{addEventListener:(type,fn)=>{assert.equal(type,'error');listener=fn;}}}).then(()=>{
  listener();assert.equal(updates,1);
- assert.deepEqual(entities.map(e=>e.state),['UNKNOWN','UNKNOWN','73.0','OFF','ON']);
+ assert.deepEqual(entities.map(e=>e.state),['UNKNOWN','UNKNOWN','73.0','OFF','ON','UNKNOWN','Normal']);
+ assert.equal(entities[5].value,null);assert.equal(entities[6].value,'Normal');
  assert.deepEqual(sent,[{name:'Panel lock',action:'turn_on'},{name:'Panel lock',action:'turn_off'}]);
  console.log('PASS: confirmed colors, explicit actions, unknown state, disconnect, ordinary switch');
 }).catch(e=>{console.error(e);process.exitCode=1;});

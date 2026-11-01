@@ -35,6 +35,7 @@ TESTS = [
     "retarget_phase_integration",
     "auto_target_integration",
     "child_lock_integration",
+    "reset_speed_integration",
     "direct_target_integration",
     "direct_target_review_integration",
     "preset_settings_integration",
@@ -59,6 +60,13 @@ def main():
                 stdout=log,
                 stderr=subprocess.STDOUT,
             )
+            if name == "reset_speed_integration" and result.returncode == 0:
+                result = subprocess.run(
+                    [sys.executable, str(Path(__file__).parent / "reset_speed_integration.py"),
+                     "--work-dir", str(args.work_dir / "reset_speed_concise"), "--concise-ui", "--only", "resume", "paused_idle"],
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                )
         status = "passed" if result.returncode == 0 else f"FAILED, see {out}"
         print(f"{name}: {status} ({time.monotonic() - start:.0f} s)", flush=True)
         if result.returncode != 0:

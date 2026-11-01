@@ -20,10 +20,8 @@ For a custom YAML, add these entities to the existing `desk_uart` block:
 ```yaml
   child_lock:
     name: Panel lock
-  child_lock_status:
-    name: Panel lock status
-  child_lock_available:
-    name: Panel lock available
+  control_status:
+    name: Control status
 ```
 
 On first installation, an uninitialized EEPROM record starts locked with a
@@ -31,18 +29,19 @@ storage fault. Explicitly choose the desired switch state to initialize it.
 Confirmed settings survive power loss; ESPHome startup never changes the lock.
 A locked panel stays locked if ESPHome or UART becomes unavailable.
 
-In local ESPHome v3 pages, the cross is red when the confirmed state is Off,
-and the checkmark is green when it is On. The inactive button is gray. Both
-are gray with an Unknown label while awaiting confirmation or after losing
-the state. The requested On/Off color appears only after the controller replies;
-while waiting, both buttons are gray. Explicit commands remain available for recovery attempts.
+In local ESPHome v3 pages, the cross is red for confirmed Off and the checkmark
+is green for confirmed On. The inactive button is gray. Both are gray with an
+Unknown label while awaiting confirmation or after losing the state. Explicit
+commands remain available for recovery attempts.
 
 ## Status and recovery
 
 The switch changes only after a matching controller reply. Home Assistant may
-retain its previous value during a disconnect. Check **Panel lock status** and
-**Panel lock available** before relying on it. Availability is false during
-movement, other operations, an unknown state or a storage fault.
+retain its previous value during a disconnect. Check **Control status** for an
+unknown state, a pending lock command or a storage fault before relying on it.
+Lock commands still require idle controls and fresh telemetry.
+The optional `child_lock_status` and `child_lock_available` entities remain
+available for custom configurations and automations.
 
 A timeout does not confirm a change. Read-only status queries retry while idle,
 but lock/unlock writes never retry automatically. After a storage fault, the

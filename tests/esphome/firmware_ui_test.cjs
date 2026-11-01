@@ -27,6 +27,8 @@ async function page(){
 }
 (async()=>{
  const p=await page(),e=p.elements;
+ const pinned=readFileSync(join(__dirname,'../../components/desk_firmware_update/reset_speed_patch.h'),'utf8').match(/RS01_SHA = "([0-9a-f]{64})"/)[1];
+ assert.equal(p.run('RS01'),pinned);
  await p.state({state:'installing',active:true,waiting_for_power_cycle:true});
  assert.match(e.guidanceTitle.textContent,/OFF, then ON/);assert.equal(e.cancel.hidden,false);
  p.io.offline=true;await assert.rejects(p.run('refresh()'));
@@ -47,6 +49,23 @@ async function page(){
  assert.match(e.guidanceDetail.textContent,/remove CL01/);assert.match(e.guidanceDetail.textContent,/remote unlock/i);
  await p.state({state:'staged',sha256:p.run('CL01')});assert.doesNotMatch(e.guidanceTitle.textContent,/already installed/);assert.match(e.guidanceDetail.textContent,/starts locked/);assert.match(e.guidanceDetail.textContent,/local stopping gestures/);
  await p.state({state:'verified',sha256:p.run('CL01')});assert.match(e.guidanceDetail.textContent,/remote unlock/i);
+ // RS01 can be prepared only from an exact supported source with a saved backup.
+ for(const identity of ['STOCK','DT02','CL01']) {
+  await p.state({state:'read_complete',sha256:p.run(identity),source_sha256:p.run(identity)});
+  assert.equal(e.patchResetSpeed.disabled,false);
+ }
+ p.run('original=new Uint8Array(55296);originalHash=CL01');e.saved.checked=true;p.io.actions=[];
+ await e.patchResetSpeed.onclick();assert.deepEqual(p.io.actions,['backup','patch_reset_speed']);
+ await p.state({state:'read_complete',sha256:p.run('RS01')});
+ assert.match(e.guidanceTitle.textContent,/RS01.*already installed/);assert.equal(e.patchResetSpeed.disabled,true);
+ assert.equal(e.patchChildLock.disabled,true);assert.equal(e.patch.disabled,true);
+ await p.state({state:'staged',sha256:p.run('RS01')});assert.match(e.guidanceDetail.textContent,/remote unlock/i);
+ await p.state({state:'verified',sha256:p.run('RS01')});assert.match(e.guidanceDetail.textContent,/remote unlock/i);
+ for(const s of [{state:'read_complete',sha256:'unknown'},
+  {state:'read_complete',sha256:p.run('CL01'),preflight_seconds:0},
+  {state:'reading',sha256:p.run('CL01'),active:true}]) {
+  await p.state(s);assert.equal(e.patchResetSpeed.disabled,true);
+ }
  await p.state({state:'read_complete',sha256:'unknown'});assert.equal(e.patchChildLock.disabled,true);
  await p.state({state:'read_complete',sha256:p.run('STOCK'),preflight_seconds:0});assert.equal(e.patchChildLock.disabled,true);
  await p.state({state:'reading',sha256:p.run('STOCK'),active:true});assert.equal(e.patchChildLock.disabled,true);

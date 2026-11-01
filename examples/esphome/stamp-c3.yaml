@@ -5,9 +5,10 @@
 # Power the Stamp through its own USB-C connection; leave 5V/3V3 unconnected.
 # These are 3.3V logic signals, not standard USB D+/D-.
 # Reference: https://docs.m5stack.com/en/core/Stamp-C3
-# Optional CL01 panel lock, including its status and availability.
+# Optional CL01 panel lock and RS01 reset/speed controls.
 # packages:
 #   panel_lock: !include packages/child-lock.yaml
+#   reset_speed: !include packages/reset-speed.yaml
 substitutions:
   device_name: t150-desk-control-stamp-c3
   # Relative to the ESPHome data directory; use an absolute path for exact placement.

@@ -16,19 +16,23 @@ Open **Open firmware maintenance** in the main page's Firmware group, or
 `http://<device-address>/desk-firmware`. Use the normal web login on your local
 network; `web_server.auth` is required. Reload after updating the ESP32.
 
-The example includes `stamp-c3.yaml`, `packages/firmware-update.yaml` and
-`packages/child-lock.yaml`. Keep those files and `secrets.yaml` in the same layout
-when copying. For Device Builder, replace both local component sources with the
-same GitHub revision: `desk_uart` in the base YAML and
-`desk_firmware_export, desk_firmware_update` in the maintenance package.
+The example includes `stamp-c3.yaml` and the `firmware-update.yaml`,
+`child-lock.yaml` and `reset-speed.yaml` files under `packages/`. Keep that layout
+and place `secrets.yaml` beside the device YAML when copying. For Device Builder,
+replace the local source with the same GitHub revision in both component entries:
+`desk_uart` in the base YAML and `desk_firmware_export, desk_firmware_update`
+in the maintenance package.
 For a moved local checkout, update the base source and `firmware_components_path`;
 both resolve from the main device YAML. See [configuration paths](esphome.md#configuration-paths).
 
 Use this package instead of `firmware-export.yaml`. Maintenance disables ESP32
-OTA; return to the normal build over USB. After installing CL01, keep the
+OTA; return to the normal build over USB. After installing CL01 or RS01, keep the
 [panel-lock package](child-lock.md) enabled so you can unlock the panel.
 
 ## Read, patch and verify
+
+RS01 R7 requires the ESPHome adapter from the same version for UART frame recovery.
+See [test coverage and known limits](validation.md).
 
 Follow the active instruction panel. Keep the ESP32 powered throughout.
 
@@ -40,9 +44,11 @@ Follow the active instruction panel. Keep the ESP32 powered throughout.
    page loses its browser-memory copy.
 4. Select **Prepare DT02 patch** for direct height control and the sleep fix,
    or **Prepare panel lock (CL01)** for both plus persistent panel locking.
+   Choose **Prepare reset and speed controls (RS01)** for those features plus
+   [calibration and Normal/Slow controls](reset-speed.md).
    Alternatively, select a saved application and **Prepare selected file**.
-   CL01 initially locks physical buttons, including local stopping; configure
-   its controls before installation.
+   CL01 and RS01 initially lock physical buttons, including local stopping; configure
+   the panel-lock controls before installation.
 5. Confirm and select **Arm installation**, then power-cycle only the controller.
    Leave power connected throughout writing.
 6. At `readback required`, select **Verify by full readback** and power-cycle
@@ -58,12 +64,14 @@ keep both devices powered until status returns. Writes never retry automatically
 
 ## Accepted images and storage
 
-Writing accepts only the exact supported original, DT02 and CL01 applications.
-CL01 can be prepared from the original or DT02. A fresh read identifies an
-already installed patch. Other revisions need a separately reviewed patch;
-profile recognition alone does not authorize writing.
+Writing accepts only the exact supported original, DT02, CL01 and RS01 R7 applications.
+CL01 can be prepared from the original or DT02; RS01 R7 can be prepared from
+any of those three images. A fresh read identifies an already installed patch.
+Other images need a separately reviewed patch; profile recognition alone does
+not authorize writing.
 
-To remove CL01, install and verify your saved original or DT02 application.
+To remove reset and speed support, install a saved CL01, DT02 or original image.
+To remove panel locking as well, install and verify your saved original or DT02 application.
 Its EEPROM lock record remains for a later CL01 installation.
 
 The ESP32 validates and stages the complete image in RAM before writing,
@@ -74,8 +82,7 @@ first 10 KiB bootloader, EEPROM and option bytes. See the
 
 ## Interrupted installation
 
-An interrupted write has been recovered over UART and verified by full readback.
-For completed checks, see [validation](validation.md#hardware-validation).
+See [validation](validation.md#hardware-validation) for tested recovery paths.
 
 Keep the ESP32's current firmware and preferences intact; they contain the
 recovery record. Read the controller again, save that read, select the known

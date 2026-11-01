@@ -1,6 +1,6 @@
 """Confirmed-state controls in generated ESPHome 2026.4.2 local v3 assets.
 
-Only builds opting into child_lock use this hook. No installed ESPHome files
+Only builds opting into child_lock or motion_speed use this hook. No installed ESPHome files
 are changed. Unknown upstream formats fail the build rather than silently
 shipping misleading controls. Explicit on/off commands remain available.
 """
@@ -10,6 +10,25 @@ import re
 import warnings
 
 MARKER = "<!-- desk-confirmed-switch-v1 -->"
+SPEED_MARKER = "<!-- desk-confirmed-speed-v1 -->"
+OLD_SELECT = 'render_select(){if(!!this.entity)return this._select(this.entity,"set","option",this.entity.option||[],this.entity.value)}'
+SELECT = '''render_select(){
+  if(!this.entity)return;
+  if(!this.entity.desk_motion_speed)return this._select(this.entity,"set","option",this.entity.option||[],this.entity.value);
+  const entity=this.entity,actioner=this.actioner;
+  const known=entity.value==='Normal'||entity.value==='Slow';
+  if(!known)return S`<span aria-live="polite">Unknown</span>`;
+  const send=event=>{
+    const option=event.target.value;
+    if(option==='Normal'||option==='Slow')actioner?.restAction(entity,'set?option='+encodeURIComponent(option));
+    // A request is not confirmation. Retain only the last server value.
+    event.target.value=entity.value;
+  };
+  return S`<select aria-label="${entity.name}" .value="${entity.value}" @change="${send}">
+    <option value="Normal" ?selected="${entity.value==='Normal'}">Normal</option>
+    <option value="Slow" ?selected="${entity.value==='Slow'}">Slow</option>
+  </select>`;
+}'''
 # ESPHome 2026.4.2 passes a plain array to Lit's SVG tag for its static logo.
 # Construct that fixed SVG as a tagged template, retaining Lit's raw metadata.
 OLD_LOGO_INIT = "var Nu=`"
@@ -44,7 +63,10 @@ await app.updateComplete;
 const table=app.shadowRoot?.querySelector('esp-entity-table');
 window.source?.addEventListener('error',()=>{
   if(!table)return;
-  for(const entity of table.entities)if(entity.desk_panel_lock)entity.state='UNKNOWN';
+  for(const entity of table.entities){
+    if(entity.desk_panel_lock)entity.state='UNKNOWN';
+    if(entity.desk_motion_speed){entity.state='UNKNOWN';entity.value=null;}
+  }
   table.requestUpdate();
 });
 </script>
@@ -60,6 +82,15 @@ NEW_JSON = OLD_JSON + '''
     }
   }'''
 INCLUDE = '#include "esphome/components/desk_uart/desk_uart.h"\n'
+OLD_SELECT_JSON = 'set_json_icon_state_value(root, obj, "select", value.c_str(), value.c_str(), start_config);'
+NEW_SELECT_JSON = OLD_SELECT_JSON + '''
+  if (desk_uart::MotionSpeedSelect::is_instance(obj)) {
+    root[ESPHOME_F("desk_motion_speed")] = true;
+    if (!obj->has_state()) {
+      root[ESPHOME_F("state")] = "UNKNOWN";
+      root[ESPHOME_F("value")] = nullptr;
+    }
+  }'''
 
 
 def replace_once(text, old, new):
@@ -83,6 +114,12 @@ def decorate_header(source):
     else:
         html = replace_once(html, OLD_RENDER, RENDER)
         html = replace_once(html, '</body>', DISCONNECT + '</body>')
+    if SPEED_MARKER in html:
+        if SELECT not in html:
+            raise ValueError("Inconsistent confirmed-speed decoration")
+    else:
+        html = replace_once(html, OLD_SELECT, SELECT)
+        html = replace_once(html, '</body>', SPEED_MARKER + '</body>')
     logo_anchors = (html.count(OLD_LOGO_INIT), html.count(OLD_LOGO_RENDER))
     if logo_anchors == (1, 1):
         html = html.replace(OLD_LOGO_INIT, NEW_LOGO_INIT, 1)
@@ -98,8 +135,11 @@ def decorate_server(source):
     if NEW_JSON in source:
         if INCLUDE not in source:
             raise ValueError("Missing panel lock type declaration")
-        return source
-    return INCLUDE + replace_once(source, OLD_JSON, NEW_JSON)
+    else:
+        source = INCLUDE + replace_once(source, OLD_JSON, NEW_JSON)
+    if NEW_SELECT_JSON not in source:
+        source = replace_once(source, OLD_SELECT_JSON, NEW_SELECT_JSON)
+    return source
 
 
 def patch_build(build):

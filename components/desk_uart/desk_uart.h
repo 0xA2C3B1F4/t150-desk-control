@@ -6,6 +6,7 @@
 #include "desk_protocol/direct_target.h"
 #include "desk_protocol/target_detection.h"
 #include "desk_protocol/child_lock.h"
+#include "desk_protocol/reset_speed.h"
 #include "desk_protocol/uart_observation.h"
 #include "desk_protocol/timer.h"
 #include "desk_protocol/presets.h"
@@ -20,10 +21,12 @@
 #include "esphome/components/number/number.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/switch/switch.h"
+#include "esphome/components/select/select.h"
 
 namespace esphome { namespace desk_uart {
 
 class ChildLockSwitch;
+class MotionSpeedSelect;
 
 class DeskUART : public Component, public uart::UARTDevice {
  public:
@@ -64,6 +67,15 @@ class DeskUART : public Component, public uart::UARTDevice {
   // Single attempt, no queue or optimistic state. Same-state SET explicitly
   // re-verifies the controller's persistent record, including after a fault.
   bool set_child_lock(bool locked);
+  void set_reset_enabled(bool enabled) { reset_enabled_ = enabled; }
+  void set_reset_status(text_sensor::TextSensor *s) { reset_status_ = s; }
+  void set_reset_available(binary_sensor::BinarySensor *s) { reset_available_ = s; }
+  void set_motion_speed_select(MotionSpeedSelect *s) { motion_speed_select_ = s; }
+  void set_motion_speed_available(binary_sensor::BinarySensor *s) { motion_speed_available_ = s; }
+  // One explicit command starts from idle or resumes a freshly reported pause.
+  // true retains the legacy continuation-only command.
+  bool reset_desk(bool resume = false);
+  bool set_motion_speed(bool slow);
   void set_direct_mode(bool enabled) { direct_mode_ = enabled; }
   void set_uart_observation_enabled(bool enabled) { uart_observation_enabled_ = enabled; }
   void set_keep_awake_auto(bool enabled) { keep_awake_auto_ = enabled; }
@@ -116,7 +128,7 @@ class DeskUART : public Component, public uart::UARTDevice {
   uint8_t next_preset_{0};
   uint32_t last_preset_poll_{0}, last_preset_recall_{0};
   void controls_loop_(uint32_t now);
-  const char *control_reason_(uint32_t now) const;
+  const char *control_reason_(uint32_t now, bool presentation = false) const;
   bool result_(bool accepted, const char *message);
   text_sensor::TextSensor *control_status_{nullptr}, *command_result_{nullptr};
   binary_sensor::BinarySensor *stop_locked_sensor_{nullptr};
@@ -130,13 +142,31 @@ class DeskUART : public Component, public uart::UARTDevice {
   void target_loop_(uint32_t now);
   void direct_loop_(uint32_t now);
   void child_lock_loop_(uint32_t now);
+  void reset_speed_loop_(uint32_t now);
+  void reset_speed_result_();
+  void publish_reset_speed_(uint32_t now);
+  const char *reset_speed_status_(uint32_t now) const;
+  void invalidate_reset_speed_(const char *reason);
+  void yield_reset_speed_read_();
+  bool reset_speed_enabled_() const { return reset_enabled_ || reset_status_ || reset_available_ || motion_speed_select_ || motion_speed_available_; }
+  bool reset_speed_access_allowed_(uint32_t now, bool reset = false, bool read = false, bool presentation = false) const;
+  bool reset_speed_blocking_() const { return reset_speed_.blocking() || reset_speed_.busy(); }
+  desk_protocol::ResetSpeed reset_speed_{};
+  MotionSpeedSelect *motion_speed_select_{nullptr};
+  text_sensor::TextSensor *reset_status_{nullptr};
+  binary_sensor::BinarySensor *reset_available_{nullptr}, *motion_speed_available_{nullptr};
+  bool reset_enabled_{false}, reset_speed_sending_{false}, reset_stop_pending_{false}, reset_speed_confirmed_{false};
+  bool last_reset_available_{false}, last_speed_available_{false};
+  uint32_t last_reset_speed_query_{0}, last_reset_lease_tx_{0};
+  const char *last_reset_status_{nullptr};
   void child_lock_result_();
   void publish_child_lock_(uint32_t now);
+  const char *child_lock_status_text_(uint32_t now) const;
   void invalidate_child_lock_(const char *reason, bool publish = true, bool report_failure = true);
   void yield_child_lock_read_();
-  bool child_lock_access_allowed_(uint32_t now) const;
+  bool child_lock_access_allowed_(uint32_t now, bool read = false, bool presentation = false) const;
   bool child_lock_busy_() const { return child_lock_.busy() || child_lock_detection_.busy(); }
-  bool child_lock_enabled_() const { return child_lock_switch_ || child_lock_status_ || child_lock_available_; }
+  bool child_lock_enabled_() const { return child_lock_switch_ || child_lock_status_ || child_lock_available_ || reset_speed_enabled_(); }
   desk_protocol::ChildLock child_lock_{};
   desk_protocol::TargetDetection child_lock_detection_{};
   ChildLockSwitch *child_lock_switch_{nullptr};
@@ -261,6 +291,31 @@ class ChildLockSwitch : public switch_::Switch {
   // subclass without RTTI so the web hook leaves other switch types unchanged.
   static ChildLockSwitch *first_;
   ChildLockSwitch *next_{nullptr};
+};
+
+class MotionSpeedSelect : public select::Select {
+ public:
+  MotionSpeedSelect();
+  static bool is_instance(const select::Select *candidate);
+  void set_parent(DeskUART *parent) { parent_ = parent; }
+  void invalidate();
+ protected:
+  void control(const std::string &value) override {
+    if (value == "Normal" || value == "Slow") parent_->set_motion_speed(value == "Slow");
+  }
+  DeskUART *parent_{nullptr};
+  static MotionSpeedSelect *first_;
+  MotionSpeedSelect *next_{nullptr};
+};
+
+class ResetButton : public button::Button {
+ public:
+  void set_parent(DeskUART *parent) { parent_ = parent; }
+  void set_continue(bool resume) { resume_ = resume; }
+ protected:
+  void press_action() override { parent_->reset_desk(resume_); }
+  DeskUART *parent_{nullptr};
+  bool resume_{false};
 };
 
 class PresetHeightNumber : public number::Number {

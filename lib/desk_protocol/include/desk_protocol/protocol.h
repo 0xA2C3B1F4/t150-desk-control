@@ -9,7 +9,7 @@ namespace desk_protocol {
 
 constexpr uint8_t START = 0xFA, END = 0xFD, ESCAPE = 0xFE;
 constexpr std::size_t MAX_BODY = 64;  // kind + arguments, excludes checksum
-constexpr std::size_t MAX_WIRE = 2 * (MAX_BODY + 1) + 2;
+constexpr std::size_t MAX_WIRE = 2 * (MAX_BODY + 1) + 3;  // includes resync FA
 
 struct Frame {
   uint8_t bytes[MAX_BODY]{};
@@ -39,6 +39,18 @@ inline bool encode(const Frame &frame, Packet &out) {
     out.bytes[out.size++] = b;
   }
   out.bytes[out.size++] = END;
+  return true;
+}
+
+// Transmit form for the controller: FA FA kind ... FD. If the controller's
+// previous frame was cut directly after FE, the extra FA is consumed as that
+// escaped byte and the frame's own FA restarts decoding. In every other parser
+// state FA only (re)starts a frame; it never ends one.
+inline bool encode_resync(const Frame &frame, Packet &out) {
+  if (!encode(frame, out)) return false;
+  for (std::size_t i = out.size; i > 0; --i) out.bytes[i] = out.bytes[i - 1];
+  out.bytes[0] = START;
+  ++out.size;
   return true;
 }
 

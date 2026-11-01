@@ -6,7 +6,7 @@ import zlib
 from esphome import automation
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, button, number, sensor, switch, text_sensor, uart
+from esphome.components import binary_sensor, button, number, select, sensor, switch, text_sensor, uart
 from esphome.const import (
     CONF_ID,
     DEVICE_CLASS_CONNECTIVITY,
@@ -18,7 +18,7 @@ from esphome.core import CORE
 from esphome.core.config import add_includes
 
 DEPENDENCIES = ["uart"]
-AUTO_LOAD = ["sensor", "binary_sensor", "button", "number", "switch", "text_sensor"]
+AUTO_LOAD = ["sensor", "binary_sensor", "button", "number", "select", "switch", "text_sensor"]
 MULTI_CONF = True
 ns = cg.esphome_ns.namespace("desk_uart")
 DeskUART = ns.class_("DeskUART", cg.Component, uart.UARTDevice)
@@ -34,9 +34,17 @@ RestorePresetButton = ns.class_("RestorePresetButton", button.Button)
 AcceptCurrentPresetButton = ns.class_("AcceptCurrentPresetButton", button.Button)
 TimerButton = ns.class_("TimerButton", button.Button)
 ChildLockSwitch = ns.class_("ChildLockSwitch", switch.Switch)
+ResetButton = ns.class_("ResetButton", button.Button)
+MotionSpeedSelect = ns.class_("MotionSpeedSelect", select.Select)
 
 
 def validate_motion(config):
+    if any(k in config for k in ("reset_desk", "continue_reset")):
+        if not config["experimental_reset_controls"]:
+            raise cv.Invalid("Reset buttons require experimental_reset_controls: true")
+        legacy_status = all(k in config for k in ("reset_status", "reset_available"))
+        if "stop" not in config or not ("control_status" in config or legacy_status):
+            raise cv.Invalid("Reset buttons require stop and control_status, or legacy reset_status with reset_available")
     if any(f"preset_{n}" in config for n in (1, 2, 3)) and not config["experimental_preset_buttons"]:
         raise cv.Invalid("Preset buttons require experimental_preset_buttons: true; they can move the desk")
     for direction in ("upward", "downward"):
@@ -124,6 +132,13 @@ CONFIG_SCHEMA = cv.All(
         }),
         cv.Optional("child_lock_status"): text_sensor.text_sensor_schema(entity_category="diagnostic"),
         cv.Optional("child_lock_available"): binary_sensor.binary_sensor_schema(entity_category="diagnostic"),
+        cv.Optional("experimental_reset_controls", default=False): cv.boolean,
+        **{cv.Optional(key): button.button_schema(ResetButton, icon="mdi:table-arrow-down")
+           for key in ("reset_desk", "continue_reset")},
+        cv.Optional("reset_status"): text_sensor.text_sensor_schema(entity_category="diagnostic"),
+        cv.Optional("reset_available"): binary_sensor.binary_sensor_schema(entity_category="diagnostic"),
+        cv.Optional("motion_speed"): select.select_schema(MotionSpeedSelect, icon="mdi:speedometer", entity_category="config"),
+        cv.Optional("motion_speed_available"): binary_sensor.binary_sensor_schema(entity_category="diagnostic"),
         **{cv.Optional(key): text_sensor.text_sensor_schema(entity_category="diagnostic")
            for key in ("controller_model", "controller_manufacturer", "controller_identifiers", "controller_date")},
         cv.Optional("stop_locked"): binary_sensor.binary_sensor_schema(entity_category="diagnostic"),
@@ -181,22 +196,37 @@ async def to_code(config):
         cg.add(var.set_frame_errors_sensor(await sensor.new_sensor(config["uart_frame_errors"])))
     if "height_sample_gap" in config:
         cg.add(var.set_sample_gap_sensor(await sensor.new_sensor(config["height_sample_gap"])))
-    for key in ("control_status", "command_result", "target_height_backend", "child_lock_status", "controller_model", "controller_manufacturer", "controller_identifiers", "controller_date"):
+    for key in ("control_status", "command_result", "target_height_backend", "child_lock_status", "reset_status", "controller_model", "controller_manufacturer", "controller_identifiers", "controller_date"):
         if key in config:
             cg.add(getattr(var, "set_" + key)(await text_sensor.new_text_sensor(config[key])))
     if "stop_locked" in config:
         cg.add(var.set_stop_locked_sensor(await binary_sensor.new_binary_sensor(config["stop_locked"])))
-    if "child_lock" in config:
+    if "child_lock" in config or "motion_speed" in config:
         web = CORE.config.get("web_server", {})
         if (CORE.is_esp32 and web.get("version") == 3 and web.get("local")
                 and web.get("compression", "gzip") == "gzip"):
             from esphome.components import esp32
             esp32.add_extra_script("pre", "desk_panel_lock_web.py", Path(__file__).with_name("web_panel_lock.py"))
+    if "child_lock" in config:
         child_lock = await switch.new_switch(config["child_lock"])
         cg.add(child_lock.set_parent(var))
         cg.add(var.set_child_lock_switch(child_lock))
     if "child_lock_available" in config:
         cg.add(var.set_child_lock_available(await binary_sensor.new_binary_sensor(config["child_lock_available"])))
+    cg.add(var.set_reset_enabled(config["experimental_reset_controls"]))
+    for key in ("reset_desk", "continue_reset"):
+        if key in config:
+            b = await button.new_button(config[key])
+            cg.add(b.set_parent(var))
+            cg.add(b.set_continue(key == "continue_reset"))
+    if "reset_available" in config:
+        cg.add(var.set_reset_available(await binary_sensor.new_binary_sensor(config["reset_available"])))
+    if "motion_speed" in config:
+        speed = await select.new_select(config["motion_speed"], options=["Normal", "Slow"])
+        cg.add(speed.set_parent(var))
+        cg.add(var.set_motion_speed_select(speed))
+    if "motion_speed_available" in config:
+        cg.add(var.set_motion_speed_available(await binary_sensor.new_binary_sensor(config["motion_speed_available"])))
     cg.add(var.set_motion_enabled(config["experimental_preset_buttons"]))
     cg.add(var.set_uart_observation_enabled(config["uart_observation"]))
     cg.add(var.set_auto_target_mode(config["target_height_mode"] == "auto"))

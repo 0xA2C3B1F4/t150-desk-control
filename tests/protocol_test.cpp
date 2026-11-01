@@ -1,4 +1,5 @@
 #include "desk_protocol/protocol.h"
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -91,6 +92,63 @@ static void parser_edges() {
   for(unsigned i=0;i<100000;++i) { rng=rng*1664525u+1013904223u; p.feed(static_cast<uint8_t>(rng>>24),i,f); }
   p.reset();p.feed(START,0,f);p.feed(0xA1,0,f);p.feed(0xA1,0,f);
   CHECK(p.feed(END,0,f)==ParseResult::FrameReady);
+}
+
+static std::vector<uint8_t> wire_of(const Frame &frame, bool resync) {
+  Packet p; CHECK(resync ? encode_resync(frame, p) : encode(frame, p));
+  return std::vector<uint8_t>(p.bytes, p.bytes + p.size);
+}
+// Returns matching frames; any other completed frame is counted in 'other'.
+static unsigned frames_equal(const std::vector<uint8_t> &stream, const Frame &expected, unsigned &other) {
+  Parser p; Frame f; unsigned matches = 0; other = 0;
+  for (auto b : stream) {
+    if (p.feed(b, 10, f) != ParseResult::FrameReady) continue;
+    if (f.size == expected.size && std::equal(f.bytes, f.bytes + f.size, expected.bytes)) ++matches;
+    else ++other;
+  }
+  return matches;
+}
+
+static void resync_sender() {
+  Frame f; Packet p;
+  CHECK(encode_resync(stop(), p));
+  CHECK(std::vector<uint8_t>(p.bytes, p.bytes + p.size) ==
+        std::vector<uint8_t>({0xFA,0xFA,0x17,0x01,0,0,0x16,0xFD}));
+  f.size = 0; CHECK(!encode_resync(f, p)); CHECK(p.size == 0);
+  for (unsigned seed = 0; seed < 256; ++seed) {
+    Frame input; input.size = MAX_BODY;
+    for (std::size_t i = 0; i < input.size; ++i) input.bytes[i] = static_cast<uint8_t>(seed * 3 + i);
+    Packet plain; CHECK(encode(input, plain)); CHECK(encode_resync(input, p));
+    CHECK(p.size == plain.size + 1 && p.size <= MAX_WIRE && p.bytes[0] == START);
+    CHECK(std::equal(plain.bytes, plain.bytes + plain.size, p.bytes + 1));
+  }
+  // Same FA/FE/FD grammar as the controller. Cut every outgoing frame after
+  // each byte, then send the next command: the resync form always recovers;
+  // the single-FA form is lost exactly when the cut leaves an FE pending.
+  std::vector<Frame> sent{stop(), status_query()};
+  CHECK(write_preset_raw(3, 0xFAFD, f)); sent.push_back(f);
+  CHECK(write_load_limit(LoadLimit::Upward, 0xFEFA, f)); sent.push_back(f);
+  CHECK(button(Button::Up, true, f)); sent.push_back(f);
+  f = Frame{}; f.size = 7; f.bytes[0] = 0xD1; f.bytes[1] = 1; f.bytes[2] = 1;
+  f.bytes[3] = 0xFA; f.bytes[6] = 0xC8; sent.push_back(f);  // DT02 SET, nonce FA00
+  unsigned lost = 0;
+  for (const auto &cut_frame : sent) for (bool cut_resync : {false, true}) {
+    const auto cut_wire = wire_of(cut_frame, cut_resync);
+    for (std::size_t cut = 1; cut < cut_wire.size(); ++cut) for (const auto &next : sent) {
+      std::vector<uint8_t> stream(cut_wire.begin(), cut_wire.begin() + cut);
+      const auto resync = wire_of(next, true), single = wire_of(next, false);
+      std::vector<uint8_t> a(stream), b(stream);
+      a.insert(a.end(), resync.begin(), resync.end());
+      b.insert(b.end(), single.begin(), single.end());
+      unsigned other = 0;
+      CHECK(frames_equal(a, next, other) == 1 && other == 0);
+      bool pending_escape = false;  // FE FE leaves no escape pending
+      for (std::size_t i = 0; i < cut; ++i) pending_escape = !pending_escape && cut_wire[i] == ESCAPE;
+      if (pending_escape) { CHECK(frames_equal(b, next, other) == 0); ++lost; }
+      else CHECK(frames_equal(b, next, other) == 1 && other == 0);
+    }
+  }
+  CHECK(lost > 0);
 }
 
 static void typed_messages_and_timing() {
@@ -214,8 +272,8 @@ static void replay(const char *name,unsigned expected_frames,unsigned expected_h
 }
 
 int main() {
-  golden_commands();parser_edges();typed_messages_and_timing();raw_load_samples();
+  golden_commands();parser_edges();resync_sender();typed_messages_and_timing();raw_load_samples();
   replay("channel2-120s.bin",241,239,true);
   replay("preset3-73.bin",21,15,false);
-  std::cout << "Protocol, parser recovery, wraparound, ACK, pulse and live-capture replay tests passed.\n";
+  std::cout << "Protocol, parser recovery, resync sender, wraparound, ACK, pulse and live-capture replay tests passed.\n";
 }

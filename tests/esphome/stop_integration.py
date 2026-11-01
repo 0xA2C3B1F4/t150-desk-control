@@ -150,6 +150,10 @@ desk_uart:
             bytes([0x17, 1, 0, 0]),
         ], motion
         assert all(f[0] in (0x13, 0x17) for f in sent)
+        # Every controller command is sent as FA FA ... FD, so a frame cut after
+        # FE cannot absorb the next command's start byte.
+        assert outgoing.count(b"\xfa\xfa") == len(sent) and outgoing.startswith(b"\xfa\xfa")
+        assert bytes(outgoing).count(b"\xfa\xfa\x17\x01\x00\x00\x16\xfd") == 3
         assert sum(f == bytes([0x13, 2, 0, 1, 0xF4, 0, 0]) for f in sent) >= 2
         motion_times = [e["seconds"] for e in events if e["body_hex"].startswith("17 ")]
         pulses = [motion_times[1] - motion_times[0], motion_times[4] - motion_times[3]]

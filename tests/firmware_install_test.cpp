@@ -42,5 +42,15 @@ int main(){
   {Rig r;CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now,static_cast<Sender::Profile>(99)));CHECK(r.writes.empty());}
   // The CL01 profile retains the same stop-once behavior at every reply gate.
   for(unsigned stop=0;stop<32;++stop){Rig r;r.begin(Sender::Profile::ChildLockCL01);r.boot();std::vector<uint8_t> replies{6,0x43,6,0x43};replies.insert(replies.end(),28,6);for(unsigned i=0;i<stop;++i)r.feed(replies[i]);const size_t before=r.writes.size();r.sender.tick(r.now+5001);CHECK(!r.sender.active());r.feed(6);CHECK(r.writes.size()==before);}
+  // RS01 reaches its last reserved block; earlier profiles cannot truncate it.
+  {Rig r;for(size_t i=26624;i<Sender::RESET_SPEED_PAYLOAD_SIZE;++i)r.image[i]=uint8_t(i*13);
+   CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now,Sender::Profile::ChildLockCL01));
+   r.header(Sender::Profile::ResetSpeedRS01);
+   const std::string header(r.writes[1].begin()+3,r.writes[1].begin()+131);CHECK(header.find("32768 ")!=std::string::npos);
+   for(int i=0;i<32;++i)r.feed(6);CHECK(r.sender.acked_blocks()==32);CHECK(r.writes.back()==std::vector<uint8_t>{4});
+   r.feed(6);r.feed(6);CHECK(r.sender.complete());CHECK(r.writes.size()==36);
+   for(size_t i=2;i<34;++i){const auto &p=r.writes[i];CHECK(p[1]==i-1);CHECK(std::equal(p.begin()+3,p.begin()+1027,r.image.begin()+(i-2)*1024));CHECK(desk_protocol::FirmwareExport::crc(p.data()+3,1024)==(unsigned(p[1027])<<8|p[1028]));}}
+  {Rig r;r.image[Sender::RESET_SPEED_PAYLOAD_SIZE]=0;CHECK(!r.sender.begin(r.image.data(),r.image.size(),Rig::write,&r,r.now,Sender::Profile::ResetSpeedRS01));CHECK(r.writes.empty());}
+  for(unsigned stop=0;stop<38;++stop){Rig r;r.begin(Sender::Profile::ResetSpeedRS01);r.boot();std::vector<uint8_t> replies{6,0x43,6,0x43};replies.insert(replies.end(),34,6);for(unsigned i=0;i<stop;++i)r.feed(replies[i]);const size_t before=r.writes.size();r.sender.tick(r.now+5001);CHECK(!r.sender.active());r.feed(6);CHECK(r.writes.size()==before);}
   std::cout<<"Sender sequence, payload CRC, all response timeouts, NAK/CAN, tail and wrap checks passed\n";
 }
