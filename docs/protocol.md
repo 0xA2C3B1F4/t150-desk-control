@@ -50,11 +50,26 @@ changing the byte. The parser accepts unknown kinds but typed decoders require
 exact lengths.
 
 `Frame` contains kind and arguments **without checksum or delimiters**. Its
-maximum length is 64 bytes. `Packet` is an encoded wire buffer of at most 132 bytes.
+maximum length is 64 bytes. `Packet` is an encoded wire buffer of at most 133 bytes.
 This is an implementation limit, not a discovered maximum of the device protocol.
-The bounded parser reports bad length, checksum and overflow. Unescaped FA
+The library parser reports bad length, checksum and overflow. Unescaped FA
 resynchronizes; an incomplete frame expires after 250 ms between bytes. Call
 `expire(now)` when no bytes arrive if immediate timeout handling is needed.
+
+`DeskUART` sends commands with `encode_resync()`, which adds an extra FA:
+`FA FA kind ... FD`. If an interrupted frame left the controller waiting for
+an escaped byte, the first FA completes that escape and the second starts the
+new frame. `encode()` retains the original single-FA form.
+
+Use the updated ESPHome adapter with RS01 R7. The controller has no receive
+timeout. With a single-FA sender, the next command can merge into an interrupted
+frame and be lost, including Stop. A merged kind 19 frame can pass its checksum
+and write a preset or load-limit value. R7 adds no kind 19 length check, so
+updating the controller firmware alone does not resolve this case.
+
+R7 accepts kind 17 only with a four-byte body for selector 1 or a three-byte
+body for other selectors. These lengths exclude XOR. Other lengths produce
+the controller's existing length error. Valid escaped data is unchanged.
 
 Supply monotonic milliseconds as uint32. Timing comparisons use unsigned
 subtraction and handle wraparound; call the helpers regularly, not after an
@@ -488,10 +503,9 @@ sequence. The ESP-driven timer sequence is experimental. See [supported features
 
 ## Test fixtures
 
-`tests/fixtures/manifest.json` records the exact source and SHA256 of two small
-unaltered UART RX captures. The 120-second capture has 239 height frames plus
-two ACKs. The preset capture has 15 height frames and 6 other responses. Tests
-replay them across every possible two-chunk split, including escaped values.
+`tests/fixtures/manifest.json` records the provenance and SHA-256 of the UART RX
+captures. Tests replay them across every possible two-chunk split, including
+escaped values.
 Synthetic cases cover malformed streams, maximum frames, unsigned time/sequence
 wrap, stale data, ACK timeout and delayed release generation.
 
@@ -516,10 +530,10 @@ non-ASCII values and wrong lengths. Output is unchanged when decoding fails.
 | 07 | 8 | `1.9.0118` |
 | 09 | 8 | `21/01/18` |
 
-These replies were captured from the tested controller on 2026-10-27, including
-XOR and sequence validation. `tests/identity_test.cpp` retains the exact received
-wire frames, including an escaped FA sequence byte. The roles of fields 05/06/07 and the date are unconfirmed; the adapter displays
-them without assigning hardware, software or manufacturing-date meanings.
+These replies identify the tested controller. `tests/identity_test.cpp` retains
+the captured wire frames for XOR, sequence and escaping checks. The roles of
+fields 05/06/07 and the date are unconfirmed; the adapter displays them without
+assigning hardware, software or manufacturing-date meanings.
 
 The ESPHome component requests only configured text entities, one request per
 second while idle, at most three attempts per field per ESP32 boot. It accepts
@@ -609,6 +623,31 @@ it is not a debounce guarantee. EEPROM I/O runs with saved/restored interrupt
 masking. See [child_lock.S](../tools/patches/child_lock.S) for the exact write
 sequence and [validation](validation.md) for completed checks.
 
+## RS01 reset and speed extension
+
+RS01 includes DT02 and CL01. Its `D5` request body contains version 1,
+operation, a 16-bit nonce, a 32-bit token and one argument byte; multibyte
+integers are big-endian. Operations are GET=0, START=1, RESUME=2, RENEW=3,
+CANCEL=4 and SPEED=5. SPEED accepts Normal=0 or Slow=1 in RAM only.
+
+`D6` replies include the echoed operation/nonce, result, reset phase,
+eligibility, next token, remaining lease, encoder speed, PWM and internal
+position. A matching fresh reply is required before any dependent operation.
+R4 and later advertise capability mask `0x1F`; bytes 46/47 carry START/RESUME admission
+results (0 OK, 1 BAD, 2 STALE, 3 INELIGIBLE, 4 BUSY, 5 LOCKED, 6 GUARD).
+Legacy `0x0F` replies keep both bytes zero. Admission results must agree with
+the eligibility flags. They describe admission after the request; byte 4 is
+the request's result. A successful START or RESUME can therefore report BUSY
+in bytes 46/47 while the reset is active.
+GET never starts or renews movement. CANCEL needs no token. Other mutations
+consume a current token; an accepted renewal supplies the next one.
+
+The controller lease lasts 1,500 nominal millisecond ticks. It is independent
+of the full calibration duration. Expiry and cancellation clear remote hold,
+cut output and leave explicit continuation to the user. The Slow cap is applied
+after the stock speed-request limit and excludes reset and its return movement.
+See [controls](reset-speed.md) and the source in `tools/patches/reset_speed.c`.
+
 ## Firmware maintenance
 
 The maintenance adapter accepts only these 55,296-byte application hashes:
@@ -618,17 +657,18 @@ The maintenance adapter accepts only these 55,296-byte application hashes:
 | Original | `bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf` |
 | DT02 | `e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff` |
 | CL01, including DT02 | `81933d93b8bc28ef0eb8b29bf7ae1c7b9104f0a8e03c1c2f8096d509de0f75d3` |
+| RS01 R7, including DT02 and CL01 | `ad1f321c570de25abef0f106175a5722d709b92e5db6d3da792bed9cc55fe78b` |
 
-The pinned loader erases 53 application pages, writes 25 blocks for original/DT02
-or 26 for CL01, and leaves the final flash page untouched. Admission requires an
-erased final page; verification covers the full 54 KiB application, including
+The pinned loader erases 53 application pages, writes 25 blocks for original/DT02,
+26 for CL01, or 32 for RS01, and leaves the final flash page untouched. Admission
+requires an erased final page; verification covers the full 54 KiB application, including
 unwritten bytes. Replacement headers contain our patch code, not vendor images.
 
 Before installation, the ESP saves source/target block fingerprints. Interrupted
 original-image recovery retains a third fingerprint set so it can be retried.
 Every 1 KiB block must match a recorded identity or be erased, except at most one
 partial block within the write payload. After the exact original is uploaded and
-hashed, the adapter reconstructs original/DT02/CL01 candidates and requires the
+hashed, the adapter reconstructs original/DT02/CL01/RS01 candidates and requires the
 partial block to match a halfword-aligned programmed prefix followed by erased
 bytes. This recovery path permits only original-image restoration. Multiple
 partial blocks, programmed halfwords outside that pattern or a damaged final

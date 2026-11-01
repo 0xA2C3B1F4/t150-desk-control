@@ -1,0 +1,16 @@
+# Optional RS01 controls for the supplied desk examples (id: desk).
+# Reset starts calibration or continues a paused calibration when selected again.
+# The existing Stop and Control status must remain configured. No startup action.
+desk_uart:
+  id: desk
+  experimental_reset_controls: true
+  reset_desk:
+    name: Reset
+    web_server:
+      sorting_group_id: desk_group_recovery
+      sorting_weight: 40
+  motion_speed:
+    name: Motion speed
+    web_server:
+      sorting_group_id: desk_group_control
+      sorting_weight: 35

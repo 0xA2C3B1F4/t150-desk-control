@@ -27,8 +27,10 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
 <div id="prepareControls" hidden>
 <button disabled id="patch">Prepare DT02 patch</button>
 <button disabled id="patchChildLock">Prepare panel lock (CL01)</button>
+<button disabled id="patchResetSpeed">Prepare reset and speed controls (RS01)</button>
+<p class="note">RS01 includes CL01, guarded reset controls and a Normal/Slow speed choice. The bundled R7 image is an offline-tested candidate; hardware validation is pending. Reset requires an unlocked panel. Normal movements retain the panel-lock behavior below.</p>
 <p class="note">CL01 includes DT02. With no valid saved lock record, it starts locked. While locked, all physical buttons, including local stopping gestures, are blocked. Remote unlock is required.</p>
-<label>Or select a saved original, DT02 or CL01 application file:
+<label>Or select a saved original, DT02, CL01 or RS01 application file:
 <input type="file" id="file" accept=".bin,application/octet-stream"></label>
 <button disabled id="stage">Prepare selected file</button>
 </div>
@@ -47,11 +49,11 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
 <details><summary>Maintenance steps and image requirements</summary>
 <p>With controller power off, disconnect the motor cable. Keep the ESP32 powered and UART connected throughout maintenance.</p>
 <ol><li>Enter maintenance and select Read controller firmware. Turn only the controller off and on when the current step asks for it.</li>
-<li>Download the backup and confirm that it is saved on your computer. Prepare DT02 or CL01, or select a saved application file.</li>
+<li>Download the backup and confirm that it is saved on your computer. Prepare DT02, CL01 or RS01, or select a saved application file.</li>
 <li>Confirm and arm installation. Restart the controller when instructed, then leave power connected throughout writing.</li>
 <li>Select Verify by full readback after writing. Restart the controller again when instructed. Only a complete readback verifies the installation.</li>
 <li>Finish maintenance, then restart the controller for normal operation. Reconnect the motor only with controller power off.</li></ol>
-<p>Installation erases application flash. A failed transfer may require restoring the original file. Only exact supported 55,296-byte original, DT02 or CL01 application files can be installed. Unknown versions can be saved for research.</p>
+<p>Installation erases application flash. A failed transfer may require restoring the original file. Only exact supported 55,296-byte original, DT02, CL01 or RS01 application files can be installed. Unknown versions can be saved for research.</p>
 <p>Files in this page are temporary. The computer download is your persistent backup.</p>
 </details>
 <section id="researchSection" hidden><h2>Send an unknown version for research</h2>
@@ -62,7 +64,7 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
-const STOCK='bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf',DT02='e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff',CL01='81933d93b8bc28ef0eb8b29bf7ae1c7b9104f0a8e03c1c2f8096d509de0f75d3';
+const STOCK='bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf',DT02='e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff',CL01='81933d93b8bc28ef0eb8b29bf7ae1c7b9104f0a8e03c1c2f8096d509de0f75d3',RS01='ad1f321c570de25abef0f106175a5722d709b92e5db6d3da792bed9cc55fe78b';
 const lockNotice='Without a valid saved lock record CL01 starts locked. All physical buttons, including local stopping gestures, are blocked while locked. Use remote unlock to enable them.';
 let status=null,locked=false,original=null,originalHash=null,selected=null,cancelUpload=false,guidanceKey=null,normalBootNeeded=false,sessionOwned=false,connectionError='',clientError='',pendingAction='',lastPhase='',finishedAt=0;
 // Each document owns a distinct session, including duplicated or reloaded tabs.
@@ -109,12 +111,13 @@ function render(){
  $('transferProgress').hidden=!status.active&&phase!=='uploading';
  $('progressText').textContent=`${status.progress} / ${status.progress_max||status.size||55296} bytes`;
  renderGuidance();
- for(const id of ['claim','read','patch','patchChildLock','stage','install','verify','exit','backupDownload','preparedDownload'])$(id).disabled=locked||status.pending||status.active;
+ for(const id of ['claim','read','patch','patchChildLock','patchResetSpeed','stage','install','verify','exit','backupDownload','preparedDownload'])$(id).disabled=locked||status.pending||status.active;
  $('cancel').disabled=(locked&&phase!=='uploading')||status.pending||(!status.active&&status.state!=='uploading');
  $('backupDownload').disabled=locked||status.state!=='read_complete';
  $('preparedDownload').disabled=locked||!['staged','verified'].includes(status.state);
  $('patch').disabled=locked||status.pending||!status.preflight_seconds||status.state!=='read_complete'||status.sha256!==STOCK;
  $('patchChildLock').disabled=locked||status.pending||!status.preflight_seconds||status.state!=='read_complete'||![STOCK,DT02].includes(status.sha256);
+ $('patchResetSpeed').disabled=locked||status.pending||!status.preflight_seconds||status.state!=='read_complete'||![STOCK,DT02,CL01].includes(status.sha256);
  $('install').disabled=locked||status.pending||!status.preflight_seconds||status.state!=='staged';
  $('verify').disabled=locked||!['readback_required','staged'].includes(status.state)||!status.recovery_required;
  $('exit').disabled=locked||status.pending||status.active||status.recovery_required||Date.now()-finishedAt<3000;
@@ -153,17 +156,17 @@ function renderGuidance(){
   attention=true;
  }else if(status.state==='verified'){
   title='All application bytes verified';
-  detail='Select Finish maintenance to release UART and return to normal desk operation. Reconnect the motor only with controller power off.'+(status.sha256===CL01?' '+lockNotice:'');
+  detail='Select Finish maintenance to release UART and return to normal desk operation. Reconnect the motor only with controller power off.'+([CL01,RS01].includes(status.sha256)?' '+lockNotice:'');
   attention=true;
  }else if(expired){
   title='Preflight expired. Read the controller again';
   detail='Save any backup you still need, then select Read controller firmware to obtain a fresh preflight before preparing or installing an image.';
   attention=true;
  }else if(status.state==='read_complete'){
-  const alreadyPatched=status.sha256===DT02,alreadyLocked=status.sha256===CL01;
-  const known=alreadyPatched||alreadyLocked||status.sha256===STOCK;
-  title=alreadyLocked?'CL01 panel lock is already installed':alreadyPatched?'DT02 is already installed':'Read complete. Save the controller backup';
-  detail=alreadyLocked?'The controller read matches CL01. Save this backup. To remove CL01, select your saved original or DT02 application file. '+lockNotice:alreadyPatched?'The controller read matches DT02. Save this backup before preparing CL01 or selecting a saved image. Leave controller power on.':'Download the original backup and save it on your computer before preparing an image. Leave controller power on.';
+  const alreadyPatched=status.sha256===DT02,alreadyLocked=status.sha256===CL01,alreadyReset=status.sha256===RS01;
+  const known=alreadyReset||alreadyPatched||alreadyLocked||status.sha256===STOCK;
+  title=alreadyReset?'RS01 reset and speed controls are already installed':alreadyLocked?'CL01 panel lock is already installed':alreadyPatched?'DT02 is already installed':'Read complete. Save the controller backup';
+  detail=alreadyReset?'The controller read matches RS01. Save this backup. Select a saved original, DT02 or CL01 file to remove RS01. '+lockNotice:alreadyLocked?'The controller read matches CL01. Save this backup. To remove CL01, select your saved original or DT02 application file. '+lockNotice:alreadyPatched?'The controller read matches DT02. Save this backup before preparing CL01 or selecting a saved image. Leave controller power on.':'Download the original backup and save it on your computer before preparing an image. Leave controller power on.';
   if(!known){
    title=status.recovery_required?'Recovery read complete. Save this read':'Unknown firmware. Save the backup';
    detail=status.recovery_required?'Save this read, then select your saved original application file and prepare it for restoration. Desk controls remain paused.':
@@ -171,7 +174,7 @@ function renderGuidance(){
   }
  }else if(status.state==='staged'){
   title='Image prepared. Confirm and arm installation';
-  detail='Installation erases application flash; a failed transfer may require restoring the original file. Confirm installation below and select Arm installation. Leave controller power on until the instruction changes to OFF, then ON.'+(status.sha256===CL01?' '+lockNotice:'');
+  detail='Installation erases application flash; a failed transfer may require restoring the original file. Confirm installation below and select Arm installation. Leave controller power on until the instruction changes to OFF, then ON.'+([CL01,RS01].includes(status.sha256)?' '+lockNotice:'');
  }else if(normalBootNeeded&&status.state==='idle'&&!status.claimed){
   title='Maintenance finished. Restart the controller for normal use';
   detail='Turn only the controller off and on once more to start its application. Keep the ESP32 powered. Reconnect the motor only while controller power is off.';
@@ -222,6 +225,7 @@ $('read').onclick=()=>task(async()=>{original=null;$('saved').checked=false;awai
 $('backupDownload').onclick=()=>task(async()=>{original=await download();originalHash=status.sha256;save(original,`t150-backup-${status.sha256.slice(0,12)}.bin`);});
 $('patch').onclick=()=>task(async()=>{await confirmBackup();await action('patch');});
 $('patchChildLock').onclick=()=>task(async()=>{await confirmBackup();await action('patch_child_lock');});
+$('patchResetSpeed').onclick=()=>task(async()=>{await confirmBackup();await action('patch_reset_speed');});
 $('file').onchange=async()=>{const f=$('file').files[0];selected=null;clientError='';if(f){if(f.size!==55296){clientError='Select a 55,296-byte application file.';render();return;}selected=new Uint8Array(await f.arrayBuffer());}render();};
 $('stage').onclick=()=>task(async()=>{if(!selected)throw Error('Select an application file first.');await confirmBackup();await action('stage');cancelUpload=false;for(let offset=0;offset<selected.length;offset+=128){const data=Array.from(selected.slice(offset,offset+128),x=>x.toString(16).padStart(2,'0')).join('');if(cancelUpload){await action('cancel');throw Error('File preparation cancelled.');}
  const r=await fetch('/desk-firmware/action',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Desk-CSRF':status.csrf},body:new URLSearchParams({owner,revision:String(status.revision),action:'chunk',offset:String(offset),data})});

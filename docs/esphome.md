@@ -197,8 +197,8 @@ and select the target again to start another move. Repeating the same active
 target does not interrupt it. During preset preparation or restoration, target
 requests are rejected without braking; use Stop to interrupt motion. Requests
 during braking are also rejected.
-Hardware checks on DT02+CL01R3 cover 73–116 cm travel and stopping on a changed
-target; see [validation](validation.md).
+
+See [validation](validation.md) for hardware and host test coverage.
 
 Editing a preset-height number does not move the desk. The component verifies
 its RAM value; the controller may save it later. Before deliberately changing
@@ -396,3 +396,8 @@ They describe the desk controller, not the ESP32. Reads occur while idle;
 missing replies remain unknown and successful values persist until ESP restart.
 The date is displayed as received, without interpreting it as a manufacturing date.
 See [identity fields](protocol.md#controller-identity) for exact replies.
+
+## Optional reset and speed controls
+
+The [reset and speed package](reset-speed.md) exposes calibration controls and
+a Normal/Slow selection when the controller reports RS01 support.

@@ -3,9 +3,10 @@
 # ESP32-WROOM-32 development board with 4 MB flash; compile-tested only.
 # Cross TX/RX: GPIO17 -> desk RX, GPIO16 <- desk TX; common GND.
 # Power the ESP32 separately through its USB connector.
-# Optional CL01 panel lock, including its status and availability.
+# Optional CL01 panel lock and RS01 reset/speed controls.
 # packages:
 #   panel_lock: !include packages/child-lock.yaml
+#   reset_speed: !include packages/reset-speed.yaml
 substitutions:
   device_name: t150-desk-control-esp32
   # Relative to the ESPHome data directory; use an absolute path for exact placement.
