@@ -1,0 +1,14 @@
+# ESPHome 2026.10.1. Keep only this YAML and your secrets.yaml locally.
+# Preserve device_name and existing secrets when updating an installed device.
+substitutions:
+  device_name: t150-desk-control-stamp-c3
+  t150_ref: main  # Use the same release tag or commit for packages and components.
+  build_directory: build/${device_name}
+
+packages:
+  desk: github://0xA2C3B1F4/t150-desk-control/examples/esphome/stamp-c3-firmware-update.yaml@${t150_ref}
+
+# Keep this as a mapping: it replaces the packages' local component source list.
+external_components:
+  source: github://0xA2C3B1F4/t150-desk-control@${t150_ref}
+  components: [desk_uart, desk_firmware_export, desk_firmware_update]

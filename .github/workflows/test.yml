@@ -112,7 +112,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [stamp-c3, esp32]
+        example: [stamp-c3, esp32, desk, stamp-c3-firmware-export, stamp-c3-firmware-update]
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:

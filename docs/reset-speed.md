@@ -7,7 +7,9 @@ the same version. See [test coverage and known limits](validation.md).
 
 ## Enable the controls
 
-In a supplied Stamp-C3 or ESP32 example, enable both optional packages:
+In a [GitHub control example](esphome.md#github-configurations), add the remote
+`panel_lock` and `reset_speed` packages shown there. For a local checkout's
+Stamp-C3 or ESP32 example, enable both includes:
 
 ```yaml
 packages:

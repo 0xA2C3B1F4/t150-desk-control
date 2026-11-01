@@ -6,9 +6,9 @@ for the physical panel buttons. Remote controls and remote Stop remain available
 
 ## Enable and use
 
-1. In a supplied ESP32/Stamp-C3 example, uncomment the `panel_lock` package
-   include. Keep `packages/child-lock.yaml` beside the device YAML in that
-   subdirectory when copying the configuration.
+1. In a [GitHub control example](esphome.md#github-configurations), add the remote
+   `panel_lock` package. For a local checkout example, uncomment its `panel_lock`
+   include and keep `packages/child-lock.yaml` in that subdirectory beside the YAML.
 2. Install CL01 through [firmware maintenance](firmware-update.md). Its example
    already includes lock controls. Keep the package enabled when returning to
    the normal ESPHome build so you can unlock the panel.

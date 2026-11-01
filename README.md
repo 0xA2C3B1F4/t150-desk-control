@@ -24,15 +24,16 @@ For related desks, see [untested compatibility candidates and how to contribute 
 
 ## Install
 
-The examples use development sources on `main` until the first release.
+The GitHub examples follow development sources on `main`. Set `t150_ref` to a
+commit or release tag to keep builds on that version.
 See [release preparation](docs/releases.md) for versioning and validation.
 
 You need a compatible controller, a Wi-Fi ESP32 and three UART wires. [Connect TX, RX and ground](docs/hardware.md#uart-wiring); power the ESP32 separately through USB.
 
 | Board | Configuration | ESP32 TX / RX | Coverage |
 |---|---|---|---|
-| M5Stack Stamp-C3, 4 MB | [stamp-c3.yaml](examples/esphome/stamp-c3.yaml) | GPIO4 / GPIO5 | Hardware tested |
-| ESP32-WROOM-32, 4 MB | [esp32.yaml](examples/esphome/esp32.yaml) | GPIO17 / GPIO16 | Build tested |
+| M5Stack Stamp-C3, 4 MB | [stamp-c3.yaml](examples/esphome/github/stamp-c3.yaml) | GPIO4 / GPIO5 | Hardware tested |
+| ESP32-WROOM-32, 4 MB | [esp32.yaml](examples/esphome/github/esp32.yaml) | GPIO17 / GPIO16 | Build tested |
 
 For an existing ESPHome device, merge [existing-device.yaml](examples/esphome/existing-device.yaml)
 into your configuration and keep your network, API and OTA settings.
@@ -40,13 +41,17 @@ See [existing devices](docs/esphome.md#existing-device).
 
 ### ESPHome Device Builder
 
-1. Create a device and replace its YAML with the board configuration above. Uncomment `source: github://...` under `external_components`.
-2. Set `device_name`. Add the keys from [secrets.example.yaml](examples/esphome/secrets.example.yaml) to Device Builder's `secrets.yaml`, beside the device YAML. Fill in your credentials; retain the wizard's API encryption key or generate one with `openssl rand -base64 32`.
-3. Validate and install over USB. Later normal-firmware updates can use Wi-Fi.
+1. Create a device and replace its YAML with the board configuration above. It downloads its packages and components from GitHub.
+2. Set `device_name`, keeping the existing name when updating a device. Add the keys from [secrets.example.yaml](examples/esphome/secrets.example.yaml) to Device Builder's `secrets.yaml`, beside the device YAML. Fill in your credentials; retain the wizard's API encryption key or generate one with `openssl rand -base64 32`.
+3. Validate and install over USB. Later ESP32 updates can use Wi-Fi.
 4. Open `http://<device_name>.local/` or the ESP32's IP address. Sign in with `web_username` and `web_password`.
 5. For Home Assistant, add the **ESPHome** integration using the device address and API encryption key.
 
-The GitHub source includes the component and its portable headers. For use without Home Assistant, follow [standalone install](docs/esphome.md#standalone-install). For a cloned repository, follow [local build and install](docs/esphome.md#local-build-and-install). Both use ESPHome 2026.10.1. Copied YAML files need the [configuration paths](docs/esphome.md#configuration-paths) described there.
+The GitHub examples need only the selected YAML and your `secrets.yaml` locally.
+See [GitHub configurations](docs/esphome.md#github-configurations) for monitoring,
+firmware reading and maintenance. They use ESPHome 2026.10.1.
+For CLI installation, follow [standalone install](docs/esphome.md#standalone-install).
+The original examples remain available for a [local checkout](docs/esphome.md#local-build-and-install).
 
 ## Use and configuration
 

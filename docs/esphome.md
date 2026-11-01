@@ -2,7 +2,7 @@
 
 The examples use ESPHome 2026.10.1 with the default native ESP-IDF toolchain.
 Choose a board configuration from the [README](../README.md#install); `desk.yaml`
-is the monitoring-only alternative.
+is the monitoring-only alternative in both example directories.
 
 ## Setup
 
@@ -16,6 +16,44 @@ movement controls require the existing experimental options documented below.
 
 The development snippet follows `main`. [Release assets](releases.md) will pin
 component sources to their release tag.
+
+### GitHub configurations
+
+Copy one file from `examples/esphome/github/` into Device Builder or a directory
+beside your `secrets.yaml`. ESPHome downloads all packages and components; no
+local checkout or `packages/` directory is needed.
+
+| Configuration | Purpose |
+|---|---|
+| [stamp-c3.yaml](../examples/esphome/github/stamp-c3.yaml) | Stamp-C3 controls and web UI |
+| [esp32.yaml](../examples/esphome/github/esp32.yaml) | ESP32-WROOM-32 controls and web UI |
+| [desk.yaml](../examples/esphome/github/desk.yaml) | Monitoring-only ESP32 example; check the pin choices |
+| [stamp-c3-firmware-export.yaml](../examples/esphome/github/stamp-c3-firmware-export.yaml) | Stamp-C3 with the controller firmware reader |
+| [stamp-c3-firmware-update.yaml](../examples/esphome/github/stamp-c3-firmware-update.yaml) | Stamp-C3 with firmware maintenance, panel lock and reset/speed controls |
+
+Keep the installed device's `device_name` and secrets when switching
+configurations. `t150_ref` selects one GitHub branch, release tag or commit for
+both the packages and components. These development examples default to `main`;
+use an immutable commit or release tag to keep subsequent builds on that version.
+A moving branch can change between the separate package and component fetches.
+ESPHome caches Git sources for one day by default.
+
+Keep `external_components` as the mapping shown in these files. It replaces the
+packages' local source list. Changing it to a YAML list would retain those local
+entries. Add entity or pin overrides in your own YAML as needed. For the
+Stamp-C3 and ESP32 control examples, optional lock and reset/speed packages use
+the same `t150_ref`:
+
+```yaml
+packages:
+  panel_lock: github://0xA2C3B1F4/t150-desk-control/examples/esphome/packages/child-lock.yaml@${t150_ref}
+  reset_speed: github://0xA2C3B1F4/t150-desk-control/examples/esphome/packages/reset-speed.yaml@${t150_ref}
+```
+
+Add these entries beside the existing `packages.desk` entry. The maintenance
+example already includes both. The monitoring-only `desk.yaml` does not provide
+the controls these packages require. Follow the
+[firmware maintenance instructions](firmware-update.md) when working on the controller.
 
 ### Source diagnostics
 
@@ -33,18 +71,20 @@ The main YAML is the file passed to `esphome` or opened in Device Builder.
 | Workflow | YAML and secrets | Component source |
 |---|---|---|
 | Local checkout | Keep files in `examples/esphome/`, with `secrets.yaml` beside the device YAML | Default local source |
-| Device Builder | Device YAML and `secrets.yaml` in its configuration directory | Uncomment `source: github://...` |
-| Downloaded YAML | Board YAML and `secrets.yaml` together in your chosen directory | Uncomment `source: github://...` |
+| Device Builder | One GitHub YAML and `secrets.yaml` in its configuration directory | GitHub packages and components |
+| Downloaded GitHub YAML | Selected YAML and `secrets.yaml` together | GitHub packages and components |
 
 Copy the keys from `secrets.example.yaml` and fill in your credentials.
 Generate an API encryption key with `openssl rand -base64 32` if needed.
 
-Local component paths resolve from the main YAML's directory. The examples'
-`../../components` points to the checkout's `components/`. If you move the YAML,
+For local checkout examples, component paths resolve from the main YAML's
+directory. Their `../../components` points to the checkout's `components/`. If you move the YAML,
 change that path or use an absolute path. The `components/` directory contains
 all component sources, including the portable protocol headers. It can be copied
 without the rest of the repository. Existing `components: [desk_uart]` selections
-remain valid. The GitHub source overrides the local entry.
+remain valid. When copying a local board example directly, its commented GitHub
+source can still override the local entry. The GitHub configurations above handle
+this for the base configuration and optional firmware packages together.
 
 Basic controls work without `web_server`. Confirmed panel-lock and motion-speed
 controls add a build hook only for the supported ESP32 local gzip web-v3 setup.
@@ -56,13 +96,14 @@ Package files are not downloaded by `external_components`.
 
 `build_directory` sets ESPHome's build path, relative to its data directory.
 For CLI use this defaults to `.esphome/` beside the YAML; the Home Assistant
-add-on uses `/data`. The examples' `.esphome/build/...` values therefore create
-`.esphome/.esphome/build/...` in a default CLI setup. Use an absolute
+add-on uses `/data`. GitHub examples use `build/${device_name}`. Local checkout
+examples retain `.esphome/build/...`, which creates `.esphome/.esphome/build/...`
+in a default CLI setup. Use an absolute
 `build_directory` to choose an exact location.
 
 ### Standalone install
 
-Save the board YAML and secrets file together and enable the GitHub source.
+Save the selected GitHub YAML and secrets file together.
 From that directory, install ESPHome with Python 3.12–3.15:
 
 ```sh

@@ -68,7 +68,10 @@ checksum and allowed-file failures, and draft-only API operations. Synthetic inp
 check the firmware catalog against compiled install and patch-preparation guards.
 Copied components, Git fixtures and a host UART peer cover source diagnostics.
 The existing-device snippet compiles without a web server and retains the user's
-project, network, API and OTA settings.
+project, network, API and OTA settings. GitHub examples validate and compile with
+only the selected YAML and test secrets in the configuration directory. Tests
+check that packages and components resolve to the same commit, local component
+sources are replaced, and firmware builds retain the OTA guard.
 
 The first release still requires a stationary Stamp-C3 smoke test of its exact
 ESPHome candidate. The earlier R7 hardware results above apply to the unchanged

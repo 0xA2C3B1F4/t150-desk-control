@@ -7,7 +7,12 @@ own UART together.
 
 ## Enable only when needed
 
-From the repository root, with `secrets.yaml` in `examples/esphome/`, run:
+Use ESPHome 2026.10.1. For Device Builder or a standalone YAML, copy
+[the GitHub reader example](../examples/esphome/github/stamp-c3-firmware-export.yaml)
+and keep your `secrets.yaml` beside it. Preserve the installed device name and
+credentials. Packages and components use the same `t150_ref`.
+
+For a local checkout, with `secrets.yaml` in `examples/esphome/`, run:
 
 ```sh
 esphome run examples/esphome/stamp-c3-firmware-export.yaml
@@ -21,14 +26,9 @@ For a relocated local checkout, set `firmware_components_path` in the main YAML
 and update the base YAML's local component path. Both point to the checkout's
 `components/`, relative to the main YAML rather than `packages/`.
 
-For Device Builder or downloaded YAML, enable the GitHub source in `stamp-c3.yaml`
-and replace the package's component source with the same repository revision:
-
-```yaml
-external_components:
-  - source: github://0xA2C3B1F4/t150-desk-control@main
-    components: [desk_firmware_export]
-```
+ESPHome OTA remains available between reads. The guard checks the reviewed
+ESPHome source; if another version fails with `Unreviewed ESPHome OTA source`,
+use ESPHome 2026.10.1.
 
 The package requires ESP32/ESP-IDF, UART 115200 8N1, `desk_uart` ID `desk`, a single
 UART dictionary with ID `desk_serial`, and the authenticated web server. Reader
