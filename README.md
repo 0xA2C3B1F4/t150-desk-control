@@ -20,6 +20,8 @@ The optional [firmware maintenance tools](docs/firmware-update.md) provide backu
 
 See [supported features and testing](docs/validation.md) for completed hardware and host checks.
 
+For related desks, see [untested compatibility candidates and how to contribute firmware](docs/hardware.md#possible-compatibility-untested).
+
 ## Install
 
 You need a compatible controller, a Wi-Fi ESP32 and three UART wires. [Connect TX, RX and ground](docs/hardware.md#uart-wiring); power the ESP32 separately through USB.

@@ -103,3 +103,6 @@ a backup and consent, the browser sends the image over HTTPS to a private inbox,
 without ESPHome credentials. A receipt confirms storage, not patch approval.
 The inbox retains uploads until deletion. Upload is never automatic; omit the URL
 to hide it. The service cannot enable an unreviewed patch on the ESP32.
+
+See [compatibility research and submission details](hardware.md#help-develop-support)
+for how contributed firmware can help extend support to other controllers.
