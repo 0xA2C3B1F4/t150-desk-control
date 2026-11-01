@@ -72,7 +72,10 @@ def required_jobs(root):
                  and any(isinstance(t,ast.Name) and t.id == "TESTS" for t in n.targets))
     return {"native (Debug)","native (Release)","release-checks", "release-examples"} | {
         "esphome (" + name + ")" for name in tests if name != "github_example_build"
-    } | {"github-example (stamp-c3)","github-example (esp32)"}
+    } | {
+        "github-example (" + name + ")" for name in
+        ("stamp-c3", "esp32", "desk", "stamp-c3-firmware-export", "stamp-c3-firmware-update")
+    }
 
 
 def validate_report(report, version, commit, stage=None):

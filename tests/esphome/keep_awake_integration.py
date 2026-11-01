@@ -405,7 +405,14 @@ desk_uart:
                 unrestored = name in ("handoff_timeout", "handoff_conflict", "handoff_release_failure")
                 expected_writes = [] if name == "handoff_read" else [raw] if unrestored else [raw, original]
                 assert writes == expected_writes, (name, writes)
-                if name not in ("handoff_read", "handoff_restoring", "handoff_stop"):
+                if name == "handoff_height":
+                    # The request is injected after controls_loop_. A queued height
+                    # frame can cancel it before the next status publication.
+                    before_request, after_request = text.split("HANDOFF_REQUEST=1", 1)
+                    assert "RESULT=Preset waiting for keep-awake cleanup" in before_request, name
+                    assert "RESULT=Pending preset cancelled by height change; press again" in after_request, name
+                    assert preset == original and controls[-1] == "Ready", (name, preset, controls)
+                elif name not in ("handoff_read", "handoff_restoring", "handoff_stop"):
                     assert "Preset waiting for keep-awake cleanup" in controls, (name, controls)
                 if name in ("handoff_deadline", "handoff_latest_deadline"):
                     assert preset == original and controls[-1] == "Ready", (name, controls)

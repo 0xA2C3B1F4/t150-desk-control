@@ -6,7 +6,12 @@ No manufacturer firmware image is distributed.
 
 ## Build and open
 
-From the checkout root, with `secrets.yaml` beside the example YAMLs, run:
+Use ESPHome 2026.10.1. For Device Builder or a standalone YAML, copy
+[the GitHub maintenance example](../examples/esphome/github/stamp-c3-firmware-update.yaml)
+and keep your `secrets.yaml` beside it. Preserve the installed device name and
+credentials. The example fetches all packages and components at `t150_ref`.
+
+For a local checkout, with `secrets.yaml` beside the example YAMLs, run:
 
 ```sh
 esphome run examples/esphome/stamp-c3-firmware-update.yaml
@@ -16,12 +21,9 @@ Open **Open firmware maintenance** in the main page's Firmware group, or
 `http://<device-address>/desk-firmware`. Use the normal web login on your local
 network; `web_server.auth` is required. Reload after updating the ESP32.
 
-The example includes `stamp-c3.yaml` and the `firmware-update.yaml`,
+The local example includes `stamp-c3.yaml` and the `firmware-update.yaml`,
 `child-lock.yaml` and `reset-speed.yaml` files under `packages/`. Keep that layout
-and place `secrets.yaml` beside the device YAML when copying. For Device Builder,
-replace the local source with the same GitHub revision in both component entries:
-`desk_uart` in the base YAML and `desk_firmware_export, desk_firmware_update`
-in the maintenance package.
+and place `secrets.yaml` beside the device YAML when copying a local configuration.
 For a moved local checkout, update the base source and `firmware_components_path`;
 both resolve from the main device YAML. See [configuration paths](esphome.md#configuration-paths).
 
@@ -33,6 +35,8 @@ session or a saved recovery record does not block OTA. Only `platform: esphome` 
 supported with firmware maintenance. `captive_portal` also enables web-server OTA
 and cannot be combined with this build. A rejected OTA attempt logs
 `OTA refused: firmware operation active or queued`; retry after the operation ends.
+The OTA guard checks the reviewed ESPHome source. If a different ESPHome version
+fails with `Unreviewed ESPHome OTA source`, use the supported version above.
 After installing CL01 or RS01, keep the
 [panel-lock package](child-lock.md) enabled so you can unlock the panel.
 
