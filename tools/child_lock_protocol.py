@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build CL01 requests or decode CL01 replies offline. Never opens a serial port."""
+
 from __future__ import annotations
 
 import argparse
@@ -57,23 +58,37 @@ def request(operation: str, nonce: int) -> bytes:
 
 def reply(wire: bytes, expected_nonce: int | None = None) -> dict:
     body = unframe(wire)
-    if (len(body) != 15 or body[:2] != b"\xd4\x01" or (body[2] not in OPS.values() and body[3] != 1)
-            or body[3] not in STATUSES or any(value > 1 for value in body[4:7])
-            or body[7:11] != b"CL01"):
+    if (
+        len(body) != 15
+        or body[:2] != b"\xd4\x01"
+        or (body[2] not in OPS.values() and body[3] != 1)
+        or body[3] not in STATUSES
+        or any(value > 1 for value in body[4:7])
+        or body[7:11] != b"CL01"
+    ):
         raise ValueError("Not a valid CL01 reply")
     nonce = int.from_bytes(body[11:13], "big")
     if expected_nonce is not None and nonce != expected_nonce:
         raise ValueError("Reply nonce does not match the request")
-    return {"build": "CL01", "operation": next((k for k, v in OPS.items() if v == body[2]), "unknown"),
-            "operation_raw": body[2], "status": STATUSES[body[3]], "locked": bool(body[4]),
-            "physical_gate": bool(body[5]), "storage_fault": bool(body[6]),
-            "nonce": nonce, "sequence": int.from_bytes(body[13:15], "big")}
+    return {
+        "build": "CL01",
+        "operation": next((k for k, v in OPS.items() if v == body[2]), "unknown"),
+        "operation_raw": body[2],
+        "status": STATUSES[body[3]],
+        "locked": bool(body[4]),
+        "physical_gate": bool(body[5]),
+        "storage_fault": bool(body[6]),
+        "nonce": nonce,
+        "sequence": int.from_bytes(body[13:15], "big"),
+    }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    make = sub.add_parser("request", help="Print an encoded request, without transmitting")
+    make = sub.add_parser(
+        "request", help="Print an encoded request, without transmitting"
+    )
     make.add_argument("operation", choices=OPS)
     make.add_argument("--nonce", required=True, type=lambda s: int(s, 0))
     read = sub.add_parser("reply", help="Decode one reply supplied as hexadecimal text")
@@ -84,7 +99,9 @@ def main() -> None:
         if args.command == "request":
             print(request(args.operation, args.nonce).hex(" ").upper())
         else:
-            print(json.dumps(reply(bytes.fromhex(args.hexadecimal), args.nonce), indent=2))
+            print(
+                json.dumps(reply(bytes.fromhex(args.hexadecimal), args.nonce), indent=2)
+            )
     except ValueError as error:
         parser.error(str(error))
 

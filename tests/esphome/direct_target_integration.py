@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Real ESPHome host + synthetic PTY DT02 peer. No hardware; no firmware images."""
+
 import json
 import os
 import select
@@ -8,7 +9,15 @@ import subprocess
 import time
 import zlib
 
-from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
+from desk_test_support import (
+    ROOT,
+    build_host,
+    encode,
+    frames,
+    open_pty,
+    parse_args,
+    test_env,
+)
 
 
 def main():
@@ -82,7 +91,9 @@ desk_uart:
     preferences = work / "preferences/.esphome/prefs/desk-direct-test.prefs"
     preferences.parent.mkdir(parents=True, exist_ok=True)
     old = struct.pack("<IHH", 0x44534B33, 456, 122)
-    preferences.write_bytes(struct.pack("=IB", zlib.crc32(b"desk-preset-journal-v1:desk"), len(old)) + old)
+    preferences.write_bytes(
+        struct.pack("=IB", zlib.crc32(b"desk-preset-journal-v1:desk"), len(old)) + old
+    )
     try:
         with (work / "build.log").open("w") as log:
             build_host(cfg, work, env, log, uart_port=os.ttyname(slave))
@@ -96,13 +107,20 @@ desk_uart:
 
         def reply(body, sequence_suffix=True):
             nonlocal sequence
-            value = bytes(body) + (sequence.to_bytes(2, "big") if sequence_suffix else b"")
+            value = bytes(body) + (
+                sequence.to_bytes(2, "big") if sequence_suffix else b""
+            )
             os.write(master, encode(value))
             sequence = (sequence + 1) & 65535
 
         with (work / "runtime.log").open("w") as log:
-            proc = subprocess.Popen([str(work / "build/.pioenvs/desk-direct-test/program")],
-                                    cwd=work, env=env, stdout=log, stderr=subprocess.STDOUT)
+            proc = subprocess.Popen(
+                [str(work / "build/.pioenvs/desk-direct-test/program")],
+                cwd=work,
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
             start = time.monotonic()
             while time.monotonic() - start < 33:
                 elapsed = time.monotonic() - start
@@ -119,16 +137,28 @@ desk_uart:
                     wire.extend(os.read(master, 65536))
                     found = list(frames(wire))
                     for frame in found[processed:]:
-                        events.append(dict(seconds=round(elapsed, 3), body_hex=frame.hex()))
+                        events.append(
+                            dict(seconds=round(elapsed, 3), body_hex=frame.hex())
+                        )
                         if frame[0] == 0x13:
                             continue
                         if frame[0] == 0x15:
                             value = banks[2] if frame[1] == 31 else 100
                             reply(bytes([0x16, frame[1]]) + value.to_bytes(2, "big"))
                         elif frame[0] == 0xD1:
-                            op, nonce, requested = frame[2], int.from_bytes(frame[3:5], "big"), int.from_bytes(frame[5:7], "big")
+                            op, nonce, requested = (
+                                frame[2],
+                                int.from_bytes(frame[3:5], "big"),
+                                int.from_bytes(frame[5:7], "big"),
+                            )
                             current = max(6, min(747, (q * 39 + 23) // 24))
-                            target = requested + 7 if requested > current + 4 else requested - 6 if requested < current - 4 else requested
+                            target = (
+                                requested + 7
+                                if requested > current + 4
+                                else requested - 6
+                                if requested < current - 4
+                                else requested
+                            )
                             target = max(6, min(747, target)) if op else current
                             status = guards = mode = 0
                             if op:
@@ -138,10 +168,31 @@ desk_uart:
                                 else:
                                     mode = 1
                                     goal = target * 24 // 39
-                                if sets == 3:  # Commit but lose ACK: exactly one brake, never resend SET.
+                                if (
+                                    sets == 3
+                                ):  # Commit but lose ACK: exactly one brake, never resend SET.
                                     continue
-                            body = struct.pack(">5B4s3Hi2I2H2B2H", 0xD2, 1, 3, op, status, b"DT02",
-                                               nonce, requested, current, target, 6, 747, 24, 39, mode, 0, guards, sequence)
+                            body = struct.pack(
+                                ">5B4s3Hi2I2H2B2H",
+                                0xD2,
+                                1,
+                                3,
+                                op,
+                                status,
+                                b"DT02",
+                                nonce,
+                                requested,
+                                current,
+                                target,
+                                6,
+                                747,
+                                24,
+                                39,
+                                mode,
+                                0,
+                                guards,
+                                sequence,
+                            )
                             reply(body, False)
                         elif frame == bytes.fromhex("17 01 00 00"):
                             brakes += 1
@@ -157,32 +208,62 @@ desk_uart:
             proc.terminate()
             proc.wait(timeout=5)
         out = (work / "runtime.log").read_text()
-        for marker in ("journal_blocked=1", "accept_current=1", "first=1", "export_blocked=1",
-                       "timer_blocked=1", "limit_blocked=1", "restore_blocked=1",
-                       "retarget_requires_new_request=1", "native_preset=1",
-                       "Stopped; select target again after the desk settles"):
+        for marker in (
+            "journal_blocked=1",
+            "accept_current=1",
+            "first=1",
+            "export_blocked=1",
+            "timer_blocked=1",
+            "limit_blocked=1",
+            "restore_blocked=1",
+            "retarget_requires_new_request=1",
+            "native_preset=1",
+            "Stopped; select target again after the desk settles",
+        ):
             assert marker in out, marker
         assert sets == 5, (sets, events)
         assert brakes == 3, (brakes, events)
         assert banks == original
         assert not any(e["body_hex"].startswith(("19", "1b", "ef")) for e in events)
-        assert not any(8.5 < e["seconds"] < 11.9 and e["body_hex"].startswith("d10101") for e in events)
-        assert not any(22 < e["seconds"] < 29.9 and e["body_hex"].startswith("d10101") for e in events)
-        snapshots = [json.JSONDecoder().raw_decode(line.split("UART observation: ", 1)[1])[0] for line in out.splitlines() if "UART observation: " in line]
+        assert not any(
+            8.5 < e["seconds"] < 11.9 and e["body_hex"].startswith("d10101")
+            for e in events
+        )
+        assert not any(
+            22 < e["seconds"] < 29.9 and e["body_hex"].startswith("d10101")
+            for e in events
+        )
+        snapshots = [
+            json.JSONDecoder().raw_decode(line.split("UART observation: ", 1)[1])[0]
+            for line in out.splitlines()
+            if "UART observation: " in line
+        ]
         assert len(snapshots) >= 5
         assert len({s["boot"] for s in snapshots}) == 1 and snapshots[0]["boot"] != 0
         assert snapshots[-1]["gaps"] >= 1 and snapshots[-1]["handoffs"] == 0
         assert snapshots[-1]["errors"] == 0
         for key in ("ms", "samples", "gaps", "errors", "tx", "changes"):
             assert all(a[key] <= b[key] for a, b in zip(snapshots, snapshots[1:])), key
-        summary = dict(passed=True, transport="synthetic PTY only", sets=sets, brakes=brakes,
-                       preset_ram=original, preset_eeprom=original, events=events,
-                       checks=["legacy journal blocks direct until explicit double-read acceptance",
-                               "no preset, EEPROM or reset writes", "Stop then new explicit request, no automatic retarget",
-                               "native preset preempts direct without a second brake",
-                               "lost SET ACK brakes once", "stale telemetry brakes and never replays after reconnect",
-                               "explicit SET rejection does not brake", "export/timer/limit/recovery interlocks",
-                               "coherent cumulative diagnostics including a latched RX gap"])
+        summary = dict(
+            passed=True,
+            transport="synthetic PTY only",
+            sets=sets,
+            brakes=brakes,
+            preset_ram=original,
+            preset_eeprom=original,
+            events=events,
+            checks=[
+                "legacy journal blocks direct until explicit double-read acceptance",
+                "no preset, EEPROM or reset writes",
+                "Stop then new explicit request, no automatic retarget",
+                "native preset preempts direct without a second brake",
+                "lost SET ACK brakes once",
+                "stale telemetry brakes and never replays after reconnect",
+                "explicit SET rejection does not brake",
+                "export/timer/limit/recovery interlocks",
+                "coherent cumulative diagnostics including a latched RX gap",
+            ],
+        )
         (work / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
         print(json.dumps({k: v for k, v in summary.items() if k != "events"}, indent=2))
     finally:

@@ -1,4 +1,5 @@
 """Rebuild generated desk patches from pristine inputs; never edit installed ESPHome."""
+
 import hashlib
 import importlib.util
 import json
@@ -24,7 +25,7 @@ def patch_ota(source):
     anchor = "void ESPHomeOTAComponent::handle_data_() {"
     if source.count(anchor) != 1:
         raise ValueError("Unreviewed ESPHome OTA source; refusing maintenance guard")
-    admission = r'''
+    admission = r"""
   // Reserve OTA before blocking reads, flash writes or OTA_STARTED callbacks.
   desk_firmware_export::OTAOperation desk_ota;
   if (!desk_ota) {
@@ -32,8 +33,10 @@ def patch_ota(source):
     this->cleanup_connection_();
     return;
   }
-'''
-    include = '#include "esphome/components/desk_firmware_export/desk_firmware_export.h"\n'
+"""
+    include = (
+        '#include "esphome/components/desk_firmware_export/desk_firmware_export.h"\n'
+    )
     return OTA_GUARD + include + source.replace(anchor, anchor + admission, 1)
 
 
@@ -51,11 +54,17 @@ def apply(build):
         if config["maintenance"]:
             header = load(build / "desk_web_layout.py").decorate_header(header)
         target = build / "src/esphome/components/web_server"
-        updates += [(target / "server_index_v3.h", header),
-                    (target / "web_server.cpp", WEB_GUARD + server)]
+        updates += [
+            (target / "server_index_v3.h", header),
+            (target / "web_server.cpp", WEB_GUARD + server),
+        ]
     if config["ota"]:
-        updates.append((build / "src/esphome/components/esphome/ota/ota_esphome.cpp",
-                        patch_ota((build / "desk_upstream_ota.cpp").read_bytes())))
+        updates.append(
+            (
+                build / "src/esphome/components/esphome/ota/ota_esphome.cpp",
+                patch_ota((build / "desk_upstream_ota.cpp").read_bytes()),
+            )
+        )
     # Validate every transform before writing any result. CMake serializes this
     # phase before compilation; unchanged bytes keep their timestamp.
     for path, _ in updates:

@@ -25,13 +25,25 @@ from pathlib import Path
 import random
 
 from unicorn import UC_HOOK_MEM_READ
-from unicorn.arm_const import (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2,
-                               UC_ARM_REG_R3, UC_ARM_REG_R4, UC_ARM_REG_R5,
-                               UC_ARM_REG_R6, UC_ARM_REG_R7, UC_ARM_REG_R8,
-                               UC_ARM_REG_R9, UC_ARM_REG_R10, UC_ARM_REG_R11,
-                               UC_ARM_REG_R12, UC_ARM_REG_SP, UC_ARM_REG_XPSR)
-from test_child_lock_patch import Machine, RAM, RX_RING, SP, decode, direct_body, frame
+from unicorn.arm_const import (
+    UC_ARM_REG_R0,
+    UC_ARM_REG_R1,
+    UC_ARM_REG_R2,
+    UC_ARM_REG_R3,
+    UC_ARM_REG_R4,
+    UC_ARM_REG_R5,
+    UC_ARM_REG_R6,
+    UC_ARM_REG_R7,
+    UC_ARM_REG_R8,
+    UC_ARM_REG_R9,
+    UC_ARM_REG_R10,
+    UC_ARM_REG_R11,
+    UC_ARM_REG_R12,
+    UC_ARM_REG_SP,
+    UC_ARM_REG_XPSR,
+)
 
+from test_child_lock_patch import RAM, RX_RING, SP, Machine, decode, direct_body, frame
 
 SERVICE = 0x0800586C
 PARSER = 0x080044F4
@@ -43,8 +55,13 @@ STOP = frame(bytes((0x17, 1, 0, 0)))
 OVERRIDES = range(RAM + 0x7AD, RAM + 0x7B5)
 GATE = RAM + 0x148
 # Kind 19 selector -> stored 32-bit parameter: load limits 0E/0F, presets 1..3.
-PARAMETERS = {0x0E: RAM + 0x85C, 0x0F: RAM + 0x860,
-              0x1D: RAM + 0x87C, 0x1E: RAM + 0x880, 0x1F: RAM + 0x884}
+PARAMETERS = {
+    0x0E: RAM + 0x85C,
+    0x0F: RAM + 0x860,
+    0x1D: RAM + 0x87C,
+    0x1E: RAM + 0x880,
+    0x1F: RAM + 0x884,
+}
 # Genuine commands from the adapter and patch protocols. Reserved values make
 # FE escapes appear at many cut points.
 KNOWN = {
@@ -78,7 +95,7 @@ def check(condition, case, detail):
 
 
 def resync(wire):
-    return b"\xFA" + bytes(wire)
+    return b"\xfa" + bytes(wire)
 
 
 def pending_escape(wire):
@@ -100,7 +117,7 @@ def split_replies(wire):
         elif byte == 0xFE:
             escaped = True
         elif byte == 0xFD:
-            replies.append(decode(wire[start:index + 1]))
+            replies.append(decode(wire[start : index + 1]))
             start = None
     check(start is None, "reply stream", "unterminated reply")
     return replies
@@ -150,9 +167,12 @@ class ParserModel:
                     return None
                 if self.check:
                     return ("error", 1)
-                body = bytes(self.out[:self.count])
-                if (self.strict17 and body[0] == 0x17
-                        and self.count != (5 if body[1] == 1 else 4)):
+                body = bytes(self.out[: self.count])
+                if (
+                    self.strict17
+                    and body[0] == 0x17
+                    and self.count != (5 if body[1] == 1 else 4)
+                ):
                     return ("error", 2)
                 return ("frame", body)
         else:
@@ -172,14 +192,21 @@ def watched(address):
 
 
 def serviced(fixture, case):
-    """One service call. RAM124 is stored only when the parser runs, so the
-    accepted length is taken from this call's store, not from stale RAM."""
+    """Run one service call and inspect its accepted length.
+
+    RAM124 is stored only when the parser runs, so the accepted length is
+    taken from this call's store, not from stale RAM.
+    """
     writes = len(fixture.machine.writes)
     event = fixture.call()
     check(event["buffer_ok"], case, "parser wrote beyond request buffer")
     new = fixture.machine.writes[writes:]
-    accepted = [value for address, _size, value, _pc in new if address == RAM + 0x124 and value]
-    stores = [(address, value) for address, _size, value, _pc in new if watched(address)]
+    accepted = [
+        value for address, _size, value, _pc in new if address == RAM + 0x124 and value
+    ]
+    stores = [
+        (address, value) for address, _size, value, _pc in new if watched(address)
+    ]
     return split_replies(event["reply"]) if event["reply"] else [], accepted, stores
 
 
@@ -192,15 +219,20 @@ def drain(fixture, case, limit=8):
         accepted += call[1]
         stores += call[2]
         if fixture.machine.get(0xFC) == fixture.machine.get(0xFD):
-            check(serviced(fixture, case) == ([], [], []),
-                  case, "service replayed consumed input")
+            check(
+                serviced(fixture, case) == ([], [], []),
+                case,
+                "service replayed consumed input",
+            )
             return replies, accepted, stores
     raise AssertionError(f"{case}: service did not consume published input")
 
 
 def expect_next(name, case, replies, stores):
     """Exactly one dispatch of the named next command, with only its effect."""
-    check(len(replies) == 1, case, f"expected one reply, got {[r.hex() for r in replies]}")
+    check(
+        len(replies) == 1, case, f"expected one reply, got {[r.hex() for r in replies]}"
+    )
     reply = replies[0]
     if name == "Stop":
         check(reply.startswith(bytes((0x18, 1, 0, 0))), case, "Stop ACK missing")
@@ -209,8 +241,11 @@ def expect_next(name, case, replies, stores):
         check(reply.startswith(bytes((0x18, 3, 1, 0))), case, "UP ACK missing")
         check(stores == [(UP, 1)], case, f"UP effect differs: {stores}")
     else:
-        prefix = {"status": b"\xa2", "DT02 GET FAFD": bytes((0xD2, 1, 3, 0)),
-                  "CL01 get FAFD": bytes((0xD4, 1, 0))}[name]
+        prefix = {
+            "status": b"\xa2",
+            "DT02 GET FAFD": bytes((0xD2, 1, 3, 0)),
+            "CL01 get FAFD": bytes((0xD4, 1, 0)),
+        }[name]
         check(reply.startswith(prefix), case, f"{name} reply missing")
         check(not stores, case, f"{name} changed button state: {stores}")
 
@@ -232,10 +267,13 @@ def cut_prefix(image, cut_wire, cut, *, start):
 
 
 def recovery_matrix(image):
-    """Every cut of every known command, in old and resync form, then every
-    next command in resync form. Starts rotate so the stream crosses FF->00.
-    The unpublished stale tail is the remainder of the cut command. The next
-    command must be the only dispatch, and the cut write must store nothing."""
+    """Exercise command prefixes followed by every resync command.
+
+    Cut every known command in old and resync form. Starts rotate so the
+    stream crosses FF->00. The unpublished stale tail is the remainder of
+    the cut command. The next command must be the only dispatch, and the
+    cut write must store nothing.
+    """
     completed, total = [], 0
     for cut_name, command in KNOWN.items():
         for form, cut_wire in (("single", command), ("resync", resync(command))):
@@ -280,14 +318,17 @@ def bytewise_recovery(image):
 
 
 def single_fa_contract(image):
-    """Old single-FA sender, such as an ESPHome build before the paired R7
-    host or a rolled-back one: recovery unless the cut leaves FE pending. Then
+    """Check recovery from an old single-FA sender.
+
+    An ESPHome build before the paired R7 host or a rolled-back one recovers
+    unless the cut leaves FE pending. Then
     FE quotes the Stop's FA and the Stop is lost. The merged frame usually
     reports a checksum or length error. A kind 19 write whose bytes up to the
     FE XOR to FA instead merges into a valid write. The controller applies the
     cut frame's selector and value, with FA in place of the escaped byte, and
     replies 1A. This is inherited stock behavior. Kind 17 is never accepted and
-    no button override or gate changes. A following resync Stop recovers."""
+    no button override or gate changes. A following resync Stop recovers.
+    """
     completed, lost, merged = [], 0, {}
     for cut_name, command in KNOWN.items():
         for cut in range(1, len(command)):
@@ -305,18 +346,37 @@ def single_fa_contract(image):
             model = ParserModel()
             events = [event for event in map(model.feed, command[:cut] + STOP) if event]
             frames = [value for kind, value in events if kind == "frame"]
-            check(all(body[0] == 0x19 and body[1] in PARAMETERS for body in frames),
-                  case, f"unaudited merged frame {[body.hex() for body in frames]}")
-            check(accepted == [len(body) for body in frames],
-                  case, f"accepted {accepted} differs from parser model")
-            check(stores == [(PARAMETERS[body[1]], int.from_bytes(body[2:4], "big"))
-                             for body in frames],
-                  case, f"merged effect differs from model: {stores}")
-            prefixes = [bytes((0xEE, value)) if kind == "error" else bytes((0x1A, value[1], 0))
-                        for kind, value in events]
-            check(len(replies) == len(prefixes)
-                  and all(reply.startswith(prefix) for reply, prefix in zip(replies, prefixes)),
-                  case, f"replies {[r.hex() for r in replies]} differ from parser model")
+            check(
+                all(body[0] == 0x19 and body[1] in PARAMETERS for body in frames),
+                case,
+                f"unaudited merged frame {[body.hex() for body in frames]}",
+            )
+            check(
+                accepted == [len(body) for body in frames],
+                case,
+                f"accepted {accepted} differs from parser model",
+            )
+            check(
+                stores
+                == [
+                    (PARAMETERS[body[1]], int.from_bytes(body[2:4], "big"))
+                    for body in frames
+                ],
+                case,
+                f"merged effect differs from model: {stores}",
+            )
+            prefixes = [
+                bytes((0xEE, value)) if kind == "error" else bytes((0x1A, value[1], 0))
+                for kind, value in events
+            ]
+            check(
+                len(replies) == len(prefixes)
+                and all(
+                    reply.startswith(prefix) for reply, prefix in zip(replies, prefixes)
+                ),
+                case,
+                f"replies {[r.hex() for r in replies]} differ from parser model",
+            )
             for body in frames:
                 merged[(cut_name, cut)] = (body[1], int.from_bytes(body[2:4], "big"))
             fixture.write(start + cut + len(STOP), resync(STOP))
@@ -325,19 +385,29 @@ def single_fa_contract(image):
             expect_next("Stop", case + " recovery", replies, stores)
     check(lost >= 10, "single-FA contract", "too few pending-FE cuts")
     # Preset 3 keeps its intended value 252; load limits store FA as low byte.
-    check(merged == {("preset 3 write 252, FA XOR", 6): (0x1F, 0x00FC),
-                     ("upward load EDFD", 5): (0x0E, 0xEDFA),
-                     ("upward load EDFE", 5): (0x0E, 0xEDFA),
-                     ("downward load ECFD", 5): (0x0F, 0xECFA),
-                     ("downward load ECFE", 5): (0x0F, 0xECFA)},
-          "single-FA contract", f"merged kind 19 writes differ: {merged}")
-    completed.append(f"single-FA sender: {lost} pending-FE cuts lose the next frame, "
-                     f"{len(merged)} apply a merged kind 19 write, none act on a button")
+    check(
+        merged
+        == {
+            ("preset 3 write 252, FA XOR", 6): (0x1F, 0x00FC),
+            ("upward load EDFD", 5): (0x0E, 0xEDFA),
+            ("upward load EDFE", 5): (0x0E, 0xEDFA),
+            ("downward load ECFD", 5): (0x0F, 0xECFA),
+            ("downward load ECFE", 5): (0x0F, 0xECFA),
+        },
+        "single-FA contract",
+        f"merged kind 19 writes differ: {merged}",
+    )
+    completed.append(
+        f"single-FA sender: {lost} pending-FE cuts lose the next frame, "
+        f"{len(merged)} apply a merged kind 19 write, none act on a button"
+    )
 
     # Independent reproducer prefixes: a crafted UP body whose XOR makes the
     # merged frame valid, and a real DT02 SET cut at the FE of nonce FA00.
-    for label, prefix, code in (("crafted UP merge", bytes.fromhex("fa 17 03 01 ef fe"), 2),
-                                ("DT02 FA00 cut", bytes.fromhex("fa d1 01 01 fe"), 1)):
+    for label, prefix, code in (
+        ("crafted UP merge", bytes.fromhex("fa 17 03 01 ef fe"), 2),
+        ("DT02 FA00 cut", bytes.fromhex("fa d1 01 01 fe"), 1),
+    ):
         for batches in (1, 2):
             case = f"{label} + single-FA Stop in {batches} batch(es)"
             fixture = Fixture(image, prefix + STOP)
@@ -346,10 +416,16 @@ def single_fa_contract(image):
                 assert_quiet(fixture, case, repeat=2)
             fixture.expose(len(prefix + STOP))
             replies, accepted, stores = drain(fixture, case)
-            check(not accepted and not stores and fixture.machine.get(0x7AE) == 0,
-                  case, "merged frame dispatched")
-            check(len(replies) == 1 and replies[0][:2] == bytes((0xEE, code)),
-                  case, f"expected EE {code:02x}, got {[r.hex() for r in replies]}")
+            check(
+                not accepted and not stores and fixture.machine.get(0x7AE) == 0,
+                case,
+                "merged frame dispatched",
+            )
+            check(
+                len(replies) == 1 and replies[0][:2] == bytes((0xEE, code)),
+                case,
+                f"expected EE {code:02x}, got {[r.hex() for r in replies]}",
+            )
             completed.append(case)
 
     # Review reproducer: preset 3 = 252 cut after FE. A single-FA Stop merges
@@ -369,10 +445,16 @@ def single_fa_contract(image):
                 check(accepted == [5], case, f"dispatches {accepted}")
                 expect_next("Stop", case, replies, stores)
             else:
-                check(accepted == [10] and stores == [(PARAMETERS[0x1F], 252)],
-                      case, f"merged write differs: {accepted} {stores}")
-                check(len(replies) == 1 and replies[0][:3] == bytes((0x1A, 0x1F, 0)),
-                      case, f"expected 1A 1F, got {[r.hex() for r in replies]}")
+                check(
+                    accepted == [10] and stores == [(PARAMETERS[0x1F], 252)],
+                    case,
+                    f"merged write differs: {accepted} {stores}",
+                )
+                check(
+                    len(replies) == 1 and replies[0][:3] == bytes((0x1A, 0x1F, 0)),
+                    case,
+                    f"expected 1A 1F, got {[r.hex() for r in replies]}",
+                )
             completed.append(case)
     return completed
 
@@ -387,7 +469,11 @@ def legacy17_admission(image):
             body = bytes((0x17,)) + bytes((selector,) if length > 2 else ())
             body += bytes((action,)) * max(0, length - 3)
             if selector == 1 and length >= 4:
-                body = bytes((0x17, 1, 0, 0)) + bytes(length - 5) if length >= 5 else bytes((0x17, 1, 0))
+                body = (
+                    bytes((0x17, 1, 0, 0)) + bytes(length - 5)
+                    if length >= 5
+                    else bytes((0x17, 1, 0))
+                )
             check(len(body) == length - 1, "legacy 17", "fixture length")
             for form in ("single", "resync"):
                 wire = frame(body) if form == "single" else resync(frame(body))
@@ -397,21 +483,41 @@ def legacy17_admission(image):
                 replies, accepted, stores = drain(fixture, case)
                 if length == exact:
                     check(accepted == [exact], case, "exact legacy 17 rejected")
-                    check(len(replies) == 1 and replies[0][:3] == bytes((0x18, selector, body[2])),
-                          case, "exact legacy 17 ACK missing")
+                    check(
+                        len(replies) == 1
+                        and replies[0][:3] == bytes((0x18, selector, body[2])),
+                        case,
+                        "exact legacy 17 ACK missing",
+                    )
                     if selector == 1:
                         check(stores == [(GATE, 0)], case, "Stop effect differs")
                     elif 2 <= selector <= 9:
-                        check(stores == [(RAM + 0x7AB + selector, action)], case,
-                              f"button effect differs: {stores}")
+                        check(
+                            stores == [(RAM + 0x7AB + selector, action)],
+                            case,
+                            f"button effect differs: {stores}",
+                        )
                     else:
                         check(not stores, case, "unexpected button effect")
                 else:
-                    check(not accepted and not stores, case, "malformed legacy 17 dispatched")
-                    check(fixture.machine.get(0x123) == 2, case, "length error code missing")
-                    check(len(replies) == 1 and replies[0][:2] == bytes((0xEE, 2)),
-                          case, "length error reply missing")
-        completed.append(f"17 selector {selector:#04x}: only decoded length {exact} dispatched")
+                    check(
+                        not accepted and not stores,
+                        case,
+                        "malformed legacy 17 dispatched",
+                    )
+                    check(
+                        fixture.machine.get(0x123) == 2,
+                        case,
+                        "length error code missing",
+                    )
+                    check(
+                        len(replies) == 1 and replies[0][:2] == bytes((0xEE, 2)),
+                        case,
+                        "length error reply missing",
+                    )
+        completed.append(
+            f"17 selector {selector:#04x}: only decoded length {exact} dispatched"
+        )
 
     # Malformed bodies across every receive split; legal escaped XOR/action.
     cases = {
@@ -433,13 +539,22 @@ def legacy17_admission(image):
             replies, accepted, stores = drain(fixture, case)
             if effect is None:
                 check(not accepted and not stores, case, "malformed 17 dispatched")
-                check(len(replies) == 1 and replies[0][:2] == bytes((0xEE, 2)),
-                      case, "length error reply missing")
+                check(
+                    len(replies) == 1 and replies[0][:2] == bytes((0xEE, 2)),
+                    case,
+                    "length error reply missing",
+                )
             else:
-                check(accepted == [len(body) + 1] and stores == [effect], case,
-                      f"legal escaped 17 changed: {accepted} {stores}")
-                check(len(replies) == 1 and replies[0][:3] == bytes((0x18,)) + body[1:3],
-                      case, "legal escaped 17 ACK missing")
+                check(
+                    accepted == [len(body) + 1] and stores == [effect],
+                    case,
+                    f"legal escaped 17 changed: {accepted} {stores}",
+                )
+                check(
+                    len(replies) == 1 and replies[0][:3] == bytes((0x18,)) + body[1:3],
+                    case,
+                    "legal escaped 17 ACK missing",
+                )
         completed.append(f"{label} at every split")
     return completed
 
@@ -471,20 +586,36 @@ def parser_mode_recovery(image):
             fixture.expose(len(prefix))
             replies, accepted, stores = drain(fixture, case)
             check(not accepted and not stores, case, "prefix dispatched")
-            check(fixture.machine.get(0xFEC) == mode, case,
-                  f"prefix reached mode {fixture.machine.get(0xFEC)}, not {mode}")
+            check(
+                fixture.machine.get(0xFEC) == mode,
+                case,
+                f"prefix reached mode {fixture.machine.get(0xFEC)}, not {mode}",
+            )
             fixture.expose(len(prefix) + split)
             replies, accepted, stores = drain(fixture, case)
             if split < len(STOP) + 1:
-                check(not accepted and not stores and not replies[len(errors):],
-                      case, "partial resync Stop dispatched")
+                check(
+                    not accepted and not stores and not replies[len(errors) :],
+                    case,
+                    "partial resync Stop dispatched",
+                )
             fixture.expose(len(wire))
             replies += drain(fixture, case)[0]
-            check([r[1] for r in replies if r[0] == 0xEE] == errors,
-                  case, f"error replies {[r.hex() for r in replies]}")
-            expect_next("Stop", case, [r for r in replies if r[0] != 0xEE],
-                        [(address, value) for address, _s, value, _pc in fixture.machine.writes
-                         if watched(address)])
+            check(
+                [r[1] for r in replies if r[0] == 0xEE] == errors,
+                case,
+                f"error replies {[r.hex() for r in replies]}",
+            )
+            expect_next(
+                "Stop",
+                case,
+                [r for r in replies if r[0] != 0xEE],
+                [
+                    (address, value)
+                    for address, _s, value, _pc in fixture.machine.writes
+                    if watched(address)
+                ],
+            )
         completed.append(f"mode {label}: resync Stop at every split")
 
     # ESCAPED at count 127: the resync FA is the 128th data byte. The first
@@ -497,27 +628,41 @@ def parser_mode_recovery(image):
         fixture = Fixture(image, prefix + wire, start=200)
         fixture.expose(len(prefix))
         check(drain(fixture, case) == ([], [], []), case, "prefix produced output")
-        check(fixture.machine.get(0xFEC) == 2 and fixture.machine.get(0xFED) == 127,
-              case, "prefix did not reach ESCAPED at count 127")
+        check(
+            fixture.machine.get(0xFEC) == 2 and fixture.machine.get(0xFED) == 127,
+            case,
+            "prefix did not reach ESCAPED at count 127",
+        )
         fixture.expose(len(prefix + wire))
         replies, accepted, stores = serviced(fixture, case)
-        check(len(replies) == 1 and replies[0][:2] == bytes((0xEE, 2))
-              and not accepted and not stores, case,
-              f"first service {[r.hex() for r in replies]} {accepted} {stores}")
+        check(
+            len(replies) == 1
+            and replies[0][:2] == bytes((0xEE, 2))
+            and not accepted
+            and not stores,
+            case,
+            f"first service {[r.hex() for r in replies]} {accepted} {stores}",
+        )
         replies, accepted, stores = drain(fixture, case)
         if form == "resync":
             check(accepted == [5], case, f"dispatches {accepted}")
             expect_next("Stop", case, replies, stores)
         else:
-            check((replies, accepted, stores) == ([], [], []), case, "discarded Stop acted")
+            check(
+                (replies, accepted, stores) == ([], [], []),
+                case,
+                "discarded Stop acted",
+            )
             check(fixture.machine.get(0xFEC) == 0, case, "discard did not end at FD")
         completed.append(case)
     return completed
 
 
 def model_differential(image, strict17=True, streams=400, seed=0x5EED):
-    """Seeded random streams through the image parser and the reference model,
-    published in random chunks from random ring positions."""
+    """Compare seeded random streams against the reference model.
+
+    Publish them in random chunks from random ring positions.
+    """
     rng = random.Random(seed)
     alphabet = (0xFA, 0xFD, 0xFE, 0x17, 0x01, 0x03, 0x00, 0xEF, 0x15)
     pieces = list(KNOWN.values()) + [bytes((0xFA, 0x17, 3, 0x14, 0xFD))]
@@ -528,7 +673,7 @@ def model_differential(image, strict17=True, streams=400, seed=0x5EED):
             choice = rng.random()
             if choice < 0.3:
                 piece = rng.choice(pieces)
-                piece = piece[:rng.randrange(1, len(piece) + 1)]
+                piece = piece[: rng.randrange(1, len(piece) + 1)]
                 stream += resync(piece) if rng.random() < 0.5 else piece
             elif choice < 0.8:
                 stream.append(rng.choice(alphabet))
@@ -547,7 +692,7 @@ def model_differential(image, strict17=True, streams=400, seed=0x5EED):
         producer, offset, actual = start, 0, []
         while offset < len(stream):
             size = rng.randrange(1, 41)
-            for byte in stream[offset:offset + size]:
+            for byte in stream[offset : offset + size]:
                 machine.put(RX_RING + producer, byte)
                 producer = (producer + 1) & 255
             offset += size
@@ -555,7 +700,9 @@ def model_differential(image, strict17=True, streams=400, seed=0x5EED):
             for _ in range(len(stream) + 2):
                 count = machine.call(PARSER, RAM + 0xF8, RAM + 0xE8, RAM + 0x122)
                 if count:
-                    actual.append(("frame", bytes(machine.uc.mem_read(RAM + 0x414, count))))
+                    actual.append(
+                        ("frame", bytes(machine.uc.mem_read(RAM + 0x414, count)))
+                    )
                 elif machine.get(0x122):
                     actual.append(("error", machine.get(0x123)))
                     machine.put(0x122, 0)
@@ -564,18 +711,27 @@ def model_differential(image, strict17=True, streams=400, seed=0x5EED):
             else:
                 raise AssertionError(f"{case}: parser did not reach the producer")
         check(actual == expected, case, f"image {actual} differs from model {expected}")
-        check(machine.get(0xFEC, 4) == model.state(), case, "parser state differs from model")
+        check(
+            machine.get(0xFEC, 4) == model.state(),
+            case,
+            "parser state differs from model",
+        )
         for kind, _value in actual:
             events_seen[kind] += 1
-    check(events_seen["frame"] > 100 and events_seen["error"] > 100,
-          "model differential", f"weak coverage {events_seen}")
+    check(
+        events_seen["frame"] > 100 and events_seen["error"] > 100,
+        "model differential",
+        f"weak coverage {events_seen}",
+    )
     return [f"model differential: {streams} streams, {events_seen}"]
 
 
 class Fixture:
     def __init__(self, image, wire, *, start=0):
         self.machine = Machine(image)
-        self.machine.stubs.update({address: lambda _machine: None for address in HELPERS})
+        self.machine.stubs.update(
+            {address: lambda _machine: None for address in HELPERS}
+        )
         self.start = start
         self.wire = bytes(wire)
         check(len(wire) < 256, "fixture", "wire must fit the 256-byte RX ring")
@@ -602,8 +758,10 @@ class Fixture:
         new_writes = self.machine.writes[writes_before:]
         return {
             "reply": self.machine.response(before),
-            "up_stores": sum(address == UP and value == 1
-                             for address, _size, value, _pc in new_writes),
+            "up_stores": sum(
+                address == UP and value == 1
+                for address, _size, value, _pc in new_writes
+            ),
             "accepted": self.machine.get(0x124),
             "buffer_ok": self.machine.get(0x413) == 0x66
             and self.machine.get(0x494) == 0x55,
@@ -613,20 +771,33 @@ class Fixture:
 def assert_quiet(fixture, case, *, repeat=1):
     for attempt in range(repeat):
         event = fixture.call()
-        check(event["accepted"] == 0, case, f"accepted incomplete frame on call {attempt}")
-        check(event["up_stores"] == 0 and fixture.machine.get(0x7AE) == 0,
-              case, f"UP mutation on call {attempt}")
-        check(not event["reply"], case, f"UART reply before full frame on call {attempt}")
+        check(
+            event["accepted"] == 0, case, f"accepted incomplete frame on call {attempt}"
+        )
+        check(
+            event["up_stores"] == 0 and fixture.machine.get(0x7AE) == 0,
+            case,
+            f"UP mutation on call {attempt}",
+        )
+        check(
+            not event["reply"], case, f"UART reply before full frame on call {attempt}"
+        )
         check(event["buffer_ok"], case, "parser wrote beyond request buffer")
 
 
 def assert_up(fixture, case):
     event = fixture.call()
     check(event["accepted"] == 4, case, "valid UP body was not accepted")
-    check(event["up_stores"] == 1 and fixture.machine.get(0x7AE) == 1,
-          case, "expected exactly one UP dispatch")
-    check(decode(event["reply"]).startswith(bytes((0x18, 3, 1, 0))),
-          case, "remote UP acknowledgement missing")
+    check(
+        event["up_stores"] == 1 and fixture.machine.get(0x7AE) == 1,
+        case,
+        "expected exactly one UP dispatch",
+    )
+    check(
+        decode(event["reply"]).startswith(bytes((0x18, 3, 1, 0))),
+        case,
+        "remote UP acknowledgement missing",
+    )
     check(event["buffer_ok"], case, "parser wrote beyond request buffer")
     return event
 
@@ -658,15 +829,23 @@ def parser_result(image, wire, *, settle=False):
 
 def thumb_bl_target(image, address):
     offset = address - 0x08000000
-    first = int.from_bytes(image[offset:offset + 2], "little")
-    second = int.from_bytes(image[offset + 2:offset + 4], "little")
-    check(first & 0xF800 == 0xF000 and second & 0xD000 == 0xD000,
-          "RX reset BL", "wrapper call is not a Thumb BL")
+    first = int.from_bytes(image[offset : offset + 2], "little")
+    second = int.from_bytes(image[offset + 2 : offset + 4], "little")
+    check(
+        first & 0xF800 == 0xF000 and second & 0xD000 == 0xD000,
+        "RX reset BL",
+        "wrapper call is not a Thumb BL",
+    )
     sign = (first >> 10) & 1
     i1 = 1 ^ (((second >> 13) & 1) ^ sign)
     i2 = 1 ^ (((second >> 11) & 1) ^ sign)
-    delta = ((sign << 24) | (i1 << 23) | (i2 << 22)
-             | ((first & 0x3FF) << 12) | ((second & 0x7FF) << 1))
+    delta = (
+        (sign << 24)
+        | (i1 << 23)
+        | (i2 << 22)
+        | ((first & 0x3FF) << 12)
+        | ((second & 0x7FF) << 1)
+    )
     if sign:
         delta -= 1 << 25
     return address + 4 + delta
@@ -680,8 +859,9 @@ def rx_reset_call_result(image):
     def stock_rx_init_stub(current):
         current.put(0xFC, 0)
         current.put(0xFD, 0)
-        for register, value in zip((UC_ARM_REG_R0, UC_ARM_REG_R1,
-                                    UC_ARM_REG_R2, UC_ARM_REG_R3), outputs):
+        for register, value in zip(
+            (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3), outputs
+        ):
             current.uc.reg_write(register, value)
         xpsr = current.uc.reg_read(UC_ARM_REG_XPSR)
         current.uc.reg_write(UC_ARM_REG_XPSR, (xpsr & 0x0FFFFFFF) | 0xA0000000)
@@ -690,19 +870,35 @@ def rx_reset_call_result(image):
     before_sp = machine.uc.reg_read(UC_ARM_REG_SP)
     machine.call(0x08007636, stops={0x0800763A})
     result = {
-        "r0_r12": tuple(machine.uc.reg_read(register) for register in
-                       (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2,
-                        UC_ARM_REG_R3, UC_ARM_REG_R4, UC_ARM_REG_R5,
-                        UC_ARM_REG_R6, UC_ARM_REG_R7, UC_ARM_REG_R8,
-                        UC_ARM_REG_R9, UC_ARM_REG_R10, UC_ARM_REG_R11,
-                        UC_ARM_REG_R12)),
+        "r0_r12": tuple(
+            machine.uc.reg_read(register)
+            for register in (
+                UC_ARM_REG_R0,
+                UC_ARM_REG_R1,
+                UC_ARM_REG_R2,
+                UC_ARM_REG_R3,
+                UC_ARM_REG_R4,
+                UC_ARM_REG_R5,
+                UC_ARM_REG_R6,
+                UC_ARM_REG_R7,
+                UC_ARM_REG_R8,
+                UC_ARM_REG_R9,
+                UC_ARM_REG_R10,
+                UC_ARM_REG_R11,
+                UC_ARM_REG_R12,
+            )
+        ),
         "apsr": machine.uc.reg_read(UC_ARM_REG_XPSR) & 0xF0000000,
         "sp": machine.uc.reg_read(UC_ARM_REG_SP),
         "continuation": machine.stopped_at,
     }
-    check(result["r0_r12"][:4] == outputs and result["sp"] == before_sp
-          and result["continuation"] == 0x0800763A,
-          "RX reset call ABI", "stock initializer return values or stack changed")
+    check(
+        result["r0_r12"][:4] == outputs
+        and result["sp"] == before_sp
+        and result["continuation"] == 0x0800763A,
+        "RX reset call ABI",
+        "stock initializer return values or stack changed",
+    )
     # LR is call-clobbered for a nested Thumb BL; the caller's saved return
     # address lives on its stack. Compare architecturally visible return data.
     return result
@@ -747,8 +943,11 @@ def run(image, stock_image=None):
             assert_quiet(fixture, case)
         fixture.expose(len(REMOTE_UP))
         assert_up(fixture, case)
-        check(fixture.machine.get(0xFC) == fixture.machine.get(0xFD),
-              case, "reader did not reach producer")
+        check(
+            fixture.machine.get(0xFC) == fixture.machine.get(0xFD),
+            case,
+            "reader did not reach producer",
+        )
         completed.append(case)
 
     # FE quotes all three reserved values. In particular, a received FE FD
@@ -766,11 +965,17 @@ def run(image, stock_image=None):
             assert_quiet(fixture, case, repeat=2)
             fixture.expose(len(escaped))
             event = fixture.call()
-            check(event["accepted"] == len(escaped_body) + 1,
-                  case, "valid escaped packet was not parsed")
+            check(
+                event["accepted"] == len(escaped_body) + 1,
+                case,
+                "valid escaped packet was not parsed",
+            )
             check(event["up_stores"] == 0, case, "unknown command moved UP")
-            check(decode(event["reply"]).startswith(bytes((0xEE, 3))),
-                  case, "unknown-command response missing")
+            check(
+                decode(event["reply"]).startswith(bytes((0xEE, 3))),
+                case,
+                "unknown-command response missing",
+            )
             check(not fixture.call()["reply"], case, "duplicate response")
             completed.append(case)
 
@@ -782,8 +987,11 @@ def run(image, stock_image=None):
     assert_up(fixture, "two queued frames first")
     assert_up(fixture, "two queued frames second")
     event = fixture.call()
-    check(not event["reply"] and event["up_stores"] == 0,
-          "two queued frames", "extra dispatch")
+    check(
+        not event["reply"] and event["up_stores"] == 0,
+        "two queued frames",
+        "extra dispatch",
+    )
     completed.append("two queued frames")
 
     # An unescaped FA starts a new frame after an incomplete first frame.
@@ -800,12 +1008,24 @@ def run(image, stock_image=None):
     fixture = Fixture(image, bad_check)
     fixture.expose(len(bad_check))
     event = fixture.call()
-    check(event["accepted"] == 0 and event["up_stores"] == 0
-          and fixture.machine.get(0x7AE) == 0, "bad checksum", "invalid UP dispatched")
-    check(fixture.machine.get(0x122) == 0 and fixture.machine.get(0x123) == 1,
-          "bad checksum", "expected stock service checksum error category")
-    check(not event["reply"] or not decode(event["reply"]).startswith(bytes((0x18, 3, 1, 0))),
-          "bad checksum", "UP acknowledgement for invalid frame")
+    check(
+        event["accepted"] == 0
+        and event["up_stores"] == 0
+        and fixture.machine.get(0x7AE) == 0,
+        "bad checksum",
+        "invalid UP dispatched",
+    )
+    check(
+        fixture.machine.get(0x122) == 0 and fixture.machine.get(0x123) == 1,
+        "bad checksum",
+        "expected stock service checksum error category",
+    )
+    check(
+        not event["reply"]
+        or not decode(event["reply"]).startswith(bytes((0x18, 3, 1, 0))),
+        "bad checksum",
+        "UP acknowledgement for invalid frame",
+    )
     completed.append("bad checksum")
 
     # A one-pass parser has already copied the body when it reads the final
@@ -837,8 +1057,11 @@ def run(image, stock_image=None):
         check(event["accepted"] == expected, case, "decoded length boundary changed")
         check(event["up_stores"] == 0, case, "oversized or unknown command moved UP")
         if body_length == 127:
-            check(fixture.machine.get(0x122) == 0 and fixture.machine.get(0x123) == 2,
-                  case, "expected stock service frame-length error category")
+            check(
+                fixture.machine.get(0x122) == 0 and fixture.machine.get(0x123) == 2,
+                case,
+                "expected stock service frame-length error category",
+            )
         completed.append(case)
 
     # A large unfinished packet may produce a protocol error, but may never
@@ -849,8 +1072,13 @@ def run(image, stock_image=None):
         fixture = Fixture(image, no_end)
         fixture.expose(len(no_end))
         event = fixture.call()
-        check(event["accepted"] == 0 and event["up_stores"] == 0
-              and fixture.machine.get(0x7AE) == 0, case, "unfinished packet dispatched")
+        check(
+            event["accepted"] == 0
+            and event["up_stores"] == 0
+            and fixture.machine.get(0x7AE) == 0,
+            case,
+            "unfinished packet dispatched",
+        )
         completed.append(case)
 
     # The wire itself occupies 255 ring bytes: 126 escaped FA body bytes,
@@ -871,29 +1099,49 @@ def run(image, stock_image=None):
 
     for _ in range(50):
         event = feed(bytes((0,)))
-        check(not event["reply"] and event["up_stores"] == 0,
-              "long escaped", "noise dispatched")
+        check(
+            not event["reply"] and event["up_stores"] == 0,
+            "long escaped",
+            "noise dispatched",
+        )
     offset = 0
     for size in (1, 1, 31, 60, 80, 82):
-        event = feed(long_wire[offset:offset + size])
+        event = feed(long_wire[offset : offset + size])
         offset += size
         if offset < len(long_wire):
-            check(event["accepted"] == 0 and not event["reply"]
-                  and event["up_stores"] == 0 and fixture.machine.get(0x7AE) == 0,
-                  "long escaped", f"dispatch before wire byte {offset}")
+            check(
+                event["accepted"] == 0
+                and not event["reply"]
+                and event["up_stores"] == 0
+                and fixture.machine.get(0x7AE) == 0,
+                "long escaped",
+                f"dispatch before wire byte {offset}",
+            )
         else:
             check(event["accepted"] == 127, "long escaped", "long frame was lost")
-            check(decode(event["reply"]).startswith(bytes((0xEE, 3))),
-                  "long escaped", "one completed unknown-command reply expected")
+            check(
+                decode(event["reply"]).startswith(bytes((0xEE, 3))),
+                "long escaped",
+                "one completed unknown-command reply expected",
+            )
             check(event["up_stores"] == 0, "long escaped", "unexpected UP mutation")
         check(event["buffer_ok"], "long escaped", "request buffer overrun")
-        check(fixture.machine.get(0xFC) == producer, "long escaped",
-              "consumer did not advance to producer between chunks")
-    check(offset == len(long_wire) and fixture.machine.get(0xFC) == producer,
-          "long escaped", "consumer did not catch final producer")
-    check(bytes(fixture.machine.uc.mem_read(RAM + 0x414, 127))
-          == bytes((0xFA,)) * 126 + bytes((0,)),
-          "long escaped", "decoded request differs from received wire")
+        check(
+            fixture.machine.get(0xFC) == producer,
+            "long escaped",
+            "consumer did not advance to producer between chunks",
+        )
+    check(
+        offset == len(long_wire) and fixture.machine.get(0xFC) == producer,
+        "long escaped",
+        "consumer did not catch final producer",
+    )
+    check(
+        bytes(fixture.machine.uc.mem_read(RAM + 0x414, 127))
+        == bytes((0xFA,)) * 126 + bytes((0,)),
+        "long escaped",
+        "decoded request differs from received wire",
+    )
     check(not fixture.call()["reply"], "long escaped", "duplicate dispatch")
     completed.append("255-byte escaped frame across >255 cumulative bytes")
 
@@ -902,29 +1150,55 @@ def run(image, stock_image=None):
     fixture = Fixture(image, b"", start=100)
     producer = 100
     event = feed(bytes((0xFA,)) + bytes((1,)) * 128)
-    check(event["accepted"] == 0 and event["up_stores"] == 0,
-          "overflow discard", "overlength frame dispatched")
-    check(fixture.machine.get(0x123) == 2, "overflow discard",
-          "expected stock overlength error category")
+    check(
+        event["accepted"] == 0 and event["up_stores"] == 0,
+        "overflow discard",
+        "overlength frame dispatched",
+    )
+    check(
+        fixture.machine.get(0x123) == 2,
+        "overflow discard",
+        "expected stock overlength error category",
+    )
     event = feed(bytes((0x11, 0x22)))
-    check(event["accepted"] == 0 and event["up_stores"] == 0,
-          "overflow discard", "discarded remainder dispatched")
+    check(
+        event["accepted"] == 0 and event["up_stores"] == 0,
+        "overflow discard",
+        "discarded remainder dispatched",
+    )
     event = feed(bytes((0xFE,)))
-    check(event["accepted"] == 0 and event["up_stores"] == 0
-          and fixture.machine.get(0xFEC) == 4,
-          "overflow discard", "FE did not persist as discard escape across call")
+    check(
+        event["accepted"] == 0
+        and event["up_stores"] == 0
+        and fixture.machine.get(0xFEC) == 4,
+        "overflow discard",
+        "FE did not persist as discard escape across call",
+    )
     event = feed(bytes((0xFA,)) + REMOTE_UP[1:])
-    check(event["accepted"] == 0 and event["up_stores"] == 0
-          and fixture.machine.get(0x7AE) == 0,
-          "overflow discard", "escaped FA armed hidden UP")
+    check(
+        event["accepted"] == 0
+        and event["up_stores"] == 0
+        and fixture.machine.get(0x7AE) == 0,
+        "overflow discard",
+        "escaped FA armed hidden UP",
+    )
     if event["reply"]:
-        check(not decode(event["reply"]).startswith(bytes((0x18, 3, 1, 0))),
-              "overflow discard", "hidden UP acknowledgement")
+        check(
+            not decode(event["reply"]).startswith(bytes((0x18, 3, 1, 0))),
+            "overflow discard",
+            "hidden UP acknowledgement",
+        )
     event = feed(REMOTE_UP)
-    check(event["accepted"] == 4 and event["up_stores"] == 1,
-          "overflow recovery", "fresh frame did not dispatch once")
-    check(decode(event["reply"]).startswith(bytes((0x18, 3, 1, 0))),
-          "overflow recovery", "fresh UP acknowledgement missing")
+    check(
+        event["accepted"] == 4 and event["up_stores"] == 1,
+        "overflow recovery",
+        "fresh frame did not dispatch once",
+    )
+    check(
+        decode(event["reply"]).startswith(bytes((0x18, 3, 1, 0))),
+        "overflow recovery",
+        "fresh UP acknowledgement missing",
+    )
     check(not fixture.call()["reply"], "overflow recovery", "fresh frame replayed")
     completed.append("overlength FE FA discard and fresh-frame recovery")
 
@@ -937,8 +1211,11 @@ def run(image, stock_image=None):
     # to this parser test and is not modeled here.
     fixture.machine.call(0x080085F8, stops={0x0800940A})
     fixture.machine.uc.reg_write(UC_ARM_REG_SP, SP)
-    check(bytes(fixture.machine.uc.mem_read(RAM + 0xFEC, 4)) == bytes((0, 0, 0, 0xA6)),
-          "boot init", "boot hook did not initialize idle parser state")
+    check(
+        bytes(fixture.machine.uc.mem_read(RAM + 0xFEC, 4)) == bytes((0, 0, 0, 0xA6)),
+        "boot init",
+        "boot hook did not initialize idle parser state",
+    )
     fixture.expose(1)
     assert_quiet(fixture, "boot init split")
     fixture.expose(len(REMOTE_UP))
@@ -954,12 +1231,17 @@ def run(image, stock_image=None):
         ("split escape", bytes((0xFA, 0x17, 0x03, 0xFE))),
     ):
         case = f"UART reinit after {label}"
-        check(thumb_bl_target(image, 0x08009412) == 0x08007F8C,
-              case, "wrapper BL does not target original UART initializer")
+        check(
+            thumb_bl_target(image, 0x08009412) == 0x08007F8C,
+            case,
+            "wrapper BL does not target original UART initializer",
+        )
         fixture = Fixture(image, prefix)
         fixture.expose(len(prefix))
         assert_quiet(fixture, case)
-        check(fixture.machine.get(0xFEC) != 0, case, "parser never entered partial state")
+        check(
+            fixture.machine.get(0xFEC) != 0, case, "parser never entered partial state"
+        )
 
         def reset_rx_descriptor(machine):
             machine.put(0xFC, 0)
@@ -970,14 +1252,26 @@ def run(image, stock_image=None):
         before = tuple(fixture.machine.uc.reg_read(reg) for reg in registers)
         flags = fixture.machine.uc.reg_read(UC_ARM_REG_XPSR) & 0xF0000000
         fixture.machine.call(0x08007636, stops={0x0800763A})
-        check(tuple(fixture.machine.uc.reg_read(reg) for reg in registers) == before,
-              case, "RX reinit wrapper changed volatile registers")
-        check(fixture.machine.uc.reg_read(UC_ARM_REG_XPSR) & 0xF0000000 == flags,
-              case, "RX reinit wrapper changed APSR flags")
-        check(fixture.machine.get(0xFC) == 0 and fixture.machine.get(0xFD) == 0,
-              case, "stock RX descriptor reset was not reached")
-        check(fixture.machine.get(0xFEC, 4) == 0xA6000000,
-              case, "parser state survived UART reinit")
+        check(
+            tuple(fixture.machine.uc.reg_read(reg) for reg in registers) == before,
+            case,
+            "RX reinit wrapper changed volatile registers",
+        )
+        check(
+            fixture.machine.uc.reg_read(UC_ARM_REG_XPSR) & 0xF0000000 == flags,
+            case,
+            "RX reinit wrapper changed APSR flags",
+        )
+        check(
+            fixture.machine.get(0xFC) == 0 and fixture.machine.get(0xFD) == 0,
+            case,
+            "stock RX descriptor reset was not reached",
+        )
+        check(
+            fixture.machine.get(0xFEC, 4) == 0xA6000000,
+            case,
+            "parser state survived UART reinit",
+        )
 
         suffix = bytes((0x01, 0x15, 0xFD))
         fixture.write(0, suffix)
@@ -997,7 +1291,10 @@ def run(image, stock_image=None):
     fixture.expose(len(prefix))
     assert_quiet(fixture, case)
     check(fixture.machine.get(0xFEC) == 2, case, "cut did not leave an escape pending")
-    fixture.machine.stubs[0x08007F8C] = lambda machine: (machine.put(0xFC, 0), machine.put(0xFD, 0))
+    fixture.machine.stubs[0x08007F8C] = lambda machine: (
+        machine.put(0xFC, 0),
+        machine.put(0xFD, 0),
+    )
     fixture.machine.call(0x08007636, stops={0x0800763A})
     fixture.write(0, STOP)
     fixture.machine.put(0xFD, len(STOP))
@@ -1005,15 +1302,24 @@ def run(image, stock_image=None):
     expect_next("Stop", case, replies, stores)
     completed.append(case)
 
-    for suite in (recovery_matrix, bytewise_recovery, single_fa_contract,
-                  legacy17_admission, parser_mode_recovery, model_differential):
+    for suite in (
+        recovery_matrix,
+        bytewise_recovery,
+        single_fa_contract,
+        legacy17_admission,
+        parser_mode_recovery,
+        model_differential,
+    ):
         completed += suite(image)
 
     if stock_image is not None:
         expected_call = rx_reset_call_result(stock_image)
         actual_call = rx_reset_call_result(image)
-        check(actual_call == expected_call, "RX reset call ABI",
-              f"candidate {actual_call} differs from stock {expected_call}")
+        check(
+            actual_call == expected_call,
+            "RX reset call ABI",
+            f"candidate {actual_call} differs from stock {expected_call}",
+        )
         completed.append("stock differential RX reset call ABI")
         differential = {
             "valid UP": REMOTE_UP,
@@ -1036,15 +1342,19 @@ def run(image, stock_image=None):
             "preset 3 252, escaped FA XOR": KNOWN["preset 3 write 252, FA XOR"],
             "upward load EDFD, escaped low": KNOWN["upward load EDFD"],
             # The single-FA merge into a valid kind 19 write is inherited.
-            "preset 3 FE cut + single-FA Stop": bytes.fromhex("fa 19 1f 00 fc fe") + STOP,
+            "preset 3 FE cut + single-FA Stop": bytes.fromhex("fa 19 1f 00 fc fe")
+            + STOP,
             "load EDFD FE cut + single-FA Stop": KNOWN["upward load EDFD"][:5] + STOP,
         }
         for name, wire in differential.items():
             settle = name in ("leading junk", "idle FD FE")
             expected = parser_result(stock_image, wire, settle=settle)
             actual = parser_result(image, wire, settle=settle)
-            check(actual == expected, f"stock differential {name}",
-                  f"candidate {actual} differs from stock {expected}")
+            check(
+                actual == expected,
+                f"stock differential {name}",
+                f"candidate {actual} differs from stock {expected}",
+            )
             completed.append(f"stock differential {name}")
     return completed
 
@@ -1053,23 +1363,43 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image", required=True, type=Path)
     parser.add_argument("--expect-sha256")
-    parser.add_argument("--stock-image", type=Path,
-                        help="Exact stock full image for complete-frame differential cases")
+    parser.add_argument(
+        "--stock-image",
+        type=Path,
+        help="Exact stock full image for complete-frame differential cases",
+    )
     arguments = parser.parse_args()
     image = arguments.image.read_bytes()
     digest = hashlib.sha256(image).hexdigest()
     check(len(image) == 65536, "input", "expected a full 64 KiB flash image")
     if arguments.expect_sha256:
-        check(digest == arguments.expect_sha256, "input", "image hash differs from expected")
+        check(
+            digest == arguments.expect_sha256,
+            "input",
+            "image hash differs from expected",
+        )
     stock_image = None
     if arguments.stock_image:
         stock_image = arguments.stock_image.read_bytes()
-        check(len(stock_image) == 65536
-              and hashlib.sha256(stock_image).hexdigest() == STOCK_SHA256,
-              "input", "stock differential image differs from pinned full image")
+        check(
+            len(stock_image) == 65536
+            and hashlib.sha256(stock_image).hexdigest() == STOCK_SHA256,
+            "input",
+            "stock differential image differs from pinned full image",
+        )
     cases = run(image, stock_image)
-    print(json.dumps({"passed": True, "image": str(arguments.image.resolve()),
-                      "sha256": digest, "cases": len(cases), "names": cases}, indent=2))
+    print(
+        json.dumps(
+            {
+                "passed": True,
+                "image": str(arguments.image.resolve()),
+                "sha256": digest,
+                "cases": len(cases),
+                "names": cases,
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

@@ -15,14 +15,26 @@ import shutil
 import subprocess
 import time
 
-from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
-
+from desk_test_support import (
+    ROOT,
+    build_host,
+    encode,
+    frames,
+    open_pty,
+    parse_args,
+    test_env,
+)
 
 # Scenarios with preset 3 polling: later changes remain ambiguous even after
 # a verified RAM restore and must retain the original backup.
 POLLED = " || ".join(
     f'std::string(getenv("SCENARIO")) == "{n}"'
-    for n in ("recover_local_change", "recover_local_change_temp", "recover_conflict", "recover_interrupted")
+    for n in (
+        "recover_local_change",
+        "recover_local_change_temp",
+        "recover_conflict",
+        "recover_interrupted",
+    )
 )
 # Longer runs reach a second cycle 30 s after an early stop, or a poll after a local change.
 DURATIONS = {
@@ -43,9 +55,13 @@ def main():
         action="store_true",
         help="Reuse this work directory's normal scenario journal to rerun recovery cases",
     )
-    ap.add_argument("--scenarios", nargs="+", help="Run only named non-recovery scenarios")
+    ap.add_argument(
+        "--scenarios", nargs="+", help="Run only named non-recovery scenarios"
+    )
     args = parse_args(parser=ap)
-    assert not (args.scenarios and args.recovery_only), "Choose scenarios or recovery-only"
+    assert not (args.scenarios and args.recovery_only), (
+        "Choose scenarios or recovery-only"
+    )
     w = args.work_dir
     env = test_env(w)
     cfg = w / "host.yaml"
@@ -146,7 +162,8 @@ desk_uart:
         # Exercise recovery even after both automatic and target motion are disabled.
         def enable_per_scenario(main_source):
             main_source = main_source.replace(
-                '#include "esphome.h"', '#include "esphome.h"\n#include "keep_awake_regression.h"'
+                '#include "esphome.h"',
+                '#include "esphome.h"\n#include "keep_awake_regression.h"',
             )
             token = "desk_uart::DeskUART"
             assert token in main_source
@@ -155,25 +172,36 @@ desk_uart:
                 token = f"desk->{setter}(true);"
                 assert token in main_source
                 main_source = main_source.replace(
-                    token, f'desk->{setter}(std::string(getenv("SCENARIO")).find("recover_disabled") != 0);'
+                    token,
+                    f'desk->{setter}(std::string(getenv("SCENARIO")).find("recover_disabled") != 0);',
                 )
             # Preset polling only where a scenario checks it, so other
             # scenarios keep their exact UART traffic and status sequences.
             token = "desk->set_preset_height_number(3, "
             assert main_source.count(token) == 1
             return main_source.replace(
-                token, f'if (std::string(getenv("SCENARIO")).find("local_change") == 0 || {POLLED}) {token}'
+                token,
+                f'if (std::string(getenv("SCENARIO")).find("local_change") == 0 || {POLLED}) {token}',
             )
 
         # Each scenario gets its own PTY and preferences at run time.
-        build_host(cfg, w, env, log, uart_expr='getenv("DESK_TEST_SERIAL")', edit_main=enable_per_scenario)
+        build_host(
+            cfg,
+            w,
+            env,
+            log,
+            uart_expr='getenv("DESK_TEST_SERIAL")',
+            edit_main=enable_per_scenario,
+        )
     binary = w / "build/.pioenvs/keep-awake-test/program"
 
     def run(name, seconds=37, recovery=False, source="normal"):
         d = w / name
         d.mkdir(exist_ok=True)
         if (d / "prefs").exists():
-            shutil.rmtree(d / "prefs")  # This scenario owns these synthetic preferences.
+            shutil.rmtree(
+                d / "prefs"
+            )  # This scenario owns these synthetic preferences.
         if recovery:
             shutil.copytree(w / source / "prefs", d / "prefs", dirs_exist_ok=True)
         master, slave = open_pty()
@@ -181,13 +209,22 @@ desk_uart:
         if link.is_symlink():
             link.unlink()
         link.symlink_to(os.ttyname(slave))
-        e = dict(env, DESK_TEST_PREFS_HOME=str(d / "prefs"), SCENARIO=name, DESK_TEST_SERIAL=os.ttyname(slave))
+        e = dict(
+            env,
+            DESK_TEST_PREFS_HOME=str(d / "prefs"),
+            SCENARIO=name,
+            DESK_TEST_SERIAL=os.ttyname(slave),
+        )
         output = bytearray()
         events = []
         sequence = processed = raw_reads = presses = acceptance_reads = 0
         user_presses = []
         write_count = 0
-        original, raw, q = 456, 123, 75  # 123 raw must NOT become rounded-height inverse 122.
+        original, raw, q = (
+            456,
+            123,
+            75,
+        )  # 123 raw must NOT become rounded-height inverse 122.
         preset = (
             raw
             if name
@@ -214,21 +251,29 @@ desk_uart:
         next_height = 0
         drop_height = False
         late_start = None  # First temporary write of a late-sample scenario.
-        late_for = 1.3 if name == "late_before_press" else 4.5  # Seconds without height samples.
+        late_for = (
+            1.3 if name == "late_before_press" else 4.5
+        )  # Seconds without height samples.
         delayed = []  # (due seconds, reply body)
         injected = False
         proc = None
 
         def send(body):
             nonlocal sequence
-            os.write(master, encode(bytes(body) + (sequence % 65536).to_bytes(2, "big")))
+            os.write(
+                master, encode(bytes(body) + (sequence % 65536).to_bytes(2, "big"))
+            )
             sequence += 1
 
         def reply(body):
             # While a late-sample window is open, replies are slow too: the
             # sample age passes 750 ms before the press, and a lost link is
             # noticed before the original is read back.
-            if name in ("handoff_deadline", "handoff_latest_deadline") and presses and body[0] in (0x16, 0x1A):
+            if (
+                name in ("handoff_deadline", "handoff_latest_deadline")
+                and presses
+                and body[0] in (0x16, 0x1A)
+            ):
                 delayed.append((t + 0.45, body))
             elif late_start is not None and t < late_start + min(late_for, 3.5):
                 delayed.append((t + 0.5, body))
@@ -237,7 +282,9 @@ desk_uart:
 
         try:
             with (d / "runtime.log").open("w") as log:
-                proc = subprocess.Popen([str(binary)], cwd=d, env=e, stdout=log, stderr=subprocess.STDOUT)
+                proc = subprocess.Popen(
+                    [str(binary)], cwd=d, env=e, stdout=log, stderr=subprocess.STDOUT
+                )
                 start = time.monotonic()
                 while time.monotonic() - start < seconds:
                     t = time.monotonic() - start
@@ -252,10 +299,14 @@ desk_uart:
                     if late_start is not None:
                         drop_height = t < late_start + late_for
                     if name.startswith("local_change") and t > 40:
-                        preset = raw if name.endswith("_temp") else 600  # A local M+3 save after a verified cycle.
+                        preset = (
+                            raw if name.endswith("_temp") else 600
+                        )  # A local M+3 save after a verified cycle.
                     if name == "late_before_press" and t > 5 and not injected:
                         injected = True
-                        os.write(master, bytes([0xFA, 0x05, 0x00, 0x01, 0xFD]))  # Bad checksum.
+                        os.write(
+                            master, bytes([0xFA, 0x05, 0x00, 0x01, 0xFD])
+                        )  # Bad checksum.
                     for due, body in [x for x in delayed if x[0] <= t]:
                         delayed.remove((due, body))
                         send(body)
@@ -279,7 +330,11 @@ desk_uart:
                                     continue
                                 value = raw + (
                                     1
-                                    if (name == "raw_changed" or name.startswith("early_restore_")) and raw_reads == 2
+                                    if (
+                                        name == "raw_changed"
+                                        or name.startswith("early_restore_")
+                                    )
+                                    and raw_reads == 2
                                     else 0
                                 )
                             elif f[1] in (0x0B, 0x0C):
@@ -291,7 +346,10 @@ desk_uart:
                                     acceptance_reads += 1
                                     if name == "recover_accept_timeout":
                                         continue
-                                    if name == "recover_accept_changed" and acceptance_reads >= 2:
+                                    if (
+                                        name == "recover_accept_changed"
+                                        and acceptance_reads >= 2
+                                    ):
                                         preset = value = 556
                                 if name == "early_restore_timeout" and raw_reads >= 2:
                                     continue
@@ -299,9 +357,17 @@ desk_uart:
                                     name == "early_restore_conflict" and raw_reads >= 2
                                 ):
                                     preset = value = 555
-                            if name == "handoff_timeout" and f[1] == 0x1F and write_count:
+                            if (
+                                name == "handoff_timeout"
+                                and f[1] == 0x1F
+                                and write_count
+                            ):
                                 continue
-                            if name == "handoff_conflict" and f[1] == 0x1F and write_count:
+                            if (
+                                name == "handoff_conflict"
+                                and f[1] == 0x1F
+                                and write_count
+                            ):
                                 preset = value = 555
                             reply([0x16, f[1], value >> 8, value & 255])
                         elif f[0] == 0x19:
@@ -312,16 +378,35 @@ desk_uart:
                                 drop_height = True
                             if name == "handoff_height" and preset == raw:
                                 q += 1
-                            if name.startswith("late_") and late_start is None and preset == raw:
+                            if (
+                                name.startswith("late_")
+                                and late_start is None
+                                and preset == raw
+                            ):
                                 late_start = t
                             if name == "mismatch" and preset == raw:
                                 preset = original
-                            if name in ("restore_mismatch", "early_restore_mismatch") and preset == original:
+                            if (
+                                name in ("restore_mismatch", "early_restore_mismatch")
+                                and preset == original
+                            ):
                                 preset = 555
                             reply([0x1A, 0x1F, 0])
-                        elif f[:2] in (bytes([0x17, 8]), bytes([0x17, 6]), bytes([0x17, 7])):
-                            if name.startswith("handoff_") and f[2] and (f[1] != 8 or name == "handoff_slot3"):
-                                assert preset == original, (name, "user press before original restored", preset)
+                        elif f[:2] in (
+                            bytes([0x17, 8]),
+                            bytes([0x17, 6]),
+                            bytes([0x17, 7]),
+                        ):
+                            if (
+                                name.startswith("handoff_")
+                                and f[2]
+                                and (f[1] != 8 or name == "handoff_slot3")
+                            ):
+                                assert preset == original, (
+                                    name,
+                                    "user press before original restored",
+                                    preset,
+                                )
                                 user_presses.append((t, f[1]))
                             elif f[1] == 8 and f[2]:
                                 presses += 1
@@ -330,7 +415,10 @@ desk_uart:
                                     drop_height = True
                                 if name == "movement":
                                     q += 1
-                            if not (name in ("release_failure", "handoff_release_failure") and not f[2]):
+                            if not (
+                                name in ("release_failure", "handoff_release_failure")
+                                and not f[2]
+                            ):
                                 reply([0x18, f[1], f[2], 0])
                         elif f == bytes([0x17, 1, 0, 0]):
                             reply([0x18, 1, 0, 0])
@@ -348,9 +436,15 @@ desk_uart:
             assert "YIELDED_STALE_FINAL_READBACK=passed" in text
             sent = list(frames(output))
             writes = [int.from_bytes(f[2:4], "big") for f in sent if f[0] == 0x19]
-            controls = [line.split("CONTROL=", 1)[1].strip() for line in text.splitlines() if "CONTROL=" in line]
+            controls = [
+                line.split("CONTROL=", 1)[1].strip()
+                for line in text.splitlines()
+                if "CONTROL=" in line
+            ]
             pending = [
-                line.split("RESTORE_PENDING=", 1)[1].strip() for line in text.splitlines() if "RESTORE_PENDING=" in line
+                line.split("RESTORE_PENDING=", 1)[1].strip()
+                for line in text.splitlines()
+                if "RESTORE_PENDING=" in line
             ]
             if name.startswith("handoff_"):
                 pass  # Handoff assertions below cover visible waiting and fault states.
@@ -386,56 +480,119 @@ desk_uart:
             brakes = sum(f == bytes([0x17, 1, 0, 0]) for f in sent)
             assert not any(f[0] == 0x1B for f in sent)
             if name.startswith("handoff_"):
-                assert "HANDOFF_REQUEST=1" in text, (name, "request was not injected/accepted")
-                cancelled = name in (
-                    "handoff_stop", "handoff_stale", "handoff_timeout", "handoff_conflict",
-                    "handoff_height", "handoff_release_failure", "handoff_deadline", "handoff_latest_deadline",
+                assert "HANDOFF_REQUEST=1" in text, (
+                    name,
+                    "request was not injected/accepted",
                 )
-                assert len(user_presses) == (0 if cancelled else 1), (name, user_presses)
+                cancelled = name in (
+                    "handoff_stop",
+                    "handoff_stale",
+                    "handoff_timeout",
+                    "handoff_conflict",
+                    "handoff_height",
+                    "handoff_release_failure",
+                    "handoff_deadline",
+                    "handoff_latest_deadline",
+                )
+                assert len(user_presses) == (0 if cancelled else 1), (
+                    name,
+                    user_presses,
+                )
                 if cancelled:
                     assert "Pending preset cancelled" in text, name
                 else:
-                    assert user_presses[0][1] == (8 if name == "handoff_slot3" else 7 if name == "handoff_latest" else 6)
+                    assert user_presses[0][1] == (
+                        8
+                        if name == "handoff_slot3"
+                        else 7
+                        if name == "handoff_latest"
+                        else 6
+                    )
                     assert "RESULT=Preset button sent" in text
                     assert not any("Keep-awake failed" in c for c in controls)
                     assert preset == original
-                automatic_press = name in ("handoff_moving", "handoff_restoring", "handoff_release_failure", "handoff_deadline", "handoff_latest_deadline")
+                automatic_press = name in (
+                    "handoff_moving",
+                    "handoff_restoring",
+                    "handoff_release_failure",
+                    "handoff_deadline",
+                    "handoff_latest_deadline",
+                )
                 assert presses == int(automatic_press), (name, presses)
-                assert brakes == (1 if name in ("handoff_stop", "handoff_release_failure") else 0), (name, brakes)
-                unrestored = name in ("handoff_timeout", "handoff_conflict", "handoff_release_failure")
-                expected_writes = [] if name == "handoff_read" else [raw] if unrestored else [raw, original]
+                assert brakes == (
+                    1 if name in ("handoff_stop", "handoff_release_failure") else 0
+                ), (name, brakes)
+                unrestored = name in (
+                    "handoff_timeout",
+                    "handoff_conflict",
+                    "handoff_release_failure",
+                )
+                expected_writes = (
+                    []
+                    if name == "handoff_read"
+                    else [raw]
+                    if unrestored
+                    else [raw, original]
+                )
                 assert writes == expected_writes, (name, writes)
                 if name == "handoff_height":
                     # The request is injected after controls_loop_. A queued height
                     # frame can cancel it before the next status publication.
                     before_request, after_request = text.split("HANDOFF_REQUEST=1", 1)
-                    assert "RESULT=Preset waiting for keep-awake cleanup" in before_request, name
-                    assert "RESULT=Pending preset cancelled by height change; press again" in after_request, name
-                    assert preset == original and controls[-1] == "Ready", (name, preset, controls)
+                    assert (
+                        "RESULT=Preset waiting for keep-awake cleanup" in before_request
+                    ), name
+                    assert (
+                        "RESULT=Pending preset cancelled by height change; press again"
+                        in after_request
+                    ), name
+                    assert preset == original and controls[-1] == "Ready", (
+                        name,
+                        preset,
+                        controls,
+                    )
                 elif name not in ("handoff_read", "handoff_restoring", "handoff_stop"):
-                    assert "Preset waiting for keep-awake cleanup" in controls, (name, controls)
+                    assert "Preset waiting for keep-awake cleanup" in controls, (
+                        name,
+                        controls,
+                    )
                 if name in ("handoff_deadline", "handoff_latest_deadline"):
-                    assert preset == original and controls[-1] == "Ready", (name, controls)
+                    assert preset == original and controls[-1] == "Ready", (
+                        name,
+                        controls,
+                    )
                     assert "Keep-awake failed" not in text
                 if name == "handoff_latest_deadline":
                     assert "HANDOFF_REPLACE=1" in text
             elif name == "normal":
-                assert presses == 2 and writes == [raw, original, raw, original], (presses, writes)
+                assert presses == 2 and writes == [raw, original, raw, original], (
+                    presses,
+                    writes,
+                )
                 assert text.count("journal committed") == 1, "Repeated flash writes"
                 if controls[0].startswith("No fresh UART"):
                     controls = controls[1:]
-                assert controls == ["Waiting for height to settle", "Ready", "Button release pending", "Ready"], (
-                    controls
-                )
+                assert controls == [
+                    "Waiting for height to settle",
+                    "Ready",
+                    "Button release pending",
+                    "Ready",
+                ], controls
                 assert "automatic=1" in text and "release=1" in text
                 assert preset == original and brakes == 0
-                assert [e["seconds"] for e in events if e["body_hex"] == "17 08 01"][1] >= 70
-                assert "Keep-awake preset transaction in progress; request again" in text
+                assert [e["seconds"] for e in events if e["body_hex"] == "17 08 01"][
+                    1
+                ] >= 70
+                assert (
+                    "Keep-awake preset transaction in progress; request again" in text
+                )
             elif name in ("raw_changed", "late_before_press"):
                 # Stopped after the temporary write, before any press: the
                 # original is verified, no fault, and the next cycle succeeds.
                 assert brakes == 0 and presses == 1, (name, brakes, presses)
-                assert writes == [raw, original, raw, original] and preset == original, (name, writes)
+                assert (
+                    writes == [raw, original, raw, original] and preset == original
+                ), (name, writes)
                 assert "original preset 3 confirmed after early stop" in text
                 assert not any("Keep-awake failed" in s for s in controls), controls
                 if name == "late_before_press":
@@ -459,9 +616,14 @@ desk_uart:
                 }[name]
                 assert f"RESULT={expected}" in text, (name, text)
                 assert "original preset 3 confirmed after early stop" not in text
-                assert writes == ([raw, original] if name.endswith("mismatch") else [raw]), (name, writes)
+                assert writes == (
+                    [raw, original] if name.endswith("mismatch") else [raw]
+                ), (name, writes)
             elif name.startswith("local_change"):
-                assert presses == 1 and writes == [raw, original] and brakes == 0, (presses, writes)
+                assert presses == 1 and writes == [raw, original] and brakes == 0, (
+                    presses,
+                    writes,
+                )
                 assert "retained backup cleared" not in text
                 assert pending[-1] == "1", (name, pending)
             elif name.startswith("recover_local_change"):
@@ -473,15 +635,32 @@ desk_uart:
                 if name in ("recover_clean", "recover_disabled_clean"):
                     assert not writes and preset == original
                 elif name == "recover_restore":
-                    assert writes == [original] and preset == original and "RESTORE=1" in text
+                    assert (
+                        writes == [original]
+                        and preset == original
+                        and "RESTORE=1" in text
+                    )
                 elif name == "recover_stop":
-                    assert not writes and preset == 555 and "STOP_RETRY=1" in text and "STOP_ACCEPT=1" in text
+                    assert (
+                        not writes
+                        and preset == 555
+                        and "STOP_RETRY=1" in text
+                        and "STOP_ACCEPT=1" in text
+                    )
                     assert "STOP_LOCK=0" in text and controls[-1] == "Ready"
                 elif name in ("recover_accept", "recover_accept_t"):
-                    assert not writes and preset == (raw if name.endswith("_t") else 555)
-                    assert "ACCEPT=1" in text and "Current preset accepted; backup discarded" in text
+                    assert not writes and preset == (
+                        raw if name.endswith("_t") else 555
+                    )
+                    assert (
+                        "ACCEPT=1" in text
+                        and "Current preset accepted; backup discarded" in text
+                    )
                 else:
-                    assert not writes and any("decision" in s for s in controls), (name, controls)
+                    assert not writes and any("decision" in s for s in controls), (
+                        name,
+                        controls,
+                    )
                     assert pending[-1] == "1", (name, pending)
                 if name in (
                     "recover_clean",
@@ -492,9 +671,15 @@ desk_uart:
                     "recover_stop",
                 ):
                     if name in ("recover_accept", "recover_accept_t", "recover_stop"):
-                        assert "backup discarded" in text, (name, "Explicit acceptance did not complete")
+                        assert "backup discarded" in text, (
+                            name,
+                            "Explicit acceptance did not complete",
+                        )
                     else:
-                        assert text.count("journal committed") == 0, (name, "Readback/restore must not rewrite or clear the backup")
+                        assert text.count("journal committed") == 0, (
+                            name,
+                            "Readback/restore must not rewrite or clear the backup",
+                        )
                     assert not any(
                         "Interrupted preset transaction; restore required" in line
                         for line in text.splitlines()
@@ -502,12 +687,17 @@ desk_uart:
                     )
                 if name in ("recover_clean", "recover_disabled_clean"):
                     assert "checked and cleared" not in text
-                    assert "EEPROM" in text, (name, "RAM-only recovery result must be explicit")
+                    assert "EEPROM" in text, (
+                        name,
+                        "RAM-only recovery result must be explicit",
+                    )
                 # A journal loaded at boot is never cleared by preset polling.
                 assert "retained backup cleared" not in text
             elif name == "moving_before":
                 assert presses == 1 and preset == original
-                assert all(e["seconds"] >= 63 for e in events if e["body_hex"] == "17 08 01")
+                assert all(
+                    e["seconds"] >= 63 for e in events if e["body_hex"] == "17 08 01"
+                )
             elif name == "stale_before":
                 assert presses == 0 and not writes
             elif name == "stop":
@@ -515,7 +705,12 @@ desk_uart:
                 assert any("Stop:" in s for s in controls), controls
             else:
                 assert presses == (0 if name in ("mismatch", "raw_timeout") else 1)
-                if name in ("movement", "disconnect", "release_failure", "healthy_restore"):
+                if name in (
+                    "movement",
+                    "disconnect",
+                    "release_failure",
+                    "healthy_restore",
+                ):
                     assert brakes == 1, (name, brakes)
                 assert any(
                     (
@@ -529,7 +724,12 @@ desk_uart:
                 ), controls
                 if name == "healthy_restore":
                     assert "HEALTHY_RESTORE=0" in text
-                if name not in ("disconnect", "release_failure", "conflict", "restore_mismatch"):
+                if name not in (
+                    "disconnect",
+                    "release_failure",
+                    "conflict",
+                    "restore_mismatch",
+                ):
                     assert preset == original
             result = dict(
                 scenario=name,
@@ -553,10 +753,20 @@ desk_uart:
             os.close(slave)
 
     scenarios = [
-        "handoff_read", "handoff_write", "handoff_moving", "handoff_restoring",
-        "handoff_slot3", "handoff_latest", "handoff_stop", "handoff_stale",
-        "handoff_timeout", "handoff_conflict", "handoff_height", "handoff_release_failure",
-        "handoff_deadline", "handoff_latest_deadline",
+        "handoff_read",
+        "handoff_write",
+        "handoff_moving",
+        "handoff_restoring",
+        "handoff_slot3",
+        "handoff_latest",
+        "handoff_stop",
+        "handoff_stale",
+        "handoff_timeout",
+        "handoff_conflict",
+        "handoff_height",
+        "handoff_release_failure",
+        "handoff_deadline",
+        "handoff_latest_deadline",
         "normal",
         "raw_changed",
         "late_before_press",
@@ -582,10 +792,14 @@ desk_uart:
         assert set(args.scenarios) <= set(scenarios), "Unknown scenario"
         scenarios = args.scenarios
     if args.recovery_only:
-        assert (w / "normal/prefs").is_dir(), "First run the full test to generate the retained journal"
+        assert (w / "normal/prefs").is_dir(), (
+            "First run the full test to generate the retained journal"
+        )
         scenarios = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        futures = [pool.submit(run, name, DURATIONS.get(name, 37)) for name in scenarios]
+        futures = [
+            pool.submit(run, name, DURATIONS.get(name, 37)) for name in scenarios
+        ]
         results, failures = [], []
         for name, future in zip(scenarios, futures):
             try:
@@ -595,7 +809,9 @@ desk_uart:
         assert not failures, failures
     if args.scenarios:
         (w / "selected-summary.json").write_text(json.dumps(results, indent=2) + "\n")
-        print(json.dumps({"passed": True, "scenarios": [r["scenario"] for r in results]}))
+        print(
+            json.dumps({"passed": True, "scenarios": [r["scenario"] for r in results]})
+        )
         return
     for name in (
         "recover_clean",
@@ -614,9 +830,9 @@ desk_uart:
     for source in ("local_change", "local_change_temp"):
         if not args.recovery_only or (w / source / "prefs").is_dir():
             results.append(run(f"recover_{source}", 9, True, source=source))
-    (w / ("recovery-summary.json" if args.recovery_only else "summary.json")).write_text(
-        json.dumps(results, indent=2) + "\n"
-    )
+    (
+        w / ("recovery-summary.json" if args.recovery_only else "summary.json")
+    ).write_text(json.dumps(results, indent=2) + "\n")
     print(json.dumps({"passed": True, "scenarios": [r["scenario"] for r in results]}))
 
 

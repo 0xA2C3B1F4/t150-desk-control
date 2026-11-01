@@ -7,7 +7,15 @@ import select
 import subprocess
 import time
 
-from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
+from desk_test_support import (
+    ROOT,
+    build_host,
+    encode,
+    frames,
+    open_pty,
+    parse_args,
+    test_env,
+)
 
 
 def main():
@@ -106,7 +114,10 @@ desk_uart:
         with (work / "runtime.log").open("w") as log:
             proc = subprocess.Popen(
                 [str(work / "build/.pioenvs/desk-units-test/program")],
-                cwd=work, env=env, stdout=log, stderr=subprocess.STDOUT,
+                cwd=work,
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
             )
             start = time.monotonic()
             while time.monotonic() - start < 21:
@@ -145,21 +156,40 @@ desk_uart:
         assert recalls == 2
         log = (work / "runtime.log").read_text()
         assert log.count("metadata=in,28.8,46.4,0.1") == 4
-        for marker in ["height_unit=in", "height=41.4567", "target=41.4567",
-                       "p1=30.7087", "p1=31.4961", "p2=43.4646", "p3=28.7402",
-                       "target=41.5000", "target=41.1024"]:
+        for marker in [
+            "height_unit=in",
+            "height=41.4567",
+            "target=41.4567",
+            "p1=30.7087",
+            "p1=31.4961",
+            "p2=43.4646",
+            "p3=28.7402",
+            "target=41.5000",
+            "target=41.1024",
+        ]:
             assert marker in log, marker
         assert "target=50.0000" not in log
-        assert log.count("Original preset 3 restored after motion began; monitoring target move") == 2
-        summary = {"passed": True, "transport": "ESPHome host + synthetic UART, no hardware",
-                   "writes": writes, "recalls": recalls,
-                   "checks": ["inch API metadata for all four numbers and height",
-                              "unrounded height and startup target conversion above 100 cm",
-                              "all three preset publications converted",
-                              "preset input converts once and verifies readback",
-                              "target input converts once; original raw preset restored",
-                              "relative step remains 1 cm and publishes inches",
-                              "out-of-range inch target sends no movement"]}
+        assert (
+            log.count(
+                "Original preset 3 restored after motion began; monitoring target move"
+            )
+            == 2
+        )
+        summary = {
+            "passed": True,
+            "transport": "ESPHome host + synthetic UART, no hardware",
+            "writes": writes,
+            "recalls": recalls,
+            "checks": [
+                "inch API metadata for all four numbers and height",
+                "unrounded height and startup target conversion above 100 cm",
+                "all three preset publications converted",
+                "preset input converts once and verifies readback",
+                "target input converts once; original raw preset restored",
+                "relative step remains 1 cm and publishes inches",
+                "out-of-range inch target sends no movement",
+            ],
+        }
         (work / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
         print(json.dumps(summary))
     finally:

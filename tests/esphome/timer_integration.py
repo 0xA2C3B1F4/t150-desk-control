@@ -7,7 +7,15 @@ import select
 import subprocess
 import time
 
-from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
+from desk_test_support import (
+    ROOT,
+    build_host,
+    encode,
+    frames,
+    open_pty,
+    parse_args,
+    test_env,
+)
 
 
 def main():
@@ -124,7 +132,9 @@ desk_uart:
                     outgoing.extend(os.read(master, 4096))
                     found = list(frames(outgoing))
                     for f in found[processed:]:
-                        events.append({"seconds": round(elapsed, 4), "body_hex": f.hex(" ")})
+                        events.append(
+                            {"seconds": round(elapsed, 4), "body_hex": f.hex(" ")}
+                        )
                         if f[:2] == bytes([0x17, 9]):
                             if f[2]:
                                 presses += 1
@@ -143,14 +153,18 @@ desk_uart:
         sent = list(frames(outgoing))
         timer_events = [e for e in events if e["body_hex"].startswith("17 09")]
         assert presses == 8 and len(timer_events) == 16, timer_events
-        assert timer_events[0]["seconds"] >= 7.4, "Timer sent during initial quiet interval"
+        assert timer_events[0]["seconds"] >= 7.4, (
+            "Timer sent during initial quiet interval"
+        )
         for i in range(0, len(timer_events), 2):
             press, release = timer_events[i : i + 2]
             assert press["body_hex"] == "17 09 01" and release["body_hex"] == "17 09 00"
             hold = release["seconds"] - press["seconds"]
             assert 0 <= hold < 0.4, hold
         brake = sent.index(bytes([0x17, 1, 0, 0]))
-        assert sent[brake - 1] == bytes([0x17, 9, 0]), "Stop did not release T before braking"
+        assert sent[brake - 1] == bytes([0x17, 9, 0]), (
+            "Stop did not release T before braking"
+        )
         output = (work / "runtime.log").read_text()
         for marker in [
             "startup_rejected=0",
@@ -171,7 +185,12 @@ desk_uart:
             assert marker in output, marker
         # A Stop's own interruption is logged, not published over its result.
         assert "result=Timer sequence interrupted" not in output
-        assert output.count("T-key sequence finished; controller timer state has no readback") == 2
+        assert (
+            output.count(
+                "T-key sequence finished; controller timer state has no readback"
+            )
+            == 2
+        )
         summary = {
             "passed": True,
             "transport": "ESPHome host + synthetic PTY, no hardware",
@@ -188,7 +207,11 @@ desk_uart:
             "events": events,
         }
         (work / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-        print(json.dumps({"passed": True, "timer_presses": presses, "completed_sequences": 2}))
+        print(
+            json.dumps(
+                {"passed": True, "timer_presses": presses, "completed_sequences": 2}
+            )
+        )
     finally:
         if proc is not None and proc.poll() is None:
             proc.kill()

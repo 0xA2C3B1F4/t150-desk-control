@@ -51,8 +51,12 @@ TESTS = [
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--only", nargs="+", choices=TESTS, metavar="TEST", help="Run only these tests")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--only", nargs="+", choices=TESTS, metavar="TEST", help="Run only these tests"
+    )
     args = parse_args(parser=ap)
     failed = []
     for name in args.only or TESTS:
@@ -60,14 +64,27 @@ def main():
         start = time.monotonic()
         with out.open("w") as log:
             result = subprocess.run(
-                [sys.executable, str(Path(__file__).parent / f"{name}.py"), "--work-dir", str(args.work_dir / name)],
+                [
+                    sys.executable,
+                    str(Path(__file__).parent / f"{name}.py"),
+                    "--work-dir",
+                    str(args.work_dir / name),
+                ],
                 stdout=log,
                 stderr=subprocess.STDOUT,
             )
             if name == "reset_speed_integration" and result.returncode == 0:
                 result = subprocess.run(
-                    [sys.executable, str(Path(__file__).parent / "reset_speed_integration.py"),
-                     "--work-dir", str(args.work_dir / "reset_speed_concise"), "--concise-ui", "--only", "resume", "paused_idle"],
+                    [
+                        sys.executable,
+                        str(Path(__file__).parent / "reset_speed_integration.py"),
+                        "--work-dir",
+                        str(args.work_dir / "reset_speed_concise"),
+                        "--concise-ui",
+                        "--only",
+                        "resume",
+                        "paused_idle",
+                    ],
                     stdout=log,
                     stderr=subprocess.STDOUT,
                 )

@@ -1,2 +1,30 @@
-# Formatting for the Python test scripts: ruff format tests/
-line-length = 120
+required-version = "==0.17.3"
+target-version = "py312"
+line-length = 88
+indent-width = 4
+src = ["tools", "tests/release", "tests/esphome"]
+include = ["*.py", "*.pyi"]
+force-exclude = true
+extend-exclude = [".esphome", ".pio", ".pioenvs", ".piolibdeps"]
+
+[lint]
+select = ["E", "W", "F", "I", "N", "D"]
+ignore = [
+    "E501",  # Let the formatter wrap code without splitting exact payload strings.
+    "E111", "E114", "E117", "W191", "D206", "D300",  # Formatter owns layout.
+    "D417",  # Describe parameters when the explanation adds information.
+    "D1",    # Temporary until missing docstrings are added.
+]
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.isort]
+force-sort-within-sections = true
+combine-as-imports = true
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+docstring-code-format = false

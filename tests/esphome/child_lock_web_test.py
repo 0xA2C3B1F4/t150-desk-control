@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the shipped renderer and generated-asset compatibility offline."""
+
 import gzip
 import importlib.util
 import json
@@ -18,39 +19,64 @@ def module(name, path):
     return mod
 
 
-web = module('panel_web', ROOT / 'components/desk_uart/web_panel_lock.py')
-layout = module('maintenance_layout', ROOT / 'components/desk_firmware_update/web_layout.py')
+web = module("panel_web", ROOT / "components/desk_uart/web_panel_lock.py")
+layout = module(
+    "maintenance_layout", ROOT / "components/desk_firmware_update/web_layout.py"
+)
 
 
 def decode(header):
-    data = re.search(r'#ifdef USE_WEBSERVER_GZIP\s+constexpr uint8_t INDEX_GZ\[\] PROGMEM = \{([^}]+)', header)[1]
-    return gzip.decompress(bytes(int(x, 16) for x in re.findall(r'0x([0-9a-fA-F]{2})', data))).decode()
+    data = re.search(
+        r"#ifdef USE_WEBSERVER_GZIP\s+constexpr uint8_t INDEX_GZ\[\] PROGMEM = \{([^}]+)",
+        header,
+    )[1]
+    return gzip.decompress(
+        bytes(int(x, 16) for x in re.findall(r"0x([0-9a-fA-F]{2})", data))
+    ).decode()
 
 
 class WebTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         from esphome.components import web_server
+
         root = Path(web_server.__file__).parent
-        cls.header = (root / 'server_index_v3.h').read_text()
-        cls.server = (root / 'web_server.cpp').read_text()
+        cls.header = (root / "server_index_v3.h").read_text()
+        cls.server = (root / "web_server.cpp").read_text()
 
     def test_installed_assets_and_idempotence(self):
         patched = web.decorate_header(self.header)
         self.assertEqual(web.decorate_header(patched), patched)
-        self.assertEqual(decode(patched).replace(web.RENDER, web.OLD_RENDER).replace(web.SELECT, web.OLD_SELECT).replace(web.SPEED_MARKER, '').replace(web.DISCONNECT, ''), decode(self.header))
-        self.assertEqual(patched.split('#else')[1:], self.header.split('#else')[1:])
+        self.assertEqual(
+            decode(patched)
+            .replace(web.RENDER, web.OLD_RENDER)
+            .replace(web.SELECT, web.OLD_SELECT)
+            .replace(web.SPEED_MARKER, "")
+            .replace(web.DISCONNECT, ""),
+            decode(self.header),
+        )
+        self.assertEqual(patched.split("#else")[1:], self.header.split("#else")[1:])
         server = web.decorate_server(self.server)
         self.assertEqual(web.decorate_server(server), server)
-        self.assertEqual(server.replace(web.NEW_JSON, web.OLD_JSON).replace(web.NEW_SELECT_JSON, web.OLD_SELECT_JSON).removeprefix(web.INCLUDE), self.server)
+        self.assertEqual(
+            server.replace(web.NEW_JSON, web.OLD_JSON)
+            .replace(web.NEW_SELECT_JSON, web.OLD_SELECT_JSON)
+            .removeprefix(web.INCLUDE),
+            self.server,
+        )
 
     def test_full_modules_parse(self):
         html = decode(web.decorate_header(self.header))
-        scripts = re.findall(r'<script\b[^>]*>(.*?)</script>', html, re.S)
+        scripts = re.findall(r"<script\b[^>]*>(.*?)</script>", html, re.S)
         self.assertTrue(scripts)
         for script in scripts:
-            subprocess.run(['node', '--input-type=module', '--check'],
-                           input=script, text=True, check=True, capture_output=True)
+            subprocess.run(
+                ["node", "--input-type=module", "--check"],
+                input=script,
+                text=True,
+                check=True,
+                capture_output=True,
+            )
 
     def test_both_build_hook_orders(self):
         a = layout.decorate_header(web.decorate_header(self.header))
@@ -62,16 +88,16 @@ class WebTest(unittest.TestCase):
 
     def test_unknown_upstream_fails(self):
         with self.assertRaises(ValueError):
-            web.decorate_header(self.header.replace('INDEX_GZ', 'OTHER'))
+            web.decorate_header(self.header.replace("INDEX_GZ", "OTHER"))
         with self.assertRaises(ValueError):
-            web.decorate_server(self.server.replace(web.OLD_JSON, 'changed'))
+            web.decorate_server(self.server.replace(web.OLD_JSON, "changed"))
         with self.assertRaises(ValueError):
-            web.replace_once('twice twice', 'twice', 'new')
+            web.replace_once("twice twice", "twice", "new")
         with self.assertRaises(ValueError):
-            web.decorate_server(self.server.replace(web.OLD_SELECT_JSON, 'changed'))
+            web.decorate_server(self.server.replace(web.OLD_SELECT_JSON, "changed"))
 
     def test_confirmed_speed_and_unknown_placeholder(self):
-        script = r'''
+        script = r"""
 const assert=require('node:assert/strict');
 const input=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
 const S=(strings,...values)=>({strings,values});
@@ -100,13 +126,15 @@ for(const value of [null,undefined,'','UNKNOWN','Normal','Slow']){
 r.entity={name:'Ordinary',option:['a','b'],value:'b'};
 assert.deepEqual(r.render_select(),[r.entity,'set','option',['a','b'],'b']);
 console.log('PASS: speed selection confirmation, unknown placeholder, row binding, ordinary selects');
-'''
-        subprocess.run(['node', '-e', script], input=json.dumps(web.SELECT), text=True, check=True)
+"""
+        subprocess.run(
+            ["node", "-e", script], input=json.dumps(web.SELECT), text=True, check=True
+        )
 
     def test_actual_render_and_disconnect(self):
         # Execute the exact renderer inserted into the bundled Lit application.
         # Preserve template values so click handlers are exercised, not regexed.
-        script = r'''
+        script = r"""
 const assert=require('node:assert/strict');
 const data=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
 const S=(strings,...values)=>({strings,values});
@@ -154,10 +182,17 @@ run({whenDefined:()=>Promise.resolve()},{querySelector:()=>app},
  assert.deepEqual(sent,[{name:'Panel lock',action:'turn_on'},{name:'Panel lock',action:'turn_off'}]);
  console.log('PASS: confirmed colors, explicit actions, unknown state, disconnect, ordinary switch');
 }).catch(e=>{console.error(e);process.exitCode=1;});
-'''
-        disconnect = web.DISCONNECT.split('<script type="module">')[1].split('</script>')[0]
-        subprocess.run(['node', '-e', script], input=json.dumps({'render': web.RENDER, 'disconnect': disconnect}), text=True, check=True)
+"""
+        disconnect = web.DISCONNECT.split('<script type="module">')[1].split(
+            "</script>"
+        )[0]
+        subprocess.run(
+            ["node", "-e", script],
+            input=json.dumps({"render": web.RENDER, "disconnect": disconnect}),
+            text=True,
+            check=True,
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

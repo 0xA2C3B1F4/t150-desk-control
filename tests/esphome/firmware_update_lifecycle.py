@@ -4,6 +4,7 @@
 Optional private image arguments exercise the complete hash-bound workflow.
 The repository contains no controller firmware. No network or device access.
 """
+
 import argparse
 import hashlib
 import json
@@ -11,71 +12,115 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+
 import esphome
+
 from desk_test_support import ROOT, parse_args
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--original', type=Path)
-parser.add_argument('--patched', type=Path)
-parser.add_argument('--interrupted', type=Path)
-parser.add_argument('--child-lock', type=Path)
-parser.add_argument('--reset-speed', type=Path)
+parser.add_argument("--original", type=Path)
+parser.add_argument("--patched", type=Path)
+parser.add_argument("--interrupted", type=Path)
+parser.add_argument("--child-lock", type=Path)
+parser.add_argument("--reset-speed", type=Path)
 args = parse_args(parser=parser)
 if args.interrupted and not args.original:
-    parser.error('--interrupted requires both private images')
+    parser.error("--interrupted requires both private images")
 if bool(args.original) != bool(args.patched):
-    parser.error('Provide both private images or neither')
+    parser.error("Provide both private images or neither")
 if args.child_lock and not args.original:
-    parser.error('--child-lock requires both private images')
+    parser.error("--child-lock requires both private images")
 if args.reset_speed and not args.child_lock:
-    parser.error('--reset-speed requires --child-lock and private images')
+    parser.error("--reset-speed requires --child-lock and private images")
 work = args.work_dir
-host = ROOT / 'tests/esphome/firmware_export_host'
-update = ROOT / 'tests/esphome/firmware_update_host'
+host = ROOT / "tests/esphome/firmware_export_host"
+update = ROOT / "tests/esphome/firmware_update_host"
 package = Path(esphome.__file__).resolve().parent
-for name in ['desk_uart', 'desk_firmware_export', 'desk_firmware_update']:
-    link = work / 'include/esphome/components' / name
+for name in ["desk_uart", "desk_firmware_export", "desk_firmware_update"]:
+    link = work / "include/esphome/components" / name
     link.parent.mkdir(parents=True, exist_ok=True)
-    link.symlink_to(ROOT / 'components' / name, target_is_directory=True)
-flags = ['-std=c++17','-DUSE_HOST','-pthread','-Wall','-Wextra','-Wpedantic','-Werror',
-         '-fsanitize=address,undefined','-fno-omit-frame-pointer','-O1','-g']
-for path in [update/'include',host/'include',work/'include',ROOT/'components/desk_firmware_update',
-             package.parent]:
-    flags += ['-I'+str(path)]
-openssl = shlex.split(subprocess.check_output(['pkg-config','--cflags','--libs','openssl'],text=True))
-sources = [ROOT/'components/desk_firmware_export/desk_firmware_export.cpp',
-           ROOT/'components/desk_firmware_update/desk_firmware_update.cpp',
-           package/'components/sha256/sha256.cpp',update/'update_test.cpp']
-command = [os.environ.get('CXX','c++'),*flags,*map(str,sources),*openssl,'-o',str(work/'update-test')]
-with (work/'build.log').open('w') as log:
-    subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,check=True)
-command = [str(work/'update-test')]
+    link.symlink_to(ROOT / "components" / name, target_is_directory=True)
+flags = [
+    "-std=c++17",
+    "-DUSE_HOST",
+    "-pthread",
+    "-Wall",
+    "-Wextra",
+    "-Wpedantic",
+    "-Werror",
+    "-fsanitize=address,undefined",
+    "-fno-omit-frame-pointer",
+    "-O1",
+    "-g",
+]
+for path in [
+    update / "include",
+    host / "include",
+    work / "include",
+    ROOT / "components/desk_firmware_update",
+    package.parent,
+]:
+    flags += ["-I" + str(path)]
+openssl = shlex.split(
+    subprocess.check_output(["pkg-config", "--cflags", "--libs", "openssl"], text=True)
+)
+sources = [
+    ROOT / "components/desk_firmware_export/desk_firmware_export.cpp",
+    ROOT / "components/desk_firmware_update/desk_firmware_update.cpp",
+    package / "components/sha256/sha256.cpp",
+    update / "update_test.cpp",
+]
+command = [
+    os.environ.get("CXX", "c++"),
+    *flags,
+    *map(str, sources),
+    *openssl,
+    "-o",
+    str(work / "update-test"),
+]
+with (work / "build.log").open("w") as log:
+    subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)
+command = [str(work / "update-test")]
 if args.original:
-    command += [str(args.original.resolve()),str(args.patched.resolve())]
+    command += [str(args.original.resolve()), str(args.patched.resolve())]
 if args.interrupted or args.child_lock:
-    command += [str(args.interrupted.resolve()) if args.interrupted else '-']
+    command += [str(args.interrupted.resolve()) if args.interrupted else "-"]
 if args.child_lock:
     command += [str(args.child_lock.resolve())]
 if args.reset_speed:
     command += [str(args.reset_speed.resolve())]
-with (work/'run.log').open('w') as log:
-    subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,check=True,timeout=60)
+with (work / "run.log").open("w") as log:
+    subprocess.run(
+        command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=60
+    )
 interrupted = None
 if args.interrupted:
     # The test strips a 0x2800 loader prefix from full-flash dumps; hash the same bytes.
     image = args.interrupted.read_bytes()
-    interrupted = hashlib.sha256(image[0x2800:] if len(image) == 65536 else image).hexdigest()
-    if f'Saved power-cut image {interrupted} recovery passed' not in (work/'run.log').read_text():
-        raise SystemExit('Interrupted image was not exercised')
-summary = dict(passed=True,private_images=bool(args.original),child_lock_image=bool(args.child_lock),reset_speed_image=bool(args.reset_speed),interrupted_image=interrupted,hardware_access=False,
-               boundary='Real adapter and SHA; host stand-ins for IDF, HTTP transport, UART, heap and preferences')
-summary['application_sha256'] = {}
-for name in ('original', 'patched', 'child_lock', 'reset_speed', 'interrupted'):
+    interrupted = hashlib.sha256(
+        image[0x2800:] if len(image) == 65536 else image
+    ).hexdigest()
+    if (
+        f"Saved power-cut image {interrupted} recovery passed"
+        not in (work / "run.log").read_text()
+    ):
+        raise SystemExit("Interrupted image was not exercised")
+summary = dict(
+    passed=True,
+    private_images=bool(args.original),
+    child_lock_image=bool(args.child_lock),
+    reset_speed_image=bool(args.reset_speed),
+    interrupted_image=interrupted,
+    hardware_access=False,
+    boundary="Real adapter and SHA; host stand-ins for IDF, HTTP transport, UART, heap and preferences",
+)
+summary["application_sha256"] = {}
+for name in ("original", "patched", "child_lock", "reset_speed", "interrupted"):
     path = getattr(args, name)
     if path:
         image = path.read_bytes()
         application = image[0x2800:] if len(image) == 65536 else image
-        summary['application_sha256'][name] = hashlib.sha256(application).hexdigest()
-(work/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
-print((work/'run.log').read_text())
+        summary["application_sha256"][name] = hashlib.sha256(application).hexdigest()
+(work / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+print((work / "run.log").read_text())
 print(json.dumps(summary))

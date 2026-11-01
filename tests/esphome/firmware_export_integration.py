@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Real ESPHome host ownership/interlock test. No hardware or network access."""
+
 import json
 import os
 import subprocess
+
 from desk_test_support import ROOT, build_host, open_pty, parse_args, test_env
+
 w = parse_args(__doc__).work_dir
 env = test_env(w)
 master, slave = open_pty()
@@ -41,14 +44,33 @@ desk_uart:
     id: load_raw
     name: Raw load
 """)
-    with (w/'build.log').open('w') as log:
+    with (w / "build.log").open("w") as log:
         build_host(cfg, w, env, log, uart_port=os.ttyname(slave))
-    with (w/'runtime.log').open('w') as log:
-        result = subprocess.run([str(w/'build/.pioenvs/firmware-export-handoff/program')], env=env, stdout=log, stderr=subprocess.STDOUT, timeout=15)
-    assert result.returncode == 0, (w/'runtime.log').read_text()
-    assert 'FIRMWARE_HANDOFF=passed' in (w/'runtime.log').read_text()
-    summary = {'passed': True, 'transport': 'synthetic host only', 'checks': ['stale plus nine busy cases rejected', 'idle ownership accepted once', 'all public controls blocked without TX or stop mutation', 'loop and shutdown emit no normal UART during ownership', 'release resumes subscription but requires fresh telemetry for motion', 'load invalidates once at export handoff, remains unknown through release and recovers on accepted telemetry', 'height and load callbacks hand off UART before consuming the queued next frame', 'height and load callback delays respect freshness before a connected edge']}
-    (w/'summary.json').write_text(json.dumps(summary, indent=2)+'\n')
+    with (w / "runtime.log").open("w") as log:
+        result = subprocess.run(
+            [str(w / "build/.pioenvs/firmware-export-handoff/program")],
+            env=env,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            timeout=15,
+        )
+    assert result.returncode == 0, (w / "runtime.log").read_text()
+    assert "FIRMWARE_HANDOFF=passed" in (w / "runtime.log").read_text()
+    summary = {
+        "passed": True,
+        "transport": "synthetic host only",
+        "checks": [
+            "stale plus nine busy cases rejected",
+            "idle ownership accepted once",
+            "all public controls blocked without TX or stop mutation",
+            "loop and shutdown emit no normal UART during ownership",
+            "release resumes subscription but requires fresh telemetry for motion",
+            "load invalidates once at export handoff, remains unknown through release and recovers on accepted telemetry",
+            "height and load callbacks hand off UART before consuming the queued next frame",
+            "height and load callback delays respect freshness before a connected edge",
+        ],
+    }
+    (w / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
 finally:
     os.close(master)

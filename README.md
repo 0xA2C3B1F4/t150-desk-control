@@ -87,6 +87,7 @@ ctest --test-dir "$desk_build_dir" --output-on-failure
 ```
 
 See [testing](docs/validation.md#automated-tests) for ESPHome and patch tests.
+Follow the [code style guide](docs/code-style.md) when changing source files.
 
 ## Repository
 
