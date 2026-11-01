@@ -200,7 +200,20 @@ python3 tools/test_uart_parser_boundary.py --image /path/to/new-full-rs01.bin \
 
 ## ESPHome 2026.10.1
 
-Configuration and host tests cover native ESP-IDF generation, firmware maintenance
-with ESPHome OTA, and mutual exclusion between OTA and controller operations.
-A complete Stamp-C3 build includes the local web UI, panel lock, motion speed and
-encrypted OTA. These checks do not establish on-device OTA or browser behavior.
+Stamp-C3 hardware checks used a complete build from GitHub sources with the local
+web UI, panel lock, motion speed and encrypted OTA:
+
+- USB installation and subsequent OTA updates retained the device name and
+  existing web and Home Assistant credentials.
+- Encrypted OTA succeeded while idle and after a completed controller read with
+  maintenance still claimed. An active read rejected OTA without interrupting
+  maintenance; an active OTA upload rejected a new maintenance request.
+- Browser login, live status, panel lock commands from the browser and Home
+  Assistant, and browser maintenance entry and exit worked. Unauthenticated
+  requests to the controls and maintenance endpoints were rejected.
+- A full controller application read matched the known R7 image. UART telemetry
+  and Home Assistant reconnected after the ESP32 updates.
+
+Configuration and host tests cover native ESP-IDF generation, supported OTA
+platforms, queued operations, upload and transfer settling, and guard release on
+failure. Removing the required guard fails the link; regeneration restores it.
