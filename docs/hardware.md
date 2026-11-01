@@ -12,6 +12,39 @@ Sources: [DT410 product sheet](https://asset.conrad.com/media10/add/160267/c1/-/
 and the [DT410 retailer listing](https://www.multitronic.fi/en/products/3031488).
 See [validation](validation.md) for feature-specific test coverage.
 
+### Possible compatibility, untested
+
+These are candidates for firmware comparison and future support. The sources
+establish related desk or panel models; they do not establish matching UART,
+controller electronics or firmware. None has been tested with this project.
+
+| Desk or controller | Basis for investigation |
+|---|---|
+| Deltaco Gaming WT95 / GAM-140-W | White variant of the tested GAM-140 / DT410 desk family, covered by the [shared GAM-140/GAM-140-W manual](https://www.electroland.gr/media/productattachment/0/14965/GAM140GAM140Wmanual.pdf) and [WT95 product sheet](https://www.electroland.gr/media/productattachment/0/14965/GAM140W.pdf). |
+| T150-22-CH | An owner identifies this controller in a [repair discussion](https://www.reddit.com/r/DIY/comments/13fop5m/). |
+| Kenson Get Up / T150-22 | Kenson's [controller manual](https://kenson.no/wp-content/uploads/2019/06/Kenson-Get-Up-desk-controller-manual.pdf) lists model T150-22. |
+| LUMI T150, exact revision unknown | LUMI's [troubleshooting guide](https://www.lumi.cn/en/troubleshooting) identifies the push-button T150 panel. |
+| LUMI C150, exact revision unknown | The same [LUMI guide](https://www.lumi.cn/en/troubleshooting) groups the touch-screen C150 with T150 for error and operating instructions. |
+
+### Help develop support
+
+Firmware from these controllers can reveal shared code and guide support for
+another revision. In a [GitHub issue](https://github.com/0xA2C3B1F4/t150-desk-control/issues/new),
+provide the desk model, controller and PCB markings, and how the image was
+obtained. If reader compatibility has been confirmed for your controller, use
+the maintenance page's [optional private upload](firmware-update.md#unknown-versions).
+Quote the image's SHA-256 or upload receipt in the issue to identify it.
+For images obtained another way, use the issue to arrange a private submission
+without attaching the firmware publicly. A reading method must be checked for
+the controller before attempting a backup.
+
+If comparison identifies shared code and the hardware mappings and motor-control
+behavior are compatible, shared code or adapted patches can be tested on the
+development DT410. Operation on the candidate model still needs confirmation on
+that model. Submissions do not guarantee support or authorize installation of
+an unknown image; the existing reader and patches have their own compatibility
+requirements.
+
 ### Protocol comparison reference
 
 The LUMI **LP66** TV-lift family belongs in protocol research, outside the desk
