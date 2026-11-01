@@ -13,9 +13,8 @@ UART. Keep your own `esphome`, Wi-Fi, API, OTA, logger and web settings.
 The snippet enables height reporting. Add `stop` to `desk_uart` for remote Stop;
 movement controls require the existing experimental options documented below.
 
-The first release is being prepared, so the snippet currently follows `main`.
-Published copies will pin component sources to their release tag. See
-[releases](releases.md).
+The development snippet follows `main`. [Release assets](releases.md) will pin
+component sources to their release tag.
 
 ### Source diagnostics
 

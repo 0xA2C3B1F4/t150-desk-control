@@ -1,98 +1,79 @@
 # Releases
 
-The first release is being prepared. Until it is published, the examples on
-`main` are development configurations. Do not use a future tag as an install
-source. Published releases provide tested YAML files and their checksums.
+Until the first release, use the development configurations on `main`. Published
+releases provide YAML files pinned to their tag, checksums and validation results.
+Use tags for installation only after their release is published.
 
 ## Version identities
 
 Project releases use `YYYY.M.N`, starting with `2026.11.0` and tag `v2026.11.0`.
-The last number increases for another release in the same month. A new month
-does not trigger a release. The target version lives in
-`components/desk_uart/project_version.json`.
+The last number increases for another release in the same month. The target
+version lives in `components/desk_uart/project_version.json`; the published tag
+and full commit identify a release. A new month does not trigger a release.
 
-The project version, ESPHome version, protocol library version and controller
-firmware identity are separate. The current tested ESPHome is `2026.4.2`;
-`library.json` describes the portable C++ library as `0.1.0`. DT02, CL01 and RS01
-identify controller patches, not ESPHome releases.
-
-A version in source code is a target version. A published tag and full commit
-identify a release. Startup logs include the version, source revision and
-`clean`, `dirty` or `unknown` state. Optional diagnostic sensors expose these
-values without changing the user's `esphome.project`. A copied component tree
-can report its version while its Git revision remains unknown. A fork reports
-its own source revision; this is not proof of upstream origin.
+Tested ESPHome `2026.4.2`, the protocol library's `0.1.0` and controller patches DT02,
+CL01 and RS01 have separate versions. Startup logs and optional
+[source diagnostics](esphome.md#source-diagnostics) report the project version,
+revision and source state. Copied components may have an unknown revision;
+a fork's revision identifies its own source, not upstream origin.
 
 ## Release contents
 
-Release attachments include the board YAMLs, the existing-device snippet,
-optional package YAMLs, firmware identity catalog, install notes, release notes,
-`release-manifest.json`, `SHA256SUMS` and a separate validation report. Keep the
-YAML files together. The packaged includes and component references are prepared
-for this layout and the release tag.
+Keep the downloaded board, existing-device and optional package YAMLs together.
+Their includes use this flat layout, and component references use the release tag.
+Other attachments are the firmware identity catalog, install and release notes,
+`release-manifest.json`, `SHA256SUMS` and a validation report. Manufacturer firmware,
+credentials, private logs and compiled ESP images are excluded.
 
-The firmware catalog records exact supported application hashes and existing
-transitions. It does not grant permission to install an unknown image. Runtime
-hash checks, saved-backup requirements and recovery guards remain authoritative.
-No manufacturer firmware, credentials, private logs or compiled ESP images are
-included.
-
-`SHA256SUMS` covers the deterministic text assets and manifest, excluding itself.
-The validation report records the candidate, workflow revision, test jobs and
-run IDs. Its hash is in the release description. Repacking the same source gives
-the same text assets; this does not claim reproducible ESPHome binaries.
+The catalog records supported hashes and transitions. Runtime hash checks,
+backup requirements and recovery guards still determine which images can be
+installed. `SHA256SUMS` covers the repeatable text assets and manifest. The
+validation report records source and workflow revisions, test jobs and run IDs;
+its hash is in the release description. ESPHome binary reproducibility is not
+claimed.
 
 ## Maintainer workflow
 
-Normal development continues through feature branches, PRs and `main`. Prepare
-release infrastructure in a separate PR. Keep source changes in one local commit
-before pushing when possible; do not rewrite published history.
+Select releases from `main` after normal feature-branch PRs. Before releasing,
+verify the repository settings: Actions enabled with read-only default tokens,
+SHA-pinned actions and approval for outside fork runs; a `release` environment
+restricted to `main`; and protection against updating or deleting `v*` tags,
+without bypass actors. Allow new tags and enable immutable releases before
+publishing. Workflow files do not configure these settings.
 
-Before the first release, enable Actions with read-only default tokens and the
-required pinned GitHub actions. Require approval for outside fork contributions.
-Create a `release` environment restricted to the `main` branch. No additional
-reviewer is required for draft creation. Protect `v*` tags against updates and
-deletion without bypass actors, while allowing new tags. Enable immutable
-releases before publishing. These repository settings are separate from the
-workflow files and must be checked through GitHub.
-
-1. Merge the reviewed foundation and select a clean full commit SHA on `main`.
-   Check that its target version matches the intended release.
+1. Select a clean full commit SHA on `main` whose target version matches the
+   intended release.
 2. Run **Release / candidate-check** from `main` with that version and SHA.
-   It runs the complete tests and builds packaged examples using the candidate
-   SHA in temporary copies. The original package retains the intended tag.
-3. Check the results and perform the stationary Stamp-C3 smoke test on a clean
-   build of this candidate. Verify startup, source diagnostics, telemetry and
-   existing controls. Earlier R7 hardware results apply to the unchanged
-   controller image; they are not a new test of this ESPHome build.
-4. After release approval, create an annotated tag on that exact candidate.
-   Neither the packer nor the workflow creates or moves tags.
-5. Run **Release / tagged-draft** with the same version, SHA and the explicit
-   successful candidate-check run ID. This verifies the tag's peeled commit,
-   compares packages and tests the literal tag using fresh source caches,
-   including the maintenance configurations. An expired candidate artifact
-   requires rerunning candidate-check on the same SHA.
-6. Inspect the draft attachments, their hashes and the validation report.
-   Recheck the tag, protections and completed hardware smoke test. Publish the
-   draft as a separate action. Verify that GitHub reports the release immutable.
-7. Update `main`'s installation examples to the now-existing stable tag in a small
-   documentation PR. When advancing the target version, add its matching version
-   heading to `CHANGELOG.md` below Unreleased in the same commit as
-   `project_version.json`. Keep the Unreleased section.
+   It runs the full test suite and builds packaged examples using the SHA in
+   temporary copies; release assets retain the intended tag.
+3. Check the results, then test a clean build on a stationary Stamp-C3: startup,
+   source diagnostics, telemetry and existing controls. Earlier R7 hardware results
+   cover the unchanged controller image, not this ESPHome build.
+4. After approval, create an annotated tag on the exact candidate. The tools
+   never create or move tags.
+5. Run **Release / tagged-draft** with the same version, SHA and successful
+   candidate-check run ID. It checks the tag's peeled commit, compares packages
+   and tests the literal tag in fresh source caches, including maintenance
+   configurations. If the artifact expired, rerun candidate-check on the same SHA.
+6. Check the draft's attachments, hashes and validation report, the tag and its
+   protections, and the completed hardware test. Publish separately, then verify
+   GitHub reports the release immutable.
+7. Update `main`'s installation examples to the published tag in a documentation
+   PR. When advancing `project_version.json`, add the matching version heading
+   below Unreleased in `CHANGELOG.md` in the same commit. Keep Unreleased.
 
-The first tag's README may still describe release preparation. Its release page
-and attached YAMLs are the installation instructions for that version.
+The first tag's README may describe release preparation. Use its release page
+and attached YAMLs for installation.
 
-Ordinary PRs may merge during release preparation. Both release stages compare
-workflow and release-tool blobs against the candidate. A change to that
-infrastructure blocks an older candidate until it is reconsidered. A failed
-network request can be retried on the same source. A code fix after tagging
-requires a new version and tag.
+Other PRs may merge during preparation. Release stages compare workflow and
+release-tool blobs with the candidate; infrastructure changes block an older
+candidate until reconsidered. Retry network failures on the same source.
+A code fix after tagging needs a new version and tag.
 
 ## Local tools
 
-Use a clean candidate checkout and an output directory outside the repository.
-Replace the example SHA with the full candidate commit:
+Use a clean candidate checkout and set `CANDIDATE_SHA` to its full commit. Choose
+a new output directory outside the repository:
 
 ```sh
 python tools/release.py validate --source-root . --version 2026.11.0 --commit "$CANDIDATE_SHA"
@@ -101,6 +82,6 @@ python tools/release.py verify-tag --source-root . --version 2026.11.0 --commit 
 python tools/check_firmware_catalog.py
 ```
 
-The package output must not already exist. Validation rejects a dirty source,
-wrong version or unexpected commit. `verify-tag` requires an annotated tag and
-compares its resolved commit, not the tag object's own SHA.
+Validation rejects dirty sources and version or commit mismatches. Package checks
+reject unexpected assets. Tag verification requires an annotated tag and compares
+its resolved commit, not the tag object's SHA.

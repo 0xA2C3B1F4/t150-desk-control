@@ -63,13 +63,12 @@ remains indistinguishable with the current 8-bit cursors.
 
 ## Automated tests
 
-Release tooling tests cover clean-source validation, annotated tag resolution,
-deterministic assets, checksum and allowlist failures, and draft-only API
-operations. The firmware catalog is compared with compiled production admission
-and patch-preparation guards. These checks use synthetic inputs, not manufacturer
-images. Source diagnostics are tested with copied components, real Git fixtures
-and a host UART peer. The existing-device snippet compiles without a web server
-while retaining the user's project, network, API and OTA configuration.
+Release tests cover source and annotated-tag validation, repeatable assets,
+checksum and allowed-file failures, and draft-only API operations. Synthetic inputs
+check the firmware catalog against compiled install and patch-preparation guards.
+Copied components, Git fixtures and a host UART peer cover source diagnostics.
+The existing-device snippet compiles without a web server and retains the user's
+project, network, API and OTA settings.
 
 The first release still requires a stationary Stamp-C3 smoke test of its exact
 ESPHome candidate. The earlier R7 hardware results above apply to the unchanged

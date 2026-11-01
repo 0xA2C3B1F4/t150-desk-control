@@ -4,10 +4,6 @@
 
 ## 2026.11.0
 
-The first release collects the existing T150 controls and optional controller
-patches. A changelog entry describes a version; the GitHub release and its tag
-identify the published source.
-
 - ESPHome height reporting in cm or inches, preset controls, target-height moves,
   Stop, controller identity, load reporting and preset recovery.
 - Optional DT02 direct-height commands and sleep fix, CL01 persistent panel lock,
