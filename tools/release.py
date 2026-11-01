@@ -147,17 +147,21 @@ def package_bytes(root, version, commit):
         f"https://github.com/{REPOSITORY}/blob/{tag}/docs/firmware-update.md\n\n"
         "This release contains source configurations and metadata, not controller\n"
         "firmware images or preconfigured ESP binaries.\n").encode()
-    requirement = re.search(r"^esphome==([^\s]+)$",(root/"requirements-dev.txt").read_text(),re.M)
-    if not requirement:
-        raise ValueError("ESPHome version pin missing")
     manifest = {"schema_version":1,"version":version,"tag":tag,"commit":commit,
-                "esphome":requirement.group(1),"catalog_sha256":digest(data["firmware-catalog.json"]),
+                "esphome":esphome_pin(root),"catalog_sha256":digest(data["firmware-catalog.json"]),
                 "assets":{name:digest(content) for name,content in sorted(data.items())}}
     data["release-manifest.json"] = json_bytes(manifest)
     data["SHA256SUMS"] = "".join(f"{digest(content)}  {name}\n" for name,content in sorted(data.items())).encode()
     if set(data) != ASSETS:
         raise ValueError("Unexpected package contents")
     return data
+
+
+def esphome_pin(root):
+    match = re.search(r"^esphome==([^\s]+)$", (Path(root) / "requirements-dev.txt").read_text(), re.M)
+    if not match:
+        raise ValueError("ESPHome version pin missing")
+    return match.group(1)
 
 
 def verify_package(directory, version, commit):

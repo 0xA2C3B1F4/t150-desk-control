@@ -114,7 +114,7 @@ def build_report(api, root, version, commit, workflow_sha, run_id, stage, candid
             "candidate_run_id":candidate_run_id,
             "jobs":{k:v[0]["conclusion"] for k,v in sorted(matched.items())},
             "tools":{"python":platform.python_version(),"runner":platform.platform(),
-                     "patch_llvm_pin":"23.1.0", "esphome_pin":"2026.4.2"},
+                     "patch_llvm_pin":"23.1.0", "esphome_pin":release.esphome_pin(root)},
             "infrastructure":release.infrastructure(root,commit,workflow_sha)}
 
 

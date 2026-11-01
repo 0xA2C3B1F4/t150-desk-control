@@ -25,8 +25,15 @@ in the maintenance package.
 For a moved local checkout, update the base source and `firmware_components_path`;
 both resolve from the main device YAML. See [configuration paths](esphome.md#configuration-paths).
 
-Use this package instead of `firmware-export.yaml`. Maintenance disables ESP32
-OTA; return to the normal build over USB. After installing CL01 or RS01, keep the
+Use this package instead of `firmware-export.yaml`. ESPHome OTA stays available
+between controller operations. Reads, uploads, writes, verification, queued actions
+and the three-second transfer exit period block OTA before it starts. An OTA
+transfer blocks new maintenance actions until it ends or fails. An idle maintenance
+session or a saved recovery record does not block OTA. Only `platform: esphome` is
+supported with firmware maintenance. `captive_portal` also enables web-server OTA
+and cannot be combined with this build. A rejected OTA attempt logs
+`OTA refused: firmware operation active or queued`; retry after the operation ends.
+After installing CL01 or RS01, keep the
 [panel-lock package](child-lock.md) enabled so you can unlock the panel.
 
 ## Read, patch and verify

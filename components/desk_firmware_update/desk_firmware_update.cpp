@@ -139,6 +139,10 @@ size_t FirmwareUpdate::recovery_payload_size_() const {
   if (!std::strcmp(recovery_record_.source,RS01_SHA) || !std::strcmp(recovery_record_.target,RS01_SHA)) return RS01_PAYLOAD_SIZE;
   return !std::strcmp(recovery_record_.source,CL01_SHA) || !std::strcmp(recovery_record_.target,CL01_SHA) ? 26624 : PAYLOAD_SIZE;
 }
+bool FirmwareUpdate::blocks_ota_() const {
+  return active_() || phase_ == Phase::Uploading || !pending_.empty() ||
+         (owned_ && phase_ != Phase::Idle && uint32_t(millis() - finished_at_) < 3000);
+}
 bool FirmwareUpdate::active_() const {
   return phase_==Phase::Reading || phase_==Phase::Writing || phase_==Phase::Verifying;
 }
@@ -324,7 +328,7 @@ void FirmwareUpdate::loop() {
   }
   if (writing) {
     if (sender_.active()) return;
-    fast_loop_.stop(); ++revision_;
+    fast_loop_.stop(); finished_at_=millis(); ++revision_;
     if (sender_.complete()) phase_=Phase::AwaitVerify;
     else {
       if (!sender_.erase_possible() && !attempt_had_recovery_ && !save_recovery_(false)) {
@@ -434,6 +438,7 @@ void FirmwareUpdate::handleRequest(AsyncWebServerRequest *request) {
     response->addHeader("Cache-Control","no-store"); request->send(response); return;
   }
   if (request->method()!=HTTP_POST || url!="/desk-firmware/action") { send(409,"text/plain","Use GET or POST"); return; }
+  if (ota_active_) { send(409,"text/plain","ESP32 OTA update active; retry after it finishes"); return; }
   const auto csrf=request->get_header("X-Desk-CSRF");
   if (!csrf || *csrf!=csrf_) { send(409,"text/plain","Invalid request token"); return; }
   const auto owner=request->arg("owner"), action=request->arg("action");

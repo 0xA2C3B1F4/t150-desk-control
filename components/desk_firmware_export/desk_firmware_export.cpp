@@ -13,9 +13,29 @@
 namespace esphome::desk_firmware_export {
 static const char *const TAG = "desk_firmware_export";
 FirmwareExport *FirmwareExport::instance_ = nullptr;
+bool FirmwareExport::blocks_ota_() const {
+  return snapshot_.busy || command_ != Command::None;
+}
+bool FirmwareExport::begin_ota() {
+  auto *self = instance_;
+  if (!self) return true;  // Safe mode has no desk component to interrupt.
+  std::lock_guard<std::mutex> lock(self->mutex_);
+  if (self->ota_active_ || self->blocks_ota_()) {
+    ESP_LOGW(TAG, "OTA refused: firmware operation active or queued");
+    return false;
+  }
+  self->ota_active_ = true;
+  return true;
+}
+void FirmwareExport::end_ota() {
+  auto *self = instance_;
+  if (!self) return;
+  std::lock_guard<std::mutex> lock(self->mutex_);
+  self->ota_active_ = false;
+}
 bool FirmwareExport::enqueue_(Command command) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (is_failed() || command_ != Command::None ||
+  if (is_failed() || ota_active_ || command_ != Command::None ||
       (command != Command::Cancel && snapshot_.busy)) {
     ESP_LOGW(TAG, "Firmware action refused: reader busy or unavailable");
     return false;

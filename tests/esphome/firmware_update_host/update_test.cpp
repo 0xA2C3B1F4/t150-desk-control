@@ -24,6 +24,59 @@ struct Rig:fw::FirmwareUpdate {
     if(foreign)req.request_headers["Origin"]="https://untrusted.example";
     handleRequest(&req);tick();return req.response_code;
   }
+  void check_ota_admission() {
+    using OTA = esphome::desk_firmware_export::OTAOperation;
+    export_host::now += 4000;
+    for (auto phase : {Phase::Idle, Phase::Ready, Phase::Staged, Phase::AwaitVerify, Phase::Verified, Phase::Error}) {
+      phase_ = phase;
+      owned_ = true;
+      recovery_ = true;  // A saved recovery record must not disable OTA forever.
+      { OTA attempt; CHECK(attempt); CHECK(post("read") == 409); }
+    }
+    for (auto phase : {Phase::Reading, Phase::Uploading, Phase::Writing, Phase::Verifying}) {
+      phase_ = phase;
+      OTA attempt; CHECK(!attempt); CHECK(!ota_active_);
+    }
+    phase_ = Phase::Ready;
+    pending_ = "read";
+    { OTA attempt; CHECK(!attempt); }
+    pending_.clear();
+    finished_at_ = export_host::now;
+    { OTA attempt; CHECK(!attempt); }
+    export_host::now += 3000;
+    { OTA attempt; CHECK(attempt); { OTA concurrent; CHECK(!concurrent); } CHECK(ota_active_); }
+    CHECK(!ota_active_);  // A failed second admission must not release the first.
+    recovery_ = false;
+    phase_ = Phase::Idle;
+    owned_ = false;
+    auto failed_ota = [] { OTA attempt; CHECK(attempt); return; };
+    failed_ota();
+    CHECK(post("claim", {{"motor_isolated", "yes"}}) == 200);
+    CHECK(post("read") == 200);
+    { OTA attempt; CHECK(!attempt); }
+    CHECK(post("cancel") == 200);
+    { OTA attempt; CHECK(!attempt); }
+    export_host::now += 3000;
+    { OTA attempt; CHECK(attempt); }
+  }
+  void check_completed_write_ota() {
+    using OTA = esphome::desk_firmware_export::OTAOperation;
+    claim();
+    // Feed a synthetic image through the real sender, without authorizing a
+    // hash-bound install. This fixture tests only the completed-transfer edge.
+    std::vector<uint8_t> image(55296, 255);
+    sender_.set_before_erase(nullptr);
+    CHECK(sender_.begin(image.data(), image.size(), transmit_, this, export_host::now));
+    phase_ = Phase::Writing;
+    preflight_at_ = export_host::now;
+    export_host::now += 4000;  // The old read timestamp is already stale.
+    complete_write();
+    { OTA update; CHECK(!update); }
+    export_host::now += 2999;
+    { OTA update; CHECK(!update); }
+    ++export_host::now;
+    { OTA update; CHECK(update); }
+  }
   void rebind(){AsyncWebServerRequest req("/desk-firmware/status");req.request_headers={{"Host","evil.example"},{"Origin","http://evil.example"}};handleRequest(&req);CHECK(req.response_code==409);}
   void claim(){CHECK(post("claim",{{"motor_isolated","yes"}})==200);CHECK(owned_);}
   std::string state(){return phase_name_();}
@@ -57,6 +110,10 @@ struct Rig:fw::FirmwareUpdate {
 };
 std::vector<uint8_t> load(const char *path){std::ifstream f(path,std::ios::binary);CHECK(f.good());std::vector<uint8_t> b{std::istreambuf_iterator<char>(f),{}};if(b.size()==65536)b.erase(b.begin(),b.begin()+0x2800);CHECK(b.size()==55296);return b;}
 int main(int argc,char **argv){
+ {Rig r;r.check_ota_admission();}
+ export_host::reset();
+ {Rig r;r.check_completed_write_ota();}
+ export_host::reset();
  {Rig r;r.rebind();CHECK(r.post("claim",{{"motor_isolated","yes"}},std::string(32,'a'),true)==409);CHECK(r.post("claim",{{"motor_isolated","yes"}},std::string(32,'a'),false,false)==409);CHECK(r.post("claim")==409);r.claim();CHECK(r.post("read",{},std::string(32,'b'))==409);CHECK(r.post("read",{},std::string(32,'a'),false,true,true)==409);r.read(std::vector<uint8_t>(55296,255));CHECK(r.state()=="read_complete");CHECK(export_host::live_allocations()==1);r.backup();r.post("stage");CHECK(r.state()=="error");CHECK(esphome::saved_recovery==0);}
  export_host::reset();
  {Rig r;r.claim();export_host::fail_malloc=true;r.read(std::vector<uint8_t>(55296,255));CHECK(r.state()=="error");CHECK(export_host::live_allocations()==0);}

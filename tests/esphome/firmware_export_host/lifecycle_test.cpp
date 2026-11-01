@@ -261,6 +261,22 @@ static void successful_replacement() {
 }
 
 int main(int argc, char **argv) {
+  {
+    Rig r("ota-admission");
+    using OTA = esphome::desk_firmware_export::OTAOperation;
+    { OTA update; CHECK(update); CHECK(!r.reader.start_read()); }
+    CHECK(r.reader.start_read());
+    { OTA update; CHECK(!update); }  // Queued start already reserves maintenance.
+    r.loop();
+    { OTA update; CHECK(!update); }
+    CHECK(r.reader.cancel_read());
+    r.loop();
+    { OTA update; CHECK(!update); }
+    export_host::now += 3000;
+    r.loop();
+    { OTA update; CHECK(update); }
+  }
+
   const std::string selected = argc == 2 ? argv[1] : "all";
   const std::vector<std::string> cases{"crc_failure", "partial_timeout", "allocation_failure", "boot_timeout", "partial_cancel", "download_clear", "successful_replacement"};
   unsigned count = 0;

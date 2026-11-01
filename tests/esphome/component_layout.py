@@ -68,9 +68,12 @@ def main():
         for filename in component_files:
             assert (generated / filename).read_bytes() == (source / "components/desk_uart" / filename).read_bytes()
         assert not (case / "build/src/desk_protocol").exists()
-        ini = (case / "build/platformio.ini").read_text()
-        assert ("pre:desk_panel_lock_web.py" in ini) == has_web
-        assert ("pre:desk_web_layout.py" in ini) == (name == "updater")
+        if has_web:
+            manifest = json.loads((case / "build/desk-patches.json").read_text())
+            assert manifest["controls"]
+            assert manifest["maintenance"] == (name == "updater")
+            assert not manifest["ota"]
+        assert ("t150_web_patch_guard();" in (case / "build/src/main.cpp").read_text()) == has_web
         if maintenance:
             assert (case / "build/src/esphome/components/desk_firmware_export/firmware_profile.h").is_file()
             assert (generated / "firmware_profile.h").is_file()

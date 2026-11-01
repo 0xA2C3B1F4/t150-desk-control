@@ -24,10 +24,10 @@ def main():
     then:
       - lambda: |-
           for (auto *n : std::vector<number::Number *>{{id(target), id(p1), id(p2), id(p3)}}) {{
-            ESP_LOGI("test", "metadata=%s,%.1f,%.1f,%.1f", n->get_unit_of_measurement().c_str(),
+            ESP_LOGI("test", "metadata=%s,%.1f,%.1f,%.1f", n->get_unit_of_measurement_ref().c_str(),
                      n->traits.get_min_value(), n->traits.get_max_value(), n->traits.get_step());
           }}
-          ESP_LOGI("test", "height_unit=%s", id(height)->get_unit_of_measurement().c_str());
+          ESP_LOGI("test", "height_unit=%s", id(height)->get_unit_of_measurement_ref().c_str());
       - delay: 7s
       - number.set:
           id: p1

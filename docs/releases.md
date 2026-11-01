@@ -11,7 +11,7 @@ The last number increases for another release in the same month. The target
 version lives in `components/desk_uart/project_version.json`; the published tag
 and full commit identify a release. A new month does not trigger a release.
 
-Tested ESPHome `2026.4.2`, the protocol library's `0.1.0` and controller patches DT02,
+Tested ESPHome `2026.10.1`, the protocol library's `0.1.0` and controller patches DT02,
 CL01 and RS01 have separate versions. Startup logs and optional
 [source diagnostics](esphome.md#source-diagnostics) report the project version,
 revision and source state. Copied components may have an unknown revision;

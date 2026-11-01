@@ -46,7 +46,7 @@ See [existing devices](docs/esphome.md#existing-device).
 4. Open `http://<device_name>.local/` or the ESP32's IP address. Sign in with `web_username` and `web_password`.
 5. For Home Assistant, add the **ESPHome** integration using the device address and API encryption key.
 
-The GitHub source includes the component and its portable headers. For use without Home Assistant, follow [standalone install](docs/esphome.md#standalone-install). For a cloned repository, follow [local build and install](docs/esphome.md#local-build-and-install). Both use ESPHome 2026.4.2. Copied YAML files need the [configuration paths](docs/esphome.md#configuration-paths) described there.
+The GitHub source includes the component and its portable headers. For use without Home Assistant, follow [standalone install](docs/esphome.md#standalone-install). For a cloned repository, follow [local build and install](docs/esphome.md#local-build-and-install). Both use ESPHome 2026.10.1. Copied YAML files need the [configuration paths](docs/esphome.md#configuration-paths) described there.
 
 ## Use and configuration
 

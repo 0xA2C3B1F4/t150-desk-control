@@ -13,7 +13,7 @@ from esphome.const import (
     STATE_CLASS_MEASUREMENT,
     STATE_CLASS_TOTAL_INCREASING,
 )
-from .web_support import configure_web_controls
+from .web_support import configure_web_controls, validate_build_toolchain
 from .source_metadata import source_metadata
 
 DEPENDENCIES = ["uart"]
@@ -168,9 +168,12 @@ CONFIG_SCHEMA = cv.All(
     validate_motion,
 )
 
-FINAL_VALIDATE_SCHEMA = uart.final_validate_device_schema(
-    "desk_uart", baud_rate=115200, require_tx=True, require_rx=True,
-    data_bits=8, parity="NONE", stop_bits=1,
+FINAL_VALIDATE_SCHEMA = cv.All(
+    uart.final_validate_device_schema(
+        "desk_uart", baud_rate=115200, require_tx=True, require_rx=True,
+        data_bits=8, parity="NONE", stop_bits=1,
+    ),
+    validate_build_toolchain,
 )
 
 
@@ -286,6 +289,7 @@ async def to_code(config):
 @automation.register_action(
     "desk_uart.stop", StopAction,
     automation.maybe_simple_id({cv.Required(CONF_ID): cv.use_id(DeskUART)}),
+    synchronous=True,
 )
 async def stop_action_to_code(config, action_id, template_arg, args):
     parent = await cg.get_variable(config[CONF_ID])
