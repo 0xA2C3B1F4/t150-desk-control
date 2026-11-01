@@ -161,11 +161,14 @@ def main():
     for build_type in args.build_type or ("Debug", "Release"):
         run = args.work_dir / build_type.lower()
         run.mkdir(parents=True, exist_ok=False)
+        component_link = run / "include/esphome/components/desk_uart"
+        component_link.parent.mkdir(parents=True, exist_ok=True)
+        component_link.symlink_to(source / "components/desk_uart", target_is_directory=True)
         flags = ["-std=c++17", "-DUSE_HOST", "-pthread", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
                  "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-g"]
         flags += ["-O0"] if build_type == "Debug" else ["-O2", "-DNDEBUG"]
         flags += ["-I" + str(host / "include"), "-I" + str(source / "components/desk_firmware_export"),
-                  "-I" + str(source / "lib/desk_protocol/include"), "-I" + str(package.parent)]
+                  "-I" + str(run / "include"), "-I" + str(package.parent)]
         # OpenSSL's include flags are needed while compiling the actual SHA source;
         # the matching link flags are passed only to the linker below.
         include_flags = [flag for flag in pkg_flags if flag.startswith(("-I", "-D"))]

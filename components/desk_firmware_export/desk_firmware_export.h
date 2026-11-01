@@ -2,8 +2,8 @@
 #include <memory>
 #include <mutex>
 #include <driver/uart_select.h>
-#include "desk_protocol/firmware_export.h"
-#include "desk_protocol/firmware_profile.h"
+#include "esphome/components/desk_uart/firmware_export.h"
+#include "esphome/components/desk_uart/firmware_profile.h"
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
 #include "esphome/components/desk_uart/desk_uart.h"

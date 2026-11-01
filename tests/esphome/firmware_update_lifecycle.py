@@ -33,14 +33,14 @@ work = args.work_dir
 host = ROOT / 'tests/esphome/firmware_export_host'
 update = ROOT / 'tests/esphome/firmware_update_host'
 package = Path(esphome.__file__).resolve().parent
-for name in ['desk_firmware_export', 'desk_firmware_update']:
+for name in ['desk_uart', 'desk_firmware_export', 'desk_firmware_update']:
     link = work / 'include/esphome/components' / name
     link.parent.mkdir(parents=True, exist_ok=True)
     link.symlink_to(ROOT / 'components' / name, target_is_directory=True)
 flags = ['-std=c++17','-DUSE_HOST','-pthread','-Wall','-Wextra','-Wpedantic','-Werror',
          '-fsanitize=address,undefined','-fno-omit-frame-pointer','-O1','-g']
 for path in [update/'include',host/'include',work/'include',ROOT/'components/desk_firmware_update',
-             ROOT/'lib/desk_protocol/include',package.parent]:
+             package.parent]:
     flags += ['-I'+str(path)]
 openssl = shlex.split(subprocess.check_output(['pkg-config','--cflags','--libs','openssl'],text=True))
 sources = [ROOT/'components/desk_firmware_export/desk_firmware_export.cpp',

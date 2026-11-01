@@ -2,7 +2,8 @@
 """Build the GitHub example in a fresh cache with dummy device credentials.
 
 Fetches the current checkout commit, including a PR merge revision in Actions.
-Requires that commit to be available on GitHub. Does not upload firmware.
+GitHub mode requires a published commit. Local mode tests the working tree.
+Does not upload firmware.
 """
 
 import argparse
@@ -20,6 +21,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--example", choices=("stamp-c3", "esp32"),
                         default="stamp-c3")
+    parser.add_argument("--source-mode", choices=("github", "local"), default="github")
     args = parse_args(parser=parser)
     work = args.work_dir
     env = test_env(work)
@@ -46,12 +48,16 @@ def main():
     web_version = int(example_config["web_server"]["version"])
     assert web_version in (2, 3), web_version
     github_source = f"github://0xA2C3B1F4/t150-desk-control@{revision}"
-    text, replacements = re.subn(
-        r"^    # source: github://0xA2C3B1F4/t150-desk-control@[^\s]+$",
-        f"    source: {github_source}", text, flags=re.MULTILINE,
-    )
-    assert replacements == 1, "Expected one documented GitHub override"
-    # Activate the documented GitHub override and relocate generated data.
+    if args.source_mode == "github":
+        text, replacements = re.subn(
+            r"^    # source: github://0xA2C3B1F4/t150-desk-control@[^\s]+$",
+            f"    source: {github_source}", text, flags=re.MULTILINE,
+        )
+        assert replacements == 1, "Expected one documented GitHub override"
+    else:
+        assert text.count("path: ../../components") == 1
+        text = text.replace("path: ../../components", f"path: {ROOT}/components")
+    # Relocate generated data independently of the selected component source.
     text = re.sub(r"  build_directory: .*", f"  build_directory: {work}/build", text)
     cfg = work / f"{args.example}.yaml"
     cfg.write_text(text)
@@ -67,27 +73,30 @@ def main():
         with (work / f"{action}.log").open("w") as log:
             subprocess.run(["esphome", action, str(cfg)], cwd=work, env=env,
                            stdout=log, stderr=subprocess.STDOUT, check=True)
-    clones = list((work / "data/external_components").glob("*/.git"))
-    assert len(clones) == 1, clones
-    clone = clones[0].parent
-    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=clone, text=True).strip()
-    assert commit == revision, f"Fetched {commit}, expected checkout {revision}"
-    remote = subprocess.check_output(["git", "remote", "get-url", "origin"], cwd=clone, text=True).strip()
-    assert remote in ("https://github.com/0xA2C3B1F4/t150-desk-control",
-                      "https://github.com/0xA2C3B1F4/t150-desk-control.git")
+    clone, commit = ROOT, None
+    if args.source_mode == "github":
+        clones = list((work / "data/external_components").glob("*/.git"))
+        assert len(clones) == 1, clones
+        clone = clones[0].parent
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=clone, text=True).strip()
+        assert commit == revision, f"Fetched {commit}, expected checkout {revision}"
+        remote = subprocess.check_output(["git", "remote", "get-url", "origin"], cwd=clone, text=True).strip()
+        assert remote in ("https://github.com/0xA2C3B1F4/t150-desk-control",
+                          "https://github.com/0xA2C3B1F4/t150-desk-control.git")
     checks = []
-    for source_dir, generated_dir, names in (
-        (clone / "lib/desk_protocol/include/desk_protocol", work / "build/src/desk_protocol",
-         sorted(p.name for p in (ROOT / "lib/desk_protocol/include/desk_protocol").glob("*.h"))),
-        (clone / "components/desk_uart", work / "build/src/esphome/components/desk_uart",
-         ["desk_uart.cpp", "desk_uart.h"]),
-    ):
-        for name in names:
-            original, generated = source_dir / name, generated_dir / name
-            checkout = ROOT / original.relative_to(clone)
-            assert checkout.read_bytes() == original.read_bytes() == generated.read_bytes(), name
-            checks.append({"file": str(original.relative_to(clone)),
-                           "sha256": hashlib.sha256(generated.read_bytes()).hexdigest()})
+    source_dir = clone / "components/desk_uart"
+    generated_dir = work / "build/src/esphome/components/desk_uart"
+    names = sorted(p.name for p in (ROOT / "components/desk_uart").iterdir()
+                   if p.suffix in (".h", ".cpp"))
+    for directory in (source_dir, generated_dir):
+        assert set(names) == {p.name for p in directory.iterdir() if p.suffix in (".h", ".cpp")}
+    for name in names:
+        original, generated = source_dir / name, generated_dir / name
+        checkout = ROOT / original.relative_to(clone)
+        assert checkout.read_bytes() == original.read_bytes() == generated.read_bytes(), name
+        checks.append({"file": str(original.relative_to(clone)),
+                       "sha256": hashlib.sha256(generated.read_bytes()).hexdigest()})
+    assert not (work / "build/src/desk_protocol").exists()
     device_name = re.search(r"^  device_name: (.+)$", text, re.MULTILINE).group(1)
     firmware = work / f"build/.pioenvs/{device_name}/firmware.ota.bin"
     assert firmware.is_file()
@@ -95,7 +104,9 @@ def main():
     for flag in ("USE_WEBSERVER_LOCAL", "USE_WEBSERVER_AUTH", f"USE_WEBSERVER_VERSION {web_version}"):
         assert f"#define {flag}\n" in defines, flag
     assert "#define USE_WEBSERVER_OTA" not in defines
-    summary = {"passed": True, "source": github_source, "checkout_commit": revision,
+    summary = {"passed": True, "source_mode": args.source_mode,
+               "source": github_source if args.source_mode == "github" else str(ROOT / "components"),
+               "checkout_commit": revision, "working_tree": args.source_mode == "local",
                "resolved_commit": commit, "example": source.name, "example_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
                "credentials": "dummy device values; Git authentication inherited without credential output",
                "matching_compiled_files": checks, "firmware_bytes": firmware.stat().st_size,

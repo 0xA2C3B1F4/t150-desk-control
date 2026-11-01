@@ -72,6 +72,12 @@ feature detection. UART simulations exercise cancellation, late or lost replies,
 reconnection and storage failures. Compiler checks cover optional lock and speed
 controls together and separately.
 
+Component-layout tests build an isolated copy of `components/`, including a
+host target, an ESP32 without a web server and the firmware updater. They check
+that optional web hooks are registered only for the supported configurations.
+Packaging tests compile each portable header independently and use the C++
+library through CMake, a PlatformIO archive and a local Git dependency.
+
 RS01 instruction tests cover calibration guards, lease expiry, interruption and
 explicit continuation during descent and rebound. R7 parser tests cover split
 frames, escaping, ring wrap, command dispatch and rejection of wrong-length kind

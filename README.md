@@ -39,7 +39,7 @@ You need a compatible controller, a Wi-Fi ESP32 and three UART wires. [Connect T
 4. Open `http://<device_name>.local/` or the ESP32's IP address. Sign in with `web_username` and `web_password`.
 5. For Home Assistant, add the **ESPHome** integration using the device address and API encryption key.
 
-The GitHub source downloads both the component and its portable headers. For use without Home Assistant, follow [standalone install](docs/esphome.md#standalone-install). For a cloned repository, follow [local build and install](docs/esphome.md#local-build-and-install). Both use ESPHome 2026.4.2. Copied YAML files need the [configuration paths](docs/esphome.md#configuration-paths) described there.
+The GitHub source includes the component and its portable headers. For use without Home Assistant, follow [standalone install](docs/esphome.md#standalone-install). For a cloned repository, follow [local build and install](docs/esphome.md#local-build-and-install). Both use ESPHome 2026.4.2. Copied YAML files need the [configuration paths](docs/esphome.md#configuration-paths) described there.
 
 ## Use and configuration
 
@@ -56,7 +56,12 @@ Firmware tools are separate optional builds:
 
 ## Use the C++ library elsewhere
 
-Add `lib/desk_protocol` from the checkout with CMake and link `desk_protocol`, or add `lib/desk_protocol/include` to your include path. The header-only C++11 library leaves transport, timing and storage to the caller. See the [protocol reference](docs/protocol.md) for parsing and transactions.
+Add `lib/desk_protocol` from the checkout with CMake and link `desk_protocol`, or
+add `lib/desk_protocol/include` to your include path. These compatibility headers
+refer to the single implementation in `components/desk_uart`. Keep both directories
+when using this interface. The header-only C++11 library leaves transport, timing
+and storage to the caller. See the [protocol reference](docs/protocol.md) for
+standalone use, packaging and transactions.
 
 ## Tests
 
@@ -76,8 +81,8 @@ See [testing](docs/validation.md#automated-tests) for ESPHome and patch tests.
 Paths relative to the repository root:
 
 ```text
-lib/desk_protocol/                portable header-only C++11 library
-components/desk_uart/             ESPHome adapter
+lib/desk_protocol/                CMake target and C++ compatibility headers
+components/desk_uart/             ESPHome adapter and portable protocol headers
 components/desk_firmware_export/  optional firmware reader
 components/desk_firmware_update/  optional patch and recovery interface
 examples/esphome/                 monitoring and control configurations
