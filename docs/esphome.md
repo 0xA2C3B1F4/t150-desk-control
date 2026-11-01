@@ -20,9 +20,14 @@ Generate an API encryption key with `openssl rand -base64 32` if needed.
 
 Local component paths resolve from the main YAML's directory. The examples'
 `../../components` points to the checkout's `components/`. If you move the YAML,
-change that path or use an absolute path. Keep `lib/desk_protocol` in the same
-checkout; copying only `components/` is insufficient. The GitHub source overrides
-the local entry and downloads both the component and its headers.
+change that path or use an absolute path. The `components/` directory contains
+all component sources, including the portable protocol headers. It can be copied
+without the rest of the repository. Existing `components: [desk_uart]` selections
+remain valid. The GitHub source overrides the local entry.
+
+Basic controls work without `web_server`. Confirmed panel-lock and motion-speed
+controls add a build hook only for the supported ESP32 local gzip web-v3 setup.
+Firmware reading and maintenance remain separate optional web components.
 
 `!include` paths resolve from the YAML containing the include. When copying
 optional packages, preserve their `packages/` subdirectory or adjust the includes.

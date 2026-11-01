@@ -1,7 +1,7 @@
 #pragma once
 #include "esphome/components/desk_firmware_export/desk_firmware_export.h"
 #include "esphome/core/preferences.h"
-#include "desk_protocol/firmware_install.h"
+#include "esphome/components/desk_uart/firmware_install.h"
 
 namespace esphome::desk_firmware_update {
 class FirmwareUpdate : public desk_firmware_export::FirmwareExport {

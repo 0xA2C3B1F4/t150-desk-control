@@ -1,8 +1,23 @@
 # Protocol library
 
-`lib/desk_protocol` (version 0.1.0) is a header-only C++11 library. Include the
-headers directly or use the CMake INTERFACE target. No heap allocation,
-exceptions, RTTI, I/O or platform clock is required by the library itself.
+The protocol library (version 0.1.0) is header-only C++11. Its implementation
+lives in `components/desk_uart` so ESPHome can distribute it with the adapter.
+The protocol headers do not depend on ESPHome. They require no heap allocation,
+exceptions, RTTI, I/O or platform clock.
+
+The existing `lib/desk_protocol` CMake INTERFACE target and
+`desk_protocol/*.h` includes remain available through forwarding headers.
+Keep the complete checkout when using those paths. For a standalone copy,
+copy the protocol headers named by the forwarding files together into one
+directory and include `protocol.h` or the other required headers directly.
+Each header resolves its dependencies from that same directory.
+
+PlatformIO packaging uses `library.json` at the repository root. Run
+`pio pkg pack .` there to include the forwarding headers and their targets;
+packing only `lib/desk_protocol` is no longer supported. The package is
+header-only and does not compile the ESPHome adapter. There is no CMake
+install rule; any future install rule must install the implementation
+headers as well as providing the public include paths.
 
 Contents:
 

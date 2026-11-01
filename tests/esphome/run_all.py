@@ -16,6 +16,8 @@ import time
 from desk_test_support import parse_args
 
 TESTS = [
+    "component_packaging",
+    "component_layout",
     "config_validation",
     "identity_integration",
     "github_example_build",

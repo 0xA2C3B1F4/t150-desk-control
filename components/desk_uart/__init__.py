@@ -1,5 +1,4 @@
-"""ESPHome transport/entities for the independent desk_protocol library."""
-from pathlib import Path
+"""ESPHome UART controls with bundled portable protocol headers."""
 import math
 import zlib
 
@@ -14,8 +13,7 @@ from esphome.const import (
     STATE_CLASS_MEASUREMENT,
     STATE_CLASS_TOTAL_INCREASING,
 )
-from esphome.core import CORE
-from esphome.core.config import add_includes
+from .web_support import configure_web_controls
 
 DEPENDENCIES = ["uart"]
 AUTO_LOAD = ["sensor", "binary_sensor", "button", "number", "select", "switch", "text_sensor"]
@@ -176,13 +174,6 @@ FINAL_VALIDATE_SCHEMA = uart.final_validate_device_schema(
 
 
 async def to_code(config):
-    # External-components clones retain the repository tree. Copy the canonical
-    # portable headers at code-generation time using ESPHome's includes helper.
-    # No second parser source is shipped inside this component.
-    headers = Path(__file__).resolve().parents[2] / "lib/desk_protocol/include/desk_protocol"
-    if not (headers / "protocol.h").is_file():
-        raise cv.Invalid("desk_uart needs the complete repository, including lib/desk_protocol")
-    CORE.add_job(add_includes, [str(headers)])
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
@@ -201,12 +192,7 @@ async def to_code(config):
             cg.add(getattr(var, "set_" + key)(await text_sensor.new_text_sensor(config[key])))
     if "stop_locked" in config:
         cg.add(var.set_stop_locked_sensor(await binary_sensor.new_binary_sensor(config["stop_locked"])))
-    if "child_lock" in config or "motion_speed" in config:
-        web = CORE.config.get("web_server", {})
-        if (CORE.is_esp32 and web.get("version") == 3 and web.get("local")
-                and web.get("compression", "gzip") == "gzip"):
-            from esphome.components import esp32
-            esp32.add_extra_script("pre", "desk_panel_lock_web.py", Path(__file__).with_name("web_panel_lock.py"))
+    configure_web_controls(config)
     if "child_lock" in config:
         child_lock = await switch.new_switch(config["child_lock"])
         cg.add(child_lock.set_parent(var))
