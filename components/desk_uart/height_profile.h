@@ -8,8 +8,8 @@ namespace desk_protocol {
 // This is not evidence of a connected controller's firmware or boot coefficients.
 struct HeightProfileIdentity {
   std::array<uint8_t, 48> bytes{};
-  bool operator==(const HeightProfileIdentity &other) const { return bytes == other.bytes; }
-  bool operator!=(const HeightProfileIdentity &other) const { return !(*this == other); }
+  bool operator==(const HeightProfileIdentity& other) const { return bytes == other.bytes; }
+  bool operator!=(const HeightProfileIdentity& other) const { return !(*this == other); }
 };
 
 struct MetricDisplay {
@@ -29,15 +29,25 @@ class HeightProfile {
     uint32_t lower_seed, upper_seed, display_offset;
     int32_t high_test_addend;
     uint32_t high_display;
-    Scalars(uint32_t lower, uint32_t upper, uint32_t offset,
-            int32_t high_addend, uint32_t high)
-        : lower_seed(lower), upper_seed(upper), display_offset(offset),
-          high_test_addend(high_addend), high_display(high) {}
+    Scalars(uint32_t lower, uint32_t upper, uint32_t offset, int32_t high_addend, uint32_t high)
+        : lower_seed(lower),
+          upper_seed(upper),
+          display_offset(offset),
+          high_test_addend(high_addend),
+          high_display(high) {}
   };
   enum class Error {
-    None, UnsupportedProfile, InvalidScalars, InvalidScale, BootScaleUnknown,
-    BootScaleChanged, RawBounds, ScaledCoordinateOverflow,
-    NonmonotonicMapping, HomingOutsideBounds, NoBiasInterval
+    None,
+    UnsupportedProfile,
+    InvalidScalars,
+    InvalidScale,
+    BootScaleUnknown,
+    BootScaleChanged,
+    RawBounds,
+    ScaledCoordinateOverflow,
+    NonmonotonicMapping,
+    HomingOutsideBounds,
+    NoBiasInterval
   };
   struct Assessment {
     bool extraction_supported{false};
@@ -59,8 +69,8 @@ class HeightProfile {
   }
   // Recognition is supplied by an independent extractor, not inferred from A/B.
   // Copies the values; subsequent edits of the caller's Scalars cannot alter it.
-  static HeightProfile research(const Scalars &values, uint16_t current_a,
-                                uint16_t current_b, bool extraction_supported) {
+  static HeightProfile research(const Scalars& values, uint16_t current_a, uint16_t current_b,
+                                bool extraction_supported) {
     return HeightProfile(values, current_a, current_b, extraction_supported, false);
   }
   HeightProfileIdentity identity() const {
@@ -75,13 +85,25 @@ class HeightProfile {
         result.bytes[offset++] = static_cast<uint8_t>(value >> shift);
     };
     // Bump these revisions whenever mapping or control semantics change.
-    u16(1); u16(builtin_ ? 1 : 0);
-    u32(values_.lower_seed); u32(values_.upper_seed); u32(values_.display_offset);
-    u32(static_cast<uint32_t>(values_.high_test_addend)); u32(values_.high_display);
-    u16(a_); u16(b_); u16(control_min_tenths()); u16(control_max_tenths());
-    u16(builtin_ ? 8 : 0); u16(builtin_ ? 740 : 0);
-    u16(builtin_ ? 6 : 0); u16(builtin_ ? 740 : 0);
-    u16(8); u16(7); u16(static_cast<uint16_t>(-6)); u16(1);
+    u16(1);
+    u16(builtin_ ? 1 : 0);
+    u32(values_.lower_seed);
+    u32(values_.upper_seed);
+    u32(values_.display_offset);
+    u32(static_cast<uint32_t>(values_.high_test_addend));
+    u32(values_.high_display);
+    u16(a_);
+    u16(b_);
+    u16(control_min_tenths());
+    u16(control_max_tenths());
+    u16(builtin_ ? 8 : 0);
+    u16(builtin_ ? 740 : 0);
+    u16(builtin_ ? 6 : 0);
+    u16(builtin_ ? 740 : 0);
+    u16(8);
+    u16(7);
+    u16(static_cast<uint16_t>(-6));
+    u16(1);
     return result;
   }
   uint16_t scale_a() const { return a_; }
@@ -97,11 +119,13 @@ class HeightProfile {
   // presets and target entities use before_rounding_tenths_cm for precision.
   MetricDisplay display(uint16_t q) const {
     MetricDisplay result;
-    if (!valid_scalars_()) return result;
+    if (!valid_scalars_())
+      return result;
     const uint32_t high_start = static_cast<uint32_t>(high_start_());
-    const uint32_t height = (q >= 4 && q <= 7) ? values_.display_offset + 5 :
-        (q >= high_start && q <= high_start + 2) ? values_.high_display :
-        static_cast<uint32_t>(q) + values_.display_offset;
+    const uint32_t height = (q >= 4 && q <= 7) ? values_.display_offset + 5
+                            : (q >= high_start && q <= high_start + 2)
+                                ? values_.high_display
+                                : static_cast<uint32_t>(q) + values_.display_offset;
     result.before_rounding_tenths_cm = height;
     result.decimal_places = height < 1000 ? 1 : 0;
     result.displayed_tenths_cm = height < 1000 ? height : (height / 10) * 10;
@@ -112,14 +136,15 @@ class HeightProfile {
   // Firmware rounds the multiply and divide separately to binary32. Integer
   // rational floor is not equivalent for arbitrary coefficients. Restrict this
   // helper to the positive, non-wrapping uint16 coordinate domain.
-  bool scaled_q(uint16_t raw, uint16_t &q) const {
-    static_assert(std::numeric_limits<float>::is_iec559 &&
-                  std::numeric_limits<float>::digits == 24,
+  bool scaled_q(uint16_t raw, uint16_t& q) const {
+    static_assert(std::numeric_limits<float>::is_iec559 && std::numeric_limits<float>::digits == 24,
                   "Height profiles require IEEE-754 binary32 float");
-    if (!a_ || !b_) return false;
+    if (!a_ || !b_)
+      return false;
     const volatile float product = static_cast<float>(raw) * static_cast<float>(a_);
     const volatile float quotient = product / static_cast<float>(b_);
-    if (!(quotient >= 0.0f && quotient < 65536.0f)) return false;
+    if (!(quotient >= 0.0f && quotient < 65536.0f))
+      return false;
     q = static_cast<uint16_t>(quotient);
     return true;
   }
@@ -127,17 +152,23 @@ class HeightProfile {
   // Preserve the existing selection policy, including requests 73.1/73.2 cm
   // whose chosen raw coordinates lie in the 73.0 cm display plateau. This is
   // deliberately separate from the exact mathematical inverse below.
-  bool target_raw(uint16_t tenths, uint16_t &raw) const {
-    if (!builtin_ || tenths < control_min_tenths() || tenths > control_max_tenths()) return false;
-    if (tenths == 730) { raw = 8; return true; }
+  bool target_raw(uint16_t tenths, uint16_t& raw) const {
+    if (!builtin_ || tenths < control_min_tenths() || tenths > control_max_tenths())
+      return false;
+    if (tenths == 730) {
+      raw = 8;
+      return true;
+    }
     const uint16_t q = static_cast<uint16_t>(tenths - values_.display_offset);
     raw = static_cast<uint16_t>((static_cast<uint32_t>(q) * b_ + a_ - 1) / a_);
     return raw >= 8 && raw <= 740;
   }
-  bool preset_height(uint16_t raw, uint16_t &tenths) const {
-    if (!builtin_ || raw < 8 || raw > 740) return false;
+  bool preset_height(uint16_t raw, uint16_t& tenths) const {
+    if (!builtin_ || raw < 8 || raw > 740)
+      return false;
     uint16_t q;
-    if (!scaled_q(raw, q)) return false;
+    if (!scaled_q(raw, q))
+      return false;
     tenths = static_cast<uint16_t>(display(q).before_rounding_tenths_cm);
     return tenths >= control_min_tenths() && tenths <= control_max_tenths();
   }
@@ -149,15 +180,22 @@ class HeightProfile {
   Assessment assess(uint16_t boot_a = 0, uint16_t boot_b = 0) const {
     Assessment result;
     result.extraction_supported = recognized_;
-    if (!recognized_) return failed_(result, Error::UnsupportedProfile);
-    if (!valid_scalars_()) return failed_(result, Error::InvalidScalars);
-    if (!a_ || !b_) return failed_(result, Error::InvalidScale);
-    if (!boot_a && !boot_b) return failed_(result, Error::BootScaleUnknown);
-    if (!boot_a || !boot_b) return failed_(result, Error::InvalidScale);
-    if (a_ != boot_a || b_ != boot_b) return failed_(result, Error::BootScaleChanged);
+    if (!recognized_)
+      return failed_(result, Error::UnsupportedProfile);
+    if (!valid_scalars_())
+      return failed_(result, Error::InvalidScalars);
+    if (!a_ || !b_)
+      return failed_(result, Error::InvalidScale);
+    if (!boot_a && !boot_b)
+      return failed_(result, Error::BootScaleUnknown);
+    if (!boot_a || !boot_b)
+      return failed_(result, Error::InvalidScale);
+    if (a_ != boot_a || b_ != boot_b)
+      return failed_(result, Error::BootScaleChanged);
     const uint64_t low = static_cast<uint64_t>(values_.lower_seed) * boot_b / boot_a;
     const uint64_t high = static_cast<uint64_t>(values_.upper_seed) * boot_b / boot_a;
-    if (low >= high || high > 65535) return failed_(result, Error::RawBounds);
+    if (low >= high || high > 65535)
+      return failed_(result, Error::RawBounds);
     result.raw_lower = static_cast<uint16_t>(low);
     result.raw_upper = static_cast<uint16_t>(high);
     uint32_t previous = 0;
@@ -170,8 +208,10 @@ class HeightProfile {
         return failed_(result, Error::NonmonotonicMapping);
       previous = height;
     }
-    if (low > 8 || high < 8) return failed_(result, Error::HomingOutsideBounds);
-    if (high < 7 || low + 6 > high - 7) return failed_(result, Error::NoBiasInterval);
+    if (low > 8 || high < 8)
+      return failed_(result, Error::HomingOutsideBounds);
+    if (high < 7 || low + 6 > high - 7)
+      return failed_(result, Error::NoBiasInterval);
     result.bias_lower = static_cast<uint16_t>(low + 6);
     result.bias_upper = static_cast<uint16_t>(high - 7);
     result.mapping_usable = true;
@@ -186,7 +226,8 @@ class HeightProfile {
     Candidates result;
     const Assessment checked = assess(boot_a, boot_b);
     result.error = checked.error;
-    if (!checked.mapping_usable) return result;
+    if (!checked.mapping_usable)
+      return result;
     for (uint32_t raw = checked.raw_lower; raw <= checked.raw_upper; ++raw) {
       uint16_t q;
       if (!scaled_q(static_cast<uint16_t>(raw), q)) {
@@ -194,8 +235,10 @@ class HeightProfile {
         result.count = 0;
         return result;
       }
-      if (display(q).before_rounding_tenths_cm != tenths) continue;
-      if (!result.count) result.first = static_cast<uint16_t>(raw);
+      if (display(q).before_rounding_tenths_cm != tenths)
+        continue;
+      if (!result.count)
+        result.first = static_cast<uint16_t>(raw);
       result.last = static_cast<uint16_t>(raw);
       ++result.count;
     }
@@ -207,12 +250,11 @@ class HeightProfile {
   // branch. Never subtract this correction from the value sent to the desk.
   static int32_t motion_target(uint16_t preset_raw, uint16_t current_raw) {
     const int32_t preset = preset_raw, current = current_raw;
-    return preset > current + 4 ? preset + 7 :
-           preset < current - 4 ? preset - 6 : preset;
+    return preset > current + 4 ? preset + 7 : preset < current - 4 ? preset - 6 : preset;
   }
 
  private:
-  HeightProfile(const Scalars &values, uint16_t a, uint16_t b, bool recognized, bool builtin)
+  HeightProfile(const Scalars& values, uint16_t a, uint16_t b, bool recognized, bool builtin)
       : values_(values), a_(a), b_(b), recognized_(recognized), builtin_(builtin) {}
   int64_t high_start_() const {
     return -static_cast<int64_t>(values_.high_test_addend) - values_.display_offset;
@@ -220,8 +262,8 @@ class HeightProfile {
   // Plausibility bounds shared with the scalar-variant extractor.
   bool valid_scalars_() const {
     return values_.lower_seed < values_.upper_seed && values_.upper_seed <= 10000 &&
-        values_.display_offset <= 5000 && high_start_() >= 0 && high_start_() <= 10000 &&
-        values_.high_display > 0 && values_.high_display <= 10000;
+           values_.display_offset <= 5000 && high_start_() >= 0 && high_start_() <= 10000 &&
+           values_.high_display > 0 && values_.high_display <= 10000;
   }
   static Assessment failed_(Assessment result, Error error) {
     result.error = error;

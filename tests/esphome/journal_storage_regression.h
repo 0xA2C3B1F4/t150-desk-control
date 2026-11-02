@@ -18,19 +18,23 @@
 #error "Journal storage regression requires the ESPHome host backend"
 #endif
 
-namespace esphome { namespace desk_uart { namespace journal_storage_regression {
+namespace esphome {
+namespace desk_uart {
+namespace journal_storage_regression {
 namespace fs = std::filesystem;
 
-inline void require(bool value, const char *message) {
+inline void require(bool value, const char* message) {
   if (!value) {
     ESP_LOGE("fixture", "Journal storage assertion failed: %s", message);
     std::abort();
   }
 }
-inline void passed(const char *name) { ESP_LOGI("fixture", "JOURNAL_STORAGE_CASE=%s", name); }
+inline void passed(const char* name) {
+  ESP_LOGI("fixture", "JOURNAL_STORAGE_CASE=%s", name);
+}
 
-inline void append_record(std::vector<uint8_t> &file, uint32_t key,
-                          const uint8_t *data, uint8_t length) {
+inline void append_record(std::vector<uint8_t>& file, uint32_t key, const uint8_t* data,
+                          uint8_t length) {
   // ESPHome host uses the machine's native uint32 key, then one byte of length.
   const size_t offset = file.size();
   file.resize(offset + sizeof(key));
@@ -38,14 +42,15 @@ inline void append_record(std::vector<uint8_t> &file, uint32_t key,
   file.push_back(length);
   file.insert(file.end(), data, data + length);
 }
-inline void write_file(const fs::path &path, const std::vector<uint8_t> &bytes) {
-  FILE *file = std::fopen(path.c_str(), "wb");
+inline void write_file(const fs::path& path, const std::vector<uint8_t>& bytes) {
+  FILE* file = std::fopen(path.c_str(), "wb");
   require(file != nullptr, "open owned fixture file");
-  const bool wrote = bytes.empty() || std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
+  const bool wrote =
+      bytes.empty() || std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
   const bool closed = std::fclose(file) == 0;
   require(wrote && closed, "write complete fixture file");
 }
-inline void remove_file(const fs::path &path) {
+inline void remove_file(const fs::path& path) {
   require(!fs::is_symlink(path), "fixture must not be a symlink");
   if (fs::exists(path)) {
     require(fs::is_regular_file(path) || (fs::is_directory(path) && fs::is_empty(path)),
@@ -55,8 +60,8 @@ inline void remove_file(const fs::path &path) {
 }
 
 inline void run() {
-  const char *test_home = std::getenv("DESK_TEST_PREFS_HOME");
-  const char *temporary = std::getenv("TMPDIR");
+  const char* test_home = std::getenv("DESK_TEST_PREFS_HOME");
+  const char* temporary = std::getenv("TMPDIR");
   require(test_home != nullptr && temporary != nullptr, "explicit scratch environment required");
   const auto root = fs::weakly_canonical(test_home);
   const auto tmp = fs::canonical(temporary);
@@ -66,7 +71,8 @@ inline void run() {
   const auto path = root / ".esphome" / "prefs" / (std::string(App.get_name().c_str()) + ".prefs");
   fs::create_directories(path.parent_path());
   remove_file(path);
-  require(global_preferences != nullptr && global_preferences->reset(), "reset this process's host map");
+  require(global_preferences != nullptr && global_preferences->reset(),
+          "reset this process's host map");
 
   constexpr uint32_t key = 0x4A4E4C34U, other = 0x4A4E4C35U;
   std::array<uint8_t, 64> first{}, second{}, read{};
@@ -91,7 +97,8 @@ inline void run() {
   write_file(path, bytes);
   require(read_journal_storage(key, read.data(), read.size()) == JournalLoad::Invalid,
           "present wrong length is Invalid, not Missing");
-  require(!write_journal_storage(key, second.data(), second.size()), "wrong length is not overwritten");
+  require(!write_journal_storage(key, second.data(), second.size()),
+          "wrong length is not overwritten");
   require(fs::file_size(path) == bytes.size(), "invalid file is preserved");
   passed("wrong_size");
 
@@ -142,13 +149,16 @@ inline void run() {
   require(read_journal_storage(key, read.data(), read.size()) == JournalLoad::Missing,
           "pending RAM bytes cannot impersonate persisted data");
   require(write_journal_storage(key, second.data(), second.size()), "commit and verify round trip");
-  require(read_journal_storage(key, read.data(), read.size()) == JournalLoad::Found && read == second,
-          "fresh persisted bytes match committed data");
-  require(global_preferences->save(key, first.data(), first.size()), "replace only the RAM map again");
+  require(
+      read_journal_storage(key, read.data(), read.size()) == JournalLoad::Found && read == second,
+      "fresh persisted bytes match committed data");
+  require(global_preferences->save(key, first.data(), first.size()),
+          "replace only the RAM map again");
   require(global_preferences->load(key, read.data(), read.size()) && read == first,
           "RAM cache contains different bytes");
-  require(read_journal_storage(key, read.data(), read.size()) == JournalLoad::Found && read == second,
-          "persisted read bypasses a newer RAM value");
+  require(
+      read_journal_storage(key, read.data(), read.size()) == JournalLoad::Found && read == second,
+      "persisted read bypasses a newer RAM value");
   passed("persisted_not_cached");
 
   // Verify the host backend reports an actual fopen failure after its map has
@@ -169,17 +179,20 @@ inline void run() {
   require(global_preferences->reset(), "clear host RAM before short-write test");
   struct rlimit original{};
   require(getrlimit(RLIMIT_FSIZE, &original) == 0, "read process file-size limit");
-  require(original.rlim_max == RLIM_INFINITY || original.rlim_max >= 1, "one-byte file limit supported");
+  require(original.rlim_max == RLIM_INFINITY || original.rlim_max >= 1,
+          "one-byte file limit supported");
   const auto previous_signal = std::signal(SIGXFSZ, SIG_IGN);
   require(previous_signal != SIG_ERR, "ignore file-limit signal in this process");
   auto limited = original;
   limited.rlim_cur = 1;
   const bool limit_set = setrlimit(RLIMIT_FSIZE, &limited) == 0;
   bool accepted = false;
-  if (limit_set) accepted = write_journal_storage(key, second.data(), second.size());
+  if (limit_set)
+    accepted = write_journal_storage(key, second.data(), second.size());
   const bool limit_restored = setrlimit(RLIMIT_FSIZE, &original) == 0;
   const bool signal_restored = std::signal(SIGXFSZ, previous_signal) != SIG_ERR;
-  require(limit_set && limit_restored && signal_restored, "restore process limits and signal handler");
+  require(limit_set && limit_restored && signal_restored,
+          "restore process limits and signal handler");
   require(!accepted, "post-sync disk verification rejects a short write despite successful sync");
   require(fs::file_size(path) == 1, "actual host file was truncated by the injected write failure");
   require(global_preferences->load(key, read.data(), read.size()) && read == second,
@@ -190,13 +203,17 @@ inline void run() {
 
   remove_file(path);
   require(global_preferences->reset(), "clear fault fixture RAM");
-  require(write_journal_storage(key, first.data(), first.size()), "normal round trip after fault fixtures");
-  require(read_journal_storage(key, read.data(), read.size()) == JournalLoad::Found && read == first,
-          "normal persisted bytes after fault fixtures");
+  require(write_journal_storage(key, first.data(), first.size()),
+          "normal round trip after fault fixtures");
+  require(
+      read_journal_storage(key, read.data(), read.size()) == JournalLoad::Found && read == first,
+      "normal persisted bytes after fault fixtures");
   require(global_preferences->reset(), "clear owned host cache after tests");
   remove_file(path);
   passed("round_trip");
   ESP_LOGI("fixture", "JOURNAL_STORAGE_ALL=passed");
 }
 
-}}}  // namespace esphome::desk_uart::journal_storage_regression
+}  // namespace journal_storage_regression
+}  // namespace desk_uart
+}  // namespace esphome

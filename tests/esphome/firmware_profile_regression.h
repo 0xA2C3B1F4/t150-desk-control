@@ -12,19 +12,20 @@ namespace fp = desk_protocol::firmware_profile;
 using esphome::desk_firmware_export::identify_firmware_profile;
 using Scalars = desk_protocol::HeightProfile::Scalars;
 
-inline void require(bool ok, const char *message) {
+inline void require(bool ok, const char* message) {
   if (!ok) {
     ESP_LOGE("profile_test", "%s", message);
     std::exit(1);
   }
 }
 
-inline void word(std::vector<uint8_t> &image, size_t offset, uint32_t value) {
-  for (unsigned i = 0; i < 4; ++i) image[offset + i] = static_cast<uint8_t>(value >> (8 * i));
+inline void word(std::vector<uint8_t>& image, size_t offset, uint32_t value) {
+  for (unsigned i = 0; i < 4; ++i)
+    image[offset + i] = static_cast<uint8_t>(value >> (8 * i));
 }
 
 // Explicit layout oracle; do not obtain these offsets from the implementation.
-inline void set_scalars(std::vector<uint8_t> &image, const Scalars &value) {
+inline void set_scalars(std::vector<uint8_t>& image, const Scalars& value) {
   word(image, 0x17B4, value.display_offset);
   word(image, 0x17B8, static_cast<uint32_t>(value.high_test_addend));
   word(image, 0x17BC, value.high_display);
@@ -32,7 +33,7 @@ inline void set_scalars(std::vector<uint8_t> &image, const Scalars &value) {
   word(image, 0x5FD8, value.lower_seed);
 }
 
-inline void no_control(const fp::Result &result) {
+inline void no_control(const fp::Result& result) {
   const auto profile = result.research_profile(24, 39);
   require(!profile.control_approved(), "Image recognition granted control approval");
   uint16_t target = 0;
@@ -41,19 +42,23 @@ inline void no_control(const fp::Result &result) {
     const auto assessed = profile.assess();
     require(assessed.error == desk_protocol::HeightProfile::Error::BootScaleUnknown,
             "Image recognition inferred boot coefficients");
-    require(!assessed.mapping_usable && !assessed.control_approved, "Missing boot evidence approved mapping");
+    require(!assessed.mapping_usable && !assessed.control_approved,
+            "Missing boot evidence approved mapping");
   }
 }
 
-inline void check(const std::vector<uint8_t> &image, fp::Status status, const Scalars *expected = nullptr) {
+inline void check(const std::vector<uint8_t>& image, fp::Status status,
+                  const Scalars* expected = nullptr) {
   const auto result = identify_firmware_profile(image.data(), image.size());
   require(result.status == status, "Unexpected image recognition status");
   no_control(result);
   if (expected) {
-    const auto &actual = result.scalars;
+    const auto& actual = result.scalars;
     require(result.extracted() && actual.lower_seed == expected->lower_seed &&
-            actual.upper_seed == expected->upper_seed && actual.display_offset == expected->display_offset &&
-            actual.high_test_addend == expected->high_test_addend && actual.high_display == expected->high_display,
+                actual.upper_seed == expected->upper_seed &&
+                actual.display_offset == expected->display_offset &&
+                actual.high_test_addend == expected->high_test_addend &&
+                actual.high_display == expected->high_display,
             "Extracted fields differ from independently specified values");
   } else {
     require(!result.extracted(), "Rejected image exposed a usable profile");
@@ -62,10 +67,12 @@ inline void check(const std::vector<uint8_t> &image, fp::Status status, const Sc
 
 inline void synthetic() {
   std::vector<uint8_t> image(fp::APPLICATION_SIZE);
-  for (size_t i = 0; i < image.size(); ++i) image[i] = static_cast<uint8_t>(i * 37 + 11);
+  for (size_t i = 0; i < image.size(); ++i)
+    image[i] = static_cast<uint8_t>(i * 37 + 11);
   // The digest is checked independently with Python hashlib after the host exits.
   uint8_t normalized[32]{};
-  require(esphome::desk_firmware_export::normalized_firmware_sha256(image.data(), image.size(), normalized),
+  require(esphome::desk_firmware_export::normalized_firmware_sha256(image.data(), image.size(),
+                                                                    normalized),
           "Production normalization failed");
   char hex[65]{};
   esphome::format_hex_to(hex, sizeof(hex), normalized, sizeof(normalized));
@@ -82,39 +89,33 @@ inline void synthetic() {
   ESP_LOGI("profile_test", "PROFILE_SYNTHETIC=passed");
 }
 
-inline void private_fixture(const char *path) {
+inline void private_fixture(const char* path) {
   std::ifstream stream(path, std::ios::binary);
   require(stream.good(), "Cannot open optional local firmware fixture");
   std::vector<uint8_t> original(fp::APPLICATION_SIZE);
-  stream.read(reinterpret_cast<char *>(original.data()), original.size());
+  stream.read(reinterpret_cast<char*>(original.data()), original.size());
   require(stream.gcount() == static_cast<std::streamsize>(original.size()) &&
               stream.peek() == std::char_traits<char>::eof(),
           "Optional fixture size differs from known application");
   const Scalars known(4, 460, 725, -1182, 1188);
   check(original, fp::Status::Known, &known);
   const Scalars variants[] = {
-      Scalars(5, 460, 725, -1182, 1188),
-      Scalars(4, 620, 725, -1182, 1188),
-      Scalars(4, 460, 625, -1182, 1188),
-      Scalars(4, 460, 725, -1242, 1188),
-      Scalars(4, 460, 725, -1182, 1248),
-      Scalars(5, 620, 625, -1242, 1248),
+      Scalars(5, 460, 725, -1182, 1188), Scalars(4, 620, 725, -1182, 1188),
+      Scalars(4, 460, 625, -1182, 1188), Scalars(4, 460, 725, -1242, 1188),
+      Scalars(4, 460, 725, -1182, 1248), Scalars(5, 620, 625, -1242, 1248),
   };
-  for (const auto &value : variants) {
+  for (const auto& value : variants) {
     auto image = original;
     set_scalars(image, value);
     check(image, fp::Status::ScalarVariant, &value);
   }
   const Scalars invalid[] = {
-      Scalars(460, 460, 725, -1182, 1188),
-      Scalars(4, 10001, 725, -1182, 1188),
-      Scalars(4, 460, 5001, -1182, 1188),
-      Scalars(4, 460, 725, 0, 1188),
-      Scalars(4, 460, 725, INT32_MIN, 1188),
-      Scalars(4, 460, 725, -1182, 0),
+      Scalars(460, 460, 725, -1182, 1188),   Scalars(4, 10001, 725, -1182, 1188),
+      Scalars(4, 460, 5001, -1182, 1188),    Scalars(4, 460, 725, 0, 1188),
+      Scalars(4, 460, 725, INT32_MIN, 1188), Scalars(4, 460, 725, -1182, 0),
       Scalars(4, 460, 725, -1182, 10001),
   };
-  for (const auto &value : invalid) {
+  for (const auto& value : invalid) {
     auto image = original;
     set_scalars(image, value);
     check(image, fp::Status::InvalidScalars);
@@ -140,7 +141,8 @@ inline void private_fixture(const char *path) {
 
 inline void run() {
   synthetic();
-  const char *fixture = std::getenv("T150_PROFILE_TEST_FIRMWARE");
-  if (fixture && *fixture) private_fixture(fixture);
+  const char* fixture = std::getenv("T150_PROFILE_TEST_FIRMWARE");
+  if (fixture && *fixture)
+    private_fixture(fixture);
 }
 }  // namespace firmware_profile_test

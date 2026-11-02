@@ -29,7 +29,8 @@ class UARTObservation {
   void tick(uint32_t now) {
     state_.ms += static_cast<uint32_t>(now - previous_tick_);
     previous_tick_ = now;
-    if (!state_.seen) return;
+    if (!state_.seen)
+      return;
     const uint64_t elapsed = state_.ms - last_sample_;
     const uint32_t maximum = std::numeric_limits<uint32_t>::max();
     state_.age = elapsed > maximum ? maximum : static_cast<uint32_t>(elapsed);
@@ -42,7 +43,8 @@ class UARTObservation {
   // The caller has already accepted a new valid height frame and sequence.
   void observe_height(uint32_t now, uint16_t q, uint16_t sequence) {
     tick(now);  // Count a gap even when it ends before another loop iteration.
-    if (state_.seen && state_.q != q) ++state_.changes;
+    if (state_.seen && state_.q != q)
+      ++state_.changes;
     state_.seen = true;
     state_.q = q;
     state_.sequence = sequence;
@@ -56,7 +58,7 @@ class UARTObservation {
   void transmitted() { ++state_.tx; }
   // Firmware export owns UART directly, outside the normal frame sender.
   void handoff() { ++state_.handoffs; }
-  const Snapshot &snapshot() const { return state_; }
+  const Snapshot& snapshot() const { return state_; }
 
  private:
   Snapshot state_{};

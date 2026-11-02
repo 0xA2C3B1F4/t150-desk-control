@@ -5,6 +5,7 @@ import hashlib
 import os
 from pathlib import Path
 import platform
+import re
 import subprocess
 import tarfile
 import urllib.request
@@ -15,12 +16,21 @@ URL = "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.0/" +
 SHA256 = "18da30f77f475688a18f7704d23f9f155ae007ed9922dbed6850a9419d9fec8c"
 
 
+def verify_clang_format(binary):
+    """Require the exact pinned formatter version and return its version banner."""
+    info = subprocess.check_output([str(binary), "--version"], text=True, timeout=10)
+    match = re.search(r"\bclang-format version (\S+)", info)
+    if match is None or match.group(1) != VERSION:
+        raise ValueError(f"clang-format {VERSION} required; got {info.strip()!r}")
+    return info
+
+
 def main():
     """Download hash-verified LLVM into TMPDIR and append its bin path to GITHUB_PATH.
 
     Require Linux x86_64 and extract bin/, lib/clang/ and shared-library entries.
-    Require exactly one extracted clang and a version banner containing the
-    expected version string.
+    Require exactly one extracted clang and its expected compiler version, plus
+    a clang-format binary reporting the exact pinned version.
     """
     if platform.system() != "Linux" or platform.machine() != "x86_64":
         raise SystemExit("This installer is for the standard x86_64 Linux CI runner")
@@ -61,6 +71,14 @@ def main():
     if "clang version " + VERSION not in info:
         raise SystemExit("Unexpected LLVM compiler version")
     print(info, end="")
+    formatter = binary.with_name("clang-format")
+    if not formatter.is_file():
+        raise SystemExit("LLVM archive is missing clang-format")
+    try:
+        formatter_info = verify_clang_format(formatter)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        raise SystemExit(str(error)) from error
+    print(formatter_info, end="")
     with open(os.environ["GITHUB_PATH"], "a") as out:
         out.write(str(binary.parent) + "\n")
 
