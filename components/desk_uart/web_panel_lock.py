@@ -4,13 +4,14 @@ Only builds opting into child_lock or motion_speed use this hook. No installed E
 are changed. Unknown upstream formats fail the build rather than silently
 shipping misleading controls. Explicit on/off commands remain available.
 """
+
 import gzip
 import re
 
 MARKER = "<!-- desk-confirmed-switch-v1 -->"
 SPEED_MARKER = "<!-- desk-confirmed-speed-v1 -->"
-OLD_SELECT = 'render_select(){if(this.entity)return this._select(this.entity,`set`,`option`,this.entity.option||[],this.entity.value)}'
-SELECT = '''render_select(){
+OLD_SELECT = "render_select(){if(this.entity)return this._select(this.entity,`set`,`option`,this.entity.option||[],this.entity.value)}"
+SELECT = """render_select(){
   if(!this.entity)return;
   if(!this.entity.desk_motion_speed)return this._select(this.entity,"set","option",this.entity.option||[],this.entity.value);
   const entity=this.entity,actioner=this.actioner;
@@ -26,9 +27,9 @@ SELECT = '''render_select(){
     <option value="Normal" ?selected="${entity.value==='Normal'}">Normal</option>
     <option value="Slow" ?selected="${entity.value==='Slow'}">Slow</option>
   </select>`;
-}'''
-OLD_RENDER = 'render_switch(){if(this.entity)return this.entity.assumed_state?D`${this._actionButton(this.entity,`❌`,`turn_off`)} ${this._actionButton(this.entity,`✔️`,`turn_on`)}`:this._switch(this.entity)}'
-RENDER = '''render_switch(){
+}"""
+OLD_RENDER = "render_switch(){if(this.entity)return this.entity.assumed_state?D`${this._actionButton(this.entity,`❌`,`turn_off`)} ${this._actionButton(this.entity,`✔️`,`turn_on`)}`:this._switch(this.entity)}"
+RENDER = """render_switch(){
   if(!this.entity)return;
   if(!this.entity.desk_panel_lock)return this.entity.assumed_state?D`${this._actionButton(this.entity,"\\u274C","turn_off")} ${this._actionButton(this.entity,"\\u2714\\uFE0F","turn_on")}`:this._switch(this.entity);
   // The table reuses one renderer for every row; bind this row's entity now.
@@ -44,10 +45,10 @@ RENDER = '''render_switch(){
       style="color:${on?'#4caf50':'#9e9e9e'};font:inherit;font-size:1.4em;background:none;border:0;cursor:pointer"
       @click="${()=>send('turn_on')}">✓</button>
   </div>`;
-}'''
+}"""
 # Reuse the existing SSE connection, including its authenticated transport.
 # Clear confirmed colors on disconnect; only a new server event restores them.
-DISCONNECT = '''<!-- desk-confirmed-switch-v1 -->
+DISCONNECT = """<!-- desk-confirmed-switch-v1 -->
 <script type="module">
 await customElements.whenDefined('esp-app');
 const app=document.querySelector('esp-app');
@@ -62,9 +63,11 @@ window.source?.addEventListener('error',()=>{
   table.requestUpdate();
 });
 </script>
-'''
+"""
 OLD_JSON = 'set_json_icon_state_value(root, obj, "switch", value ? "ON" : "OFF", value, start_config);'
-NEW_JSON = OLD_JSON + '''
+NEW_JSON = (
+    OLD_JSON
+    + """
   // desk-confirmed-switch-v1: ordinary ESPHome switches do not maintain has_state().
   if (desk_uart::ChildLockSwitch::is_instance(obj)) {
     root[ESPHOME_F("desk_panel_lock")] = true;
@@ -72,49 +75,60 @@ NEW_JSON = OLD_JSON + '''
       root[ESPHOME_F("state")] = "UNKNOWN";
       root[ESPHOME_F("value")] = nullptr;
     }
-  }'''
+  }"""
+)
 INCLUDE = '#include "esphome/components/desk_uart/desk_uart.h"\n'
 OLD_SELECT_JSON = 'set_json_icon_state_value(root, obj, "select", value.c_str(), value.c_str(), start_config);'
-NEW_SELECT_JSON = OLD_SELECT_JSON + '''
+NEW_SELECT_JSON = (
+    OLD_SELECT_JSON
+    + """
   if (desk_uart::MotionSpeedSelect::is_instance(obj)) {
     root[ESPHOME_F("desk_motion_speed")] = true;
     if (!obj->has_state()) {
       root[ESPHOME_F("state")] = "UNKNOWN";
       root[ESPHOME_F("value")] = nullptr;
     }
-  }'''
+  }"""
+)
 
 
 def replace_once(text, old, new):
     if text.count(old) != 1:
-        raise ValueError("Unsupported ESPHome web asset; expected exactly one confirmed-switch anchor")
+        raise ValueError(
+            "Unsupported ESPHome web asset; expected exactly one confirmed-switch anchor"
+        )
     return text.replace(old, new, 1)
 
 
 def decorate_header(source):
-    pattern = r'(#ifdef USE_WEBSERVER_GZIP\s+constexpr uint8_t INDEX_GZ\[\] PROGMEM = \{)([^}]+)(\};)'
+    pattern = r"(#ifdef USE_WEBSERVER_GZIP\s+constexpr uint8_t INDEX_GZ\[\] PROGMEM = \{)([^}]+)(\};)"
     matches = list(re.finditer(pattern, source))
     if len(matches) != 1:
         raise ValueError("Unsupported ESPHome gzip header")
     m = matches[0]
-    if re.sub(r'0x[0-9a-fA-F]{2}|[,\s]', '', m[2]):
+    if re.sub(r"0x[0-9a-fA-F]{2}|[,\s]", "", m[2]):
         raise ValueError("Unsupported ESPHome index bytes")
-    html = gzip.decompress(bytes(int(x, 16) for x in re.findall(r'0x([0-9a-fA-F]{2})', m[2]))).decode()
+    html = gzip.decompress(
+        bytes(int(x, 16) for x in re.findall(r"0x([0-9a-fA-F]{2})", m[2]))
+    ).decode()
     if MARKER in html:
         if RENDER not in html or DISCONNECT not in html:
             raise ValueError("Inconsistent confirmed-switch decoration")
     else:
         html = replace_once(html, OLD_RENDER, RENDER)
-        html = replace_once(html, '</body>', DISCONNECT + '</body>')
+        html = replace_once(html, "</body>", DISCONNECT + "</body>")
     if SPEED_MARKER in html:
         if SELECT not in html:
             raise ValueError("Inconsistent confirmed-speed decoration")
     else:
         html = replace_once(html, OLD_SELECT, SELECT)
-        html = replace_once(html, '</body>', SPEED_MARKER + '</body>')
+        html = replace_once(html, "</body>", SPEED_MARKER + "</body>")
     data = gzip.compress(html.encode(), compresslevel=9, mtime=0)
-    lines = ['    ' + ', '.join(f'0x{x:02x}' for x in data[i:i+16]) + ',' for i in range(0, len(data), 16)]
-    return source[:m.start(2)] + '\n' + '\n'.join(lines) + '\n' + source[m.end(2):]
+    lines = [
+        "    " + ", ".join(f"0x{x:02x}" for x in data[i : i + 16]) + ","
+        for i in range(0, len(data), 16)
+    ]
+    return source[: m.start(2)] + "\n" + "\n".join(lines) + "\n" + source[m.end(2) :]
 
 
 def decorate_server(source):

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Compare informational catalog metadata with compiled admission code."""
+
 import argparse
 import json
 import os
@@ -21,16 +22,35 @@ def production_probe(work):
         link.parent.mkdir(parents=True, exist_ok=True)
         link.symlink_to(ROOT / "components" / name, target_is_directory=True)
     flags = ["-std=c++17", "-DUSE_HOST", "-pthread", "-Wall", "-Wextra", "-Werror"]
-    for path in [ROOT / "tests/esphome/firmware_update_host/include",
-                 ROOT / "tests/esphome/firmware_export_host/include", work / "include",
-                 ROOT / "components/desk_firmware_update", package.parent]:
+    for path in [
+        ROOT / "tests/esphome/firmware_update_host/include",
+        ROOT / "tests/esphome/firmware_export_host/include",
+        work / "include",
+        ROOT / "components/desk_firmware_update",
+        package.parent,
+    ]:
         flags.append("-I" + str(path))
-    openssl = shlex.split(subprocess.check_output(["pkg-config", "--cflags", "--libs", "openssl"], text=True))
-    sources = [ROOT / "components/desk_firmware_export/desk_firmware_export.cpp",
-               package / "components/sha256/sha256.cpp",
-               ROOT / "tests/esphome/firmware_update_host/catalog_probe.cpp"]
-    subprocess.run([os.environ.get("CXX", "c++"), *flags, *map(str, sources), *openssl,
-                    "-o", str(work / "probe")], check=True)
+    openssl = shlex.split(
+        subprocess.check_output(
+            ["pkg-config", "--cflags", "--libs", "openssl"], text=True
+        )
+    )
+    sources = [
+        ROOT / "components/desk_firmware_export/desk_firmware_export.cpp",
+        package / "components/sha256/sha256.cpp",
+        ROOT / "tests/esphome/firmware_update_host/catalog_probe.cpp",
+    ]
+    subprocess.run(
+        [
+            os.environ.get("CXX", "c++"),
+            *flags,
+            *map(str, sources),
+            *openssl,
+            "-o",
+            str(work / "probe"),
+        ],
+        check=True,
+    )
     return json.loads(subprocess.check_output([str(work / "probe")], text=True))
 
 
@@ -40,38 +60,53 @@ def validate(catalog, probe):
     images = catalog["images"]
     if len({x["id"] for x in images}) != len(images):
         raise ValueError("Duplicate firmware ID")
-    if {x["id"]:x["sha256"] for x in images} != probe["images"]:
+    if {x["id"]: x["sha256"] for x in images} != probe["images"]:
         raise ValueError("Firmware identities differ from production constants")
     for image in images:
-        if (image["application_size"] != probe["application_size"]
-                or image["application_offset"] != 0x2800 or image["flash_size"] != 65536):
+        if (
+            image["application_size"] != probe["application_size"]
+            or image["application_offset"] != 0x2800
+            or image["flash_size"] != 65536
+        ):
             raise ValueError("Firmware region differs from the supported layout")
     pairs = [tuple(x) for x in catalog["install"]]
-    if len(set(pairs)) != len(pairs) or set(pairs) != {tuple(x) for x in probe["install"]}:
+    if len(set(pairs)) != len(pairs) or set(pairs) != {
+        tuple(x) for x in probe["install"]
+    }:
         raise ValueError("Install pairs differ from production admission")
     # Exact builder source/output pins, not catalog-to-schema self-consistency.
     import build_child_lock_patch as cl
     import build_reset_speed_patch as rs
-    if (cl.SOURCE_APP_SHA256 != probe["images"]["dt02"]
-            or cl.OUTPUT_APP_SHA256 != probe["images"]["cl01"]
-            or rs.SOURCE_APP_SHA256 != cl.OUTPUT_APP_SHA256
-            or rs.OUTPUT_APP_SHA256 != probe["images"]["rs01-r7"]):
+
+    if (
+        cl.SOURCE_APP_SHA256 != probe["images"]["dt02"]
+        or cl.OUTPUT_APP_SHA256 != probe["images"]["cl01"]
+        or rs.SOURCE_APP_SHA256 != cl.OUTPUT_APP_SHA256
+        or rs.OUTPUT_APP_SHA256 != probe["images"]["rs01-r7"]
+    ):
         raise ValueError("Patch builder chain differs")
     if catalog["prepare"] != probe["prepare"]:
         raise ValueError("Preparation sources differ from supported cumulative patches")
-    if catalog["recovery"] != {"target":"stock", "documentation":"docs/firmware-update.md"}:
+    if catalog["recovery"] != {
+        "target": "stock",
+        "documentation": "docs/firmware-update.md",
+    }:
         raise ValueError("Recovery is restricted to the guarded original-image path")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--catalog", type=Path, default=ROOT / "metadata/firmware-catalog.json")
+    parser.add_argument(
+        "--catalog", type=Path, default=ROOT / "metadata/firmware-catalog.json"
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"], prefix="desk-catalog-") as temp:
+    with tempfile.TemporaryDirectory(
+        dir=os.environ["TMPDIR"], prefix="desk-catalog-"
+    ) as temp:
         probe = production_probe(Path(temp))
         validate(json.loads(args.catalog.read_text()), probe)
-    result = {"passed":True, "production":probe}
+    result = {"passed": True, "production": probe}
     if args.output:
         args.output.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result))

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build copied components and check diagnostics without extra UART commands."""
+
 import json
 import os
-from pathlib import Path
 import select
 import shutil
 import subprocess
@@ -16,12 +16,14 @@ def main():
     components = work / "copy/components"
     shutil.copytree(ROOT / "components", components)
     # A foreign config repository contains only copied components, no project manifest.
-    subprocess.run(["git", "init", str(components.parent)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "init", str(components.parent)], check=True, capture_output=True
+    )
     env = test_env(work)
     master, slave = open_pty()
     try:
         cfg = work / "host.yaml"
-        cfg.write_text(f'''esphome:
+        cfg.write_text(f"""esphome:
   name: source-metadata-test
   build_path: {work}/build
   project:
@@ -55,26 +57,46 @@ desk_uart:
   source_revision:
     id: revision
     name: Source revision
-''')
+""")
         with (work / "build.log").open("w") as log:
             build_host(cfg, work, env, log, uart_port=os.ttyname(slave))
         defines = (work / "build/src/esphome/core/defines.h").read_text()
         assert '"owner.existing_device"' in defines and '"9.0"' in defines
         with (work / "runtime.log").open("w") as log:
-            subprocess.run([str(work / "build/.pioenvs/source-metadata-test/program")],
-                           env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=20)
+            subprocess.run(
+                [str(work / "build/.pioenvs/source-metadata-test/program")],
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                check=True,
+                timeout=20,
+            )
         wire = bytearray()
         while select.select([master], [], [], 0)[0]:
-            wire.extend(os.read(master,65536))
+            wire.extend(os.read(master, 65536))
         # Existing setup sends its telemetry subscription; diagnostics add no write.
         commands = list(frames(wire))
-        assert commands == [bytes.fromhex("13020001f40000")], [c.hex() for c in commands]
+        assert commands == [bytes.fromhex("13020001f40000")], [
+            c.hex() for c in commands
+        ]
         assert "source metadata passed" in (work / "runtime.log").read_text()
-        (work / "summary.json").write_text(json.dumps({"passed":True,"version":"2026.11.0",
-            "revision":"unknown (unknown)","foreign_project_preserved":True,
-            "uart_commands":[c.hex() for c in commands],"hardware_access":False},indent=2)+'\n')
+        (work / "summary.json").write_text(
+            json.dumps(
+                {
+                    "passed": True,
+                    "version": "2026.11.0",
+                    "revision": "unknown (unknown)",
+                    "foreign_project_preserved": True,
+                    "uart_commands": [c.hex() for c in commands],
+                    "hardware_access": False,
+                },
+                indent=2,
+            )
+            + "\n"
+        )
     finally:
-        os.close(master);os.close(slave)
+        os.close(master)
+        os.close(slave)
 
 
 if __name__ == "__main__":

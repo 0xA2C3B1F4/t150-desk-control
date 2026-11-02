@@ -11,7 +11,15 @@ import select
 import subprocess
 import time
 
-from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
+from desk_test_support import (
+    ROOT,
+    build_host,
+    encode,
+    frames,
+    open_pty,
+    parse_args,
+    test_env,
+)
 
 
 def main():
@@ -74,7 +82,9 @@ desk_uart:
         sequence, processed = 0, 0
         next_height = 0.3
         with (work / "runtime.log").open("w") as log:
-            proc = subprocess.Popen([str(program)], cwd=work, env=env, stdout=log, stderr=subprocess.STDOUT)
+            proc = subprocess.Popen(
+                [str(program)], cwd=work, env=env, stdout=log, stderr=subprocess.STDOUT
+            )
             start = time.monotonic()
             while time.monotonic() - start < 9:
                 elapsed = time.monotonic() - start
@@ -96,14 +106,24 @@ desk_uart:
                         events.append({"seconds": elapsed, "body_hex": frame.hex(" ")})
                         # Omit the second release ACK to exercise the fault latch.
                         if frame == bytes([0x17, 8, 0]):
-                            os.write(master, encode(bytes([0x18, 8, 0, 0]) + sequence.to_bytes(2, "big")))
+                            os.write(
+                                master,
+                                encode(
+                                    bytes([0x18, 8, 0, 0]) + sequence.to_bytes(2, "big")
+                                ),
+                            )
                             sequence += 1
                     processed = len(all_frames)
             proc.terminate()
             proc.wait(timeout=5)
         sent = list(frames(outgoing))
         motion = [f for f in sent if f[0] == 0x17]
-        assert motion == [bytes([0x17, 8, 1]), bytes([0x17, 8, 0]), bytes([0x17, 6, 1]), bytes([0x17, 6, 0])], motion
+        assert motion == [
+            bytes([0x17, 8, 1]),
+            bytes([0x17, 8, 0]),
+            bytes([0x17, 6, 1]),
+            bytes([0x17, 6, 0]),
+        ], motion
         assert all(f[0] in (0x13, 0x17) for f in sent)
         assert sum(f == bytes([0x13, 2, 0, 1, 0xF4, 0, 0]) for f in sent) >= 2
         motion_times = [e["seconds"] for e in events if e["body_hex"].startswith("17 ")]

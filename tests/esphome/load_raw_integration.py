@@ -11,7 +11,15 @@ import select
 import subprocess
 import time
 
-from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
+from desk_test_support import (
+    ROOT,
+    build_host,
+    encode,
+    frames,
+    open_pty,
+    parse_args,
+    test_env,
+)
 
 
 def telemetry(raw, sequence, *, size=32, kind=5):
@@ -21,7 +29,7 @@ def telemetry(raw, sequence, *, size=32, kind=5):
     body[3:5] = raw.to_bytes(2, "big")
     body[5] = 0x5A
     body[19:21] = (6).to_bytes(2, "big")
-    body[30:min(size, 32)] = sequence.to_bytes(2, "big")[:max(0, min(size, 32) - 30)]
+    body[30 : min(size, 32)] = sequence.to_bytes(2, "big")[: max(0, min(size, 32) - 30)]
     return encode(body)
 
 
@@ -89,14 +97,21 @@ desk_uart:
         with (work / "runtime.log").open("w") as log:
             proc = subprocess.Popen(
                 [str(work / "build/.pioenvs/desk-load-raw-test/program")],
-                cwd=work, env=env, stdout=log, stderr=subprocess.STDOUT,
+                cwd=work,
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
             )
             startup_begin = time.monotonic()
             start = None
             # Align injections with the real subscription clock, not Popen.
             while start is None:
-                assert proc.poll() is None, "ESPHome host exited before its initial subscription"
-                assert time.monotonic() - startup_begin < 10, "Timed out waiting for the initial subscription"
+                assert proc.poll() is None, (
+                    "ESPHome host exited before its initial subscription"
+                )
+                assert time.monotonic() - startup_begin < 10, (
+                    "Timed out waiting for the initial subscription"
+                )
                 if select.select([master], [], [], 0.01)[0]:
                     outgoing.extend(os.read(master, 4096))
                     initial = list(frames(outgoing))
@@ -110,7 +125,13 @@ desk_uart:
                 while next_event < len(schedule) and elapsed >= schedule[next_event][0]:
                     _, name, wire = schedule[next_event]
                     os.write(master, wire)
-                    injected.append({"case": name, "seconds": round(elapsed, 3), "wire_hex": wire.hex()})
+                    injected.append(
+                        {
+                            "case": name,
+                            "seconds": round(elapsed, 3),
+                            "wire_hex": wire.hex(),
+                        }
+                    )
                     next_event += 1
                 if select.select([master], [], [], 0.01)[0]:
                     outgoing.extend(os.read(master, 4096))
@@ -120,17 +141,33 @@ desk_uart:
         output = (work / "runtime.log").read_text()
         samples = [
             {"kind": kind, "value": value, "milliseconds": int(now)}
-            for kind, value, now in re.findall(r"RAW_SAMPLE\|(height|load|connected)\|([^|\s]+)\|(\d+)", output)
+            for kind, value, now in re.findall(
+                r"RAW_SAMPLE\|(height|load|connected)\|([^|\s]+)\|(\d+)", output
+            )
         ]
-        by_kind = {kind: [event for event in samples if event["kind"] == kind]
-                   for kind in ("height", "load", "connected")}
+        by_kind = {
+            kind: [event for event in samples if event["kind"] == kind]
+            for kind in ("height", "load", "connected")
+        }
         assert [event["value"] for event in by_kind["load"]] == [
-            "nan", "0", "65535", "4660", "nan", "65278",
+            "nan",
+            "0",
+            "65535",
+            "4660",
+            "nan",
+            "65278",
         ], by_kind["load"]
         assert [event["value"] for event in by_kind["height"]] == [
-            "nan", "73.0", "73.0", "73.0", "nan", "73.0",
+            "nan",
+            "73.0",
+            "73.0",
+            "73.0",
+            "nan",
+            "73.0",
         ], by_kind["height"]
-        assert [event["value"] for event in by_kind["connected"]] == ["1", "0", "1"], by_kind["connected"]
+        assert [event["value"] for event in by_kind["connected"]] == ["1", "0", "1"], (
+            by_kind["connected"]
+        )
         accepted = by_kind["load"][3]
         stale = by_kind["load"][4]
         stale_age = stale["milliseconds"] - accepted["milliseconds"]

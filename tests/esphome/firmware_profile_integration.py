@@ -4,6 +4,7 @@
 The default test uses synthetic images only. --firmware optionally adds a local
 copy of the pinned application, read at runtime and never copied into the build.
 """
+
 import argparse
 import hashlib
 import json
@@ -22,7 +23,11 @@ SCALAR_OFFSETS = (0x17B4, 0x17B8, 0x17BC, 0x5FD4, 0x5FD8)
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--firmware", type=Path, help="Optional local copy of the pinned 54 KiB application")
+    parser.add_argument(
+        "--firmware",
+        type=Path,
+        help="Optional local copy of the pinned 54 KiB application",
+    )
     args = parse_args(parser=parser)
     work = args.work_dir
     env = test_env(work)
@@ -31,13 +36,18 @@ def main():
         fixture = args.firmware.resolve()
         with fixture.open("rb") as stream:
             image = stream.read(APPLICATION_SIZE + 1)
-        if len(image) != APPLICATION_SIZE or hashlib.sha256(image).hexdigest() != TRUSTED_SHA256:
-            raise ValueError("--firmware must be the pinned, complete 54 KiB application")
+        if (
+            len(image) != APPLICATION_SIZE
+            or hashlib.sha256(image).hexdigest() != TRUSTED_SHA256
+        ):
+            raise ValueError(
+                "--firmware must be the pinned, complete 54 KiB application"
+            )
         env["T150_PROFILE_TEST_FIRMWARE"] = str(fixture)
 
     expected = bytearray((i * 37 + 11) & 255 for i in range(APPLICATION_SIZE))
     for offset in SCALAR_OFFSETS:
-        expected[offset:offset + 4] = b"\0" * 4
+        expected[offset : offset + 4] = b"\0" * 4
     normalized_sha = hashlib.sha256(expected).hexdigest()
     cfg = work / "host.yaml"
     cfg.write_text(f"""esphome:
@@ -77,13 +87,19 @@ desk_uart:
         with (work / "runtime.log").open("w") as log:
             completed = subprocess.run(
                 [str(work / "build/.pioenvs/firmware-profile-test/program")],
-                cwd=work, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=30,
+                cwd=work,
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                timeout=30,
             )
         output = (work / "runtime.log").read_text()
         if completed.returncode:
             raise RuntimeError(f"Host checks failed; see {work / 'runtime.log'}")
         match = re.search(r"PROFILE_NORMALIZED_SHA=([0-9a-f]{64})", output)
-        assert match and match.group(1) == normalized_sha, "Normalization differs from independent hashlib oracle"
+        assert match and match.group(1) == normalized_sha, (
+            "Normalization differs from independent hashlib oracle"
+        )
         assert "PROFILE_SYNTHETIC=passed" in output
         assert ("PROFILE_PRIVATE=passed" in output) == bool(args.firmware)
         summary = {
@@ -97,7 +113,9 @@ desk_uart:
                 "Unknown synthetic images and unsupported lengths are rejected",
                 "Rejected synthetic images do not grant control approval",
             ],
-            "limits": ["Does not execute the ESP-IDF reader, UART transfer or HTTP/image lifetime."],
+            "limits": [
+                "Does not execute the ESP-IDF reader, UART transfer or HTTP/image lifetime."
+            ],
         }
         if args.firmware:
             summary["checks"] += [

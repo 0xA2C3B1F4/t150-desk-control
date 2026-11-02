@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
 """Real ESPHome host against a synthetic UART peer. Never connects to hardware."""
 
-import json, os, select, subprocess, time
+import json
+import os
+import select
+import subprocess
+import time
 
-from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
+from desk_test_support import (
+    ROOT,
+    build_host,
+    encode,
+    frames,
+    open_pty,
+    parse_args,
+    test_env,
+)
 
 
 def main():
@@ -122,7 +134,9 @@ desk_uart:
                     wire.extend(os.read(master, 4096))
                     found = list(frames(wire))
                     for f in found[processed:]:
-                        events.append({"seconds": round(elapsed, 4), "body_hex": f.hex(" ")})
+                        events.append(
+                            {"seconds": round(elapsed, 4), "body_hex": f.hex(" ")}
+                        )
                         if f[0] == 0x15:
                             v = values[f[1]]
                             reply([0x16, f[1], v >> 8, v & 255])
@@ -150,8 +164,12 @@ desk_uart:
         recalls = [e for e in events if e["body_hex"] == "17 08 01"]
         assert len(recalls) == 3, recalls
         assert 12 <= recalls[1]["seconds"] < 14, recalls
-        assert not any(3.3 <= e["seconds"] < 12 and e["body_hex"] == "17 08 01" for e in events)
-        assert not any(e["seconds"] >= 24 and e["body_hex"].startswith("17 08") for e in events)
+        assert not any(
+            3.3 <= e["seconds"] < 12 and e["body_hex"] == "17 08 01" for e in events
+        )
+        assert not any(
+            e["seconds"] >= 24 and e["body_hex"].startswith("17 08") for e in events
+        )
         assert values[31] == 456
         # An intentional Stop must not surface as an unrelated interruption failure.
         out = (w / "runtime.log").read_text()

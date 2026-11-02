@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
 """Build real ESPHome host; all device responses come from a synthetic PTY."""
 
-import json, os, select, subprocess, time
+import json
+import os
+import select
+import subprocess
+import time
 
-from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
+from desk_test_support import (
+    ROOT,
+    build_host,
+    encode,
+    frames,
+    open_pty,
+    parse_args,
+    test_env,
+)
 
 
 def main():
@@ -157,7 +169,9 @@ desk_uart:
                             v = int.from_bytes(f[2:4], "big")
                             # Third edit readback differs from requested; fourth lacks ACK.
                             values[f[1]] = 90 if f[1] == 31 and v == 155 else v
-                            if not ((f[1] == 29 and v == 171) or (f[1] == 30 and v == 187)):
+                            if not (
+                                (f[1] == 29 and v == 171) or (f[1] == 30 and v == 187)
+                            ):
                                 reply([0x1A, f[1], 0])
                         elif f[:2] == bytes([0x17, 8]):
                             reply([0x18, 8, f[2], 0])
@@ -172,9 +186,19 @@ desk_uart:
             proc.wait(timeout=5)
         sent = list(frames(out))
         writes = [(f[1], int.from_bytes(f[2:4], "big")) for f in sent if f[0] == 0x19]
-        assert writes == [(29, 122), (30, 139), (31, 155), (29, 171), (30, 187), (31, 204), (31, 90)], writes
+        assert writes == [
+            (29, 122),
+            (30, 139),
+            (31, 155),
+            (29, 171),
+            (30, 187),
+            (31, 204),
+            (31, 90),
+        ], writes
         assert len([f for f in sent if f == bytes([0x17, 8, 1])]) == 1
-        assert not any(e["seconds"] < 15 and e["body_hex"].startswith("17 08") for e in events)
+        assert not any(
+            e["seconds"] < 15 and e["body_hex"].startswith("17 08") for e in events
+        )
         assert all(f[0] != 0x1B for f in sent)
         text = (w / "runtime.log").read_text()
         for marker in [

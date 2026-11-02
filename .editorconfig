@@ -1,0 +1,46 @@
+root = true
+
+[*.{py,pyi,c,cpp,h,html,cjs,js,css,yaml,yml,json,md,toml,txt}]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+# Preserve whitespace inside embedded source strings and Markdown hard breaks.
+trim_trailing_whitespace = false
+
+[*.{py,pyi}]
+indent_size = 4
+max_line_length = 88
+
+[*.{c,cpp,h,html,cjs,js,css,yaml,yml,json}]
+indent_size = 2
+
+# Generated headers and verified patch data.
+[components/desk_firmware_update/{ui,child_lock_patch,reset_speed_patch,dt02_patch}.h]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+indent_style = unset
+indent_size = unset
+max_line_length = unset
+trim_trailing_whitespace = unset
+
+# Exact include wrappers.
+[lib/desk_protocol/include/desk_protocol/*.h]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+indent_style = unset
+indent_size = unset
+max_line_length = unset
+trim_trailing_whitespace = unset
+
+# Hash-bound C and assembly sources.
+[tools/patches/*]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+indent_style = unset
+indent_size = unset
+max_line_length = unset
+trim_trailing_whitespace = unset

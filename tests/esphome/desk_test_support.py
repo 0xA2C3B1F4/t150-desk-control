@@ -110,7 +110,9 @@ def open_pty():
     return master, slave
 
 
-def build_host(config, work, env, log, *, uart_port=None, uart_expr=None, edit_main=None):
+def build_host(
+    config, work, env, log, *, uart_port=None, uart_expr=None, edit_main=None
+):
     """Generate, adapt and compile the host program for ``config``.
 
     The YAML uses ``port: /dev/null`` during validation. The generated
@@ -172,6 +174,9 @@ generate_cpp_contents(config)
 raise SystemExit(run_compile(config, False))
 """
     subprocess.run(
-        [sys.executable, "-c", compile_only, str(config)], env=env,
-        stdout=log, stderr=subprocess.STDOUT, check=True,
+        [sys.executable, "-c", compile_only, str(config)],
+        env=env,
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        check=True,
     )

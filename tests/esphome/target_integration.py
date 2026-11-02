@@ -7,7 +7,15 @@ import select
 import subprocess
 import time
 
-from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
+from desk_test_support import (
+    ROOT,
+    build_host,
+    encode,
+    frames,
+    open_pty,
+    parse_args,
+    test_env,
+)
 
 
 def main():
@@ -165,7 +173,12 @@ desk_uart:
             "result=Step outside configured height range",
         ]:
             assert marker in output, marker
-        assert output.count("Original preset 3 restored after motion began; monitoring target move") == 4
+        assert (
+            output.count(
+                "Original preset 3 restored after motion began; monitoring target move"
+            )
+            == 4
+        )
         releases = [e for e in events if e["body_hex"] == "17 08 00"]
         restores = [e for e in events if e["body_hex"] == "19 1f 01 c8"]
         assert len(restores) == 4
@@ -178,7 +191,10 @@ desk_uart:
         braking = output.rfind("result=Braking")
         assert braking >= 0
         assert "result=Target move interrupted" not in output
-        assert output.find("result=Preset changed locally; refusing overwrite", braking) > braking
+        assert (
+            output.find("result=Preset changed locally; refusing overwrite", braking)
+            > braking
+        )
         assert values[31] == 999
         # Restart same host preferences with outstanding durable recovery record.
         outgoing.clear()
@@ -205,7 +221,9 @@ desk_uart:
                     outgoing.extend(os.read(master, 4096))
             proc.terminate()
             proc.wait(timeout=5)
-        assert all(f[0] in (0x13, 0x15) for f in frames(outgoing)), "Restart replayed motion or overwrote preset"
+        assert all(f[0] in (0x13, 0x15) for f in frames(outgoing)), (
+            "Restart replayed motion or overwrote preset"
+        )
         assert "backup" in (work / "restart.log").read_text().lower()
         summary = {
             "passed": True,

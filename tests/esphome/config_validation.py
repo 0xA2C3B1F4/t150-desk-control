@@ -42,49 +42,154 @@ cases = [
         True,
     ),
     ("keep_awake_requires_backup", base + "  keep_awake: true\n", False),
-    ("keep_awake_opt_in", base + "  keep_awake: true\n  experimental_target_height: true\n", True),
+    (
+        "keep_awake_opt_in",
+        base + "  keep_awake: true\n  experimental_target_height: true\n",
+        True,
+    ),
     ("default_monitoring", base, True),
     ("reset_requires_opt_in", base + "  reset_desk:\n    name: Reset desk\n", False),
-    ("reset_requires_stop_and_status", base + "  experimental_reset_controls: true\n  reset_desk:\n    name: Reset desk\n", False),
-    ("reset_controls", base + "  experimental_reset_controls: true\n  stop:\n    name: Stop\n  control_status:\n    name: Control status\n  reset_desk:\n    name: Reset\n", True),
-    ("reset_without_stop", base + "  experimental_reset_controls: true\n  control_status:\n    name: Control status\n  reset_desk:\n    name: Reset\n", False),
-    ("reset_status_without_availability", base + "  experimental_reset_controls: true\n  stop:\n    name: Stop\n  reset_status:\n    name: Reset status\n  reset_desk:\n    name: Reset\n", False),
-    ("reset_without_any_status", base + "  experimental_reset_controls: true\n  stop:\n    name: Stop\n  reset_desk:\n    name: Reset\n", False),
-    ("legacy_reset_controls", base + "  experimental_reset_controls: true\n  stop:\n    name: Stop\n  reset_status:\n    name: Reset status\n  reset_available:\n    name: Reset available\n  reset_desk:\n    name: Reset desk\n  continue_reset:\n    name: Continue reset\n", True),
-    ("legacy_continue_reset", base + "  experimental_reset_controls: true\n  stop:\n    name: Stop\n  reset_status:\n    name: Reset status\n  reset_available:\n    name: Reset available\n  continue_reset:\n    name: Continue reset\n", True),
-    ("speed_and_status_only", base + "  reset_status:\n    name: Reset status\n  motion_speed:\n    name: Motion speed\n  motion_speed_available:\n    name: Motion speed available\n", True),
-    ("child_lock", base + "  child_lock:\n    name: Child lock\n  child_lock_status:\n    name: Child lock status\n  child_lock_available:\n    name: Child lock available\n", True),
-    ("concise_panel_lock", base + "  child_lock:\n    name: Panel lock\n  control_status:\n    name: Control status\n", True),
-    ("child_lock_diagnostics_only", base + "  child_lock_status:\n    name: Child lock status\n  child_lock_available:\n    name: Child lock available\n", True),
-    ("child_lock_restore_disabled", base + "  child_lock:\n    name: Child lock\n    restore_mode: DISABLED\n", True),
-    ("child_lock_rejects_restore", base + "  child_lock:\n    name: Child lock\n    restore_mode: ALWAYS_OFF\n", False),
-    ("child_lock_rejects_inversion", base + "  child_lock:\n    name: Child lock\n    inverted: true\n", False),
+    (
+        "reset_requires_stop_and_status",
+        base
+        + "  experimental_reset_controls: true\n  reset_desk:\n    name: Reset desk\n",
+        False,
+    ),
+    (
+        "reset_controls",
+        base
+        + "  experimental_reset_controls: true\n  stop:\n    name: Stop\n  control_status:\n    name: Control status\n  reset_desk:\n    name: Reset\n",
+        True,
+    ),
+    (
+        "reset_without_stop",
+        base
+        + "  experimental_reset_controls: true\n  control_status:\n    name: Control status\n  reset_desk:\n    name: Reset\n",
+        False,
+    ),
+    (
+        "reset_status_without_availability",
+        base
+        + "  experimental_reset_controls: true\n  stop:\n    name: Stop\n  reset_status:\n    name: Reset status\n  reset_desk:\n    name: Reset\n",
+        False,
+    ),
+    (
+        "reset_without_any_status",
+        base
+        + "  experimental_reset_controls: true\n  stop:\n    name: Stop\n  reset_desk:\n    name: Reset\n",
+        False,
+    ),
+    (
+        "legacy_reset_controls",
+        base
+        + "  experimental_reset_controls: true\n  stop:\n    name: Stop\n  reset_status:\n    name: Reset status\n  reset_available:\n    name: Reset available\n  reset_desk:\n    name: Reset desk\n  continue_reset:\n    name: Continue reset\n",
+        True,
+    ),
+    (
+        "legacy_continue_reset",
+        base
+        + "  experimental_reset_controls: true\n  stop:\n    name: Stop\n  reset_status:\n    name: Reset status\n  reset_available:\n    name: Reset available\n  continue_reset:\n    name: Continue reset\n",
+        True,
+    ),
+    (
+        "speed_and_status_only",
+        base
+        + "  reset_status:\n    name: Reset status\n  motion_speed:\n    name: Motion speed\n  motion_speed_available:\n    name: Motion speed available\n",
+        True,
+    ),
+    (
+        "child_lock",
+        base
+        + "  child_lock:\n    name: Child lock\n  child_lock_status:\n    name: Child lock status\n  child_lock_available:\n    name: Child lock available\n",
+        True,
+    ),
+    (
+        "concise_panel_lock",
+        base
+        + "  child_lock:\n    name: Panel lock\n  control_status:\n    name: Control status\n",
+        True,
+    ),
+    (
+        "child_lock_diagnostics_only",
+        base
+        + "  child_lock_status:\n    name: Child lock status\n  child_lock_available:\n    name: Child lock available\n",
+        True,
+    ),
+    (
+        "child_lock_restore_disabled",
+        base + "  child_lock:\n    name: Child lock\n    restore_mode: DISABLED\n",
+        True,
+    ),
+    (
+        "child_lock_rejects_restore",
+        base + "  child_lock:\n    name: Child lock\n    restore_mode: ALWAYS_OFF\n",
+        False,
+    ),
+    (
+        "child_lock_rejects_inversion",
+        base + "  child_lock:\n    name: Child lock\n    inverted: true\n",
+        False,
+    ),
     ("direct_requires_opt_in", base + "  target_height_mode: direct\n", False),
-    ("direct_rejects_legacy_keep_awake", base + "  target_height_mode: direct\n  experimental_target_height: true\n  keep_awake: true\n", False),
-    ("direct_auto", base + "  target_height_mode: direct\n  experimental_target_height: true\n  keep_awake: auto\n", True),
-    ("preset_auto", base + "  target_height_mode: preset\n  experimental_target_height: true\n  keep_awake: auto\n", True),
-    ("auto_target", base + "  target_height_mode: auto\n  experimental_target_height: true\n  keep_awake: auto\n  target_height_backend:\n    name: Backend\n", True),
+    (
+        "direct_rejects_legacy_keep_awake",
+        base
+        + "  target_height_mode: direct\n  experimental_target_height: true\n  keep_awake: true\n",
+        False,
+    ),
+    (
+        "direct_auto",
+        base
+        + "  target_height_mode: direct\n  experimental_target_height: true\n  keep_awake: auto\n",
+        True,
+    ),
+    (
+        "preset_auto",
+        base
+        + "  target_height_mode: preset\n  experimental_target_height: true\n  keep_awake: auto\n",
+        True,
+    ),
+    (
+        "auto_target",
+        base
+        + "  target_height_mode: auto\n  experimental_target_height: true\n  keep_awake: auto\n  target_height_backend:\n    name: Backend\n",
+        True,
+    ),
     ("auto_monitor_only", base + "  target_height_mode: auto\n", True),
-    ("auto_legacy_keep_awake", base + "  target_height_mode: auto\n  experimental_target_height: true\n  keep_awake: true\n", True),
+    (
+        "auto_legacy_keep_awake",
+        base
+        + "  target_height_mode: auto\n  experimental_target_height: true\n  keep_awake: true\n",
+        True,
+    ),
     ("unknown_target_mode", base + "  target_height_mode: automatic\n", False),
     ("uart_observation_only", base + "  uart_observation: true\n", True),
     ("raw_load_monitoring", base + "  load_raw:\n    name: Raw load\n", True),
-    ("raw_load_inch_monitoring", base + "  display_unit: in\n  load_raw:\n    name: Raw load\n", True),
+    (
+        "raw_load_inch_monitoring",
+        base + "  display_unit: in\n  load_raw:\n    name: Raw load\n",
+        True,
+    ),
     ("inch_monitoring", base + "  display_unit: in\n", True),
     ("invalid_display_unit", base + "  display_unit: metres\n", False),
     (
         "conflicting_sensor_unit",
-        base.replace("    name: Height", "    name: Height\n    unit_of_measurement: cm") + "  display_unit: in\n",
+        base.replace(
+            "    name: Height", "    name: Height\n    unit_of_measurement: cm"
+        )
+        + "  display_unit: in\n",
         False,
     ),
     (
         "inch_controls",
-        base + "  display_unit: in\n  experimental_target_height: true\n  target_height:\n    name: Target\n  preset_1_height:\n    name: Preset\n",
+        base
+        + "  display_unit: in\n  experimental_target_height: true\n  target_height:\n    name: Target\n  preset_1_height:\n    name: Preset\n",
         True,
     ),
     (
         "conflicting_number_unit",
-        base + "  display_unit: in\n  preset_1_height:\n    name: Preset\n    unit_of_measurement: cm\n",
+        base
+        + "  display_unit: in\n  preset_1_height:\n    name: Preset\n    unit_of_measurement: cm\n",
         False,
     ),
     (
@@ -99,7 +204,11 @@ cases = [
         True,
     ),
     ("preset_without_opt_in", base + "  preset_3:\n    name: Preset\n", False),
-    ("preset_opt_in", base + "  experimental_preset_buttons: true\n  preset_3:\n    name: Preset\n", True),
+    (
+        "preset_opt_in",
+        base + "  experimental_preset_buttons: true\n  preset_3:\n    name: Preset\n",
+        True,
+    ),
     ("stop_without_motion_opt_in", base + "  stop:\n    name: Stop\n", True),
     ("timer_without_opt_in", base + "  cancel_timer:\n    name: Cancel timer\n", False),
     (
@@ -114,7 +223,11 @@ cases = [
         + "  upward_load_limit:\n    name: Up limit\n  downward_load_limit:\n    name: Down base - affects homing\n  restore_downward_load_limit:\n    name: Restore down\n",
         True,
     ),
-    ("restore_without_limit", base + "  restore_downward_load_limit:\n    name: Restore down\n", False),
+    (
+        "restore_without_limit",
+        base + "  restore_downward_load_limit:\n    name: Restore down\n",
+        False,
+    ),
     ("wrong_baud", base.replace("baud_rate: 115200", "baud_rate: 9600"), False),
     ("missing_rx", base.replace("  rx_pin: GPIO16\n", ""), False),
     ("missing_tx", base.replace("  tx_pin: GPIO17\n", ""), False),
@@ -123,7 +236,9 @@ results = []
 for name, text, expected in cases:
     cfg = work / (name + ".yaml")
     cfg.write_text(text)
-    result = subprocess.run(["esphome", "config", str(cfg)], env=env, text=True, capture_output=True)
+    result = subprocess.run(
+        ["esphome", "config", str(cfg)], env=env, text=True, capture_output=True
+    )
     (work / (name + ".log")).write_text(result.stdout + result.stderr)
     passed = result.returncode == 0
     assert passed == expected, f"{name}: unexpected result, see log"

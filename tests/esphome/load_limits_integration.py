@@ -7,7 +7,15 @@ import select
 import subprocess
 import time
 
-from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
+from desk_test_support import (
+    ROOT,
+    build_host,
+    encode,
+    frames,
+    open_pty,
+    parse_args,
+    test_env,
+)
 
 
 def main():
@@ -124,7 +132,9 @@ desk_uart:
                 if elapsed >= next_height:
                     body = bytearray(30)
                     body[0] = 5
-                    body[20] = 6 if elapsed < 10 else min(26, 6 + int((elapsed - 10) * 10))
+                    body[20] = (
+                        6 if elapsed < 10 else min(26, 6 + int((elapsed - 10) * 10))
+                    )
                     reply(body)
                     next_height += 0.1
                 if select.select([master], [], [], 0.01)[0]:
@@ -156,14 +166,27 @@ desk_uart:
             proc.wait(timeout=5)
         sent = list(frames(outgoing))
         writes = [f.hex(" ") for f in sent if f[0] == 0x19]
-        assert writes == ["19 0f 09 c4", "19 0f 0c 80", "19 0e 0a 8c", "19 0f 0a 28", "19 0f 09 92"], writes
+        assert writes == [
+            "19 0f 09 c4",
+            "19 0f 0c 80",
+            "19 0e 0a 8c",
+            "19 0f 0a 28",
+            "19 0f 09 92",
+        ], writes
         first_write = next(i for i, f in enumerate(sent) if f[0] == 0x19)
-        assert bytes([0x15, 14, 0, 0]) in sent[:first_write] and bytes([0x15, 15, 0, 0]) in sent[:first_write]
+        assert (
+            bytes([0x15, 14, 0, 0]) in sent[:first_write]
+            and bytes([0x15, 15, 0, 0]) in sent[:first_write]
+        )
         last_write = max(i for i, f in enumerate(sent) if f[0] == 0x19)
-        assert sent[last_write + 1] == bytes([0x17, 1, 0, 0]), "Stop did not preempt verification"
+        assert sent[last_write + 1] == bytes([0x17, 1, 0, 0]), (
+            "Stop did not preempt verification"
+        )
         stop_time = next(e["seconds"] for e in events if e["body_hex"] == "17 01 00 00")
         assert not any(
-            e["body_hex"].startswith(("15 ", "19 ")) for e in events if stop_time < e["seconds"] < stop_time + 0.65
+            e["body_hex"].startswith(("15 ", "19 "))
+            for e in events
+            if stop_time < e["seconds"] < stop_time + 0.65
         ), "Late ACK triggered parameter follow-up"
         output = (work / "runtime.log").read_text()
         for token in [

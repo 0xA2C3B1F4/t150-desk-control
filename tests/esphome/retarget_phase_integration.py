@@ -4,6 +4,7 @@
 Reply/height batches expose transient phases inside the real RX loop. The test
 reads the phase but never sets it. Each case owns a fresh process and journal.
 """
+
 import concurrent.futures
 import json
 import os
@@ -12,10 +13,25 @@ import select
 import subprocess
 import time
 
-from desk_test_support import ROOT, build_host, encode, frames, open_pty, parse_args, test_env
+from desk_test_support import (
+    ROOT,
+    build_host,
+    encode,
+    frames,
+    open_pty,
+    parse_args,
+    test_env,
+)
 
-PHASES = {"Recall": 9, "Moving": 10, "RestoreRead": 12, "RestoreWrite": 13,
-          "RestoreVerify": 14, "ClearJournal": 15, "Monitoring": 20}
+PHASES = {
+    "Recall": 9,
+    "Moving": 10,
+    "RestoreRead": 12,
+    "RestoreWrite": 13,
+    "RestoreVerify": 14,
+    "ClearJournal": 15,
+    "Monitoring": 20,
+}
 
 
 def main():
@@ -90,16 +106,32 @@ desk_uart:
             nonlocal seq
             packet = bytearray()
             for body in bodies:
-                tx.append({"seconds": round(time.monotonic() - start, 4), "body_hex": bytes(body).hex(), "sequence": seq})
+                tx.append(
+                    {
+                        "seconds": round(time.monotonic() - start, 4),
+                        "body_hex": bytes(body).hex(),
+                        "sequence": seq,
+                    }
+                )
                 packet.extend(encode(bytes(body) + seq.to_bytes(2, "big")))
                 seq = (seq + 1) & 65535
             assert os.write(master, packet) == len(packet)
 
         try:
             with (case / "runtime.log").open("w") as log:
-                proc = subprocess.Popen([str(w / "build/.pioenvs/retarget-phase-test/program")], cwd=case,
-                    env=dict(env, DESK_TEST_PREFS_HOME=str(case / "prefs"), RETARGET_PHASE=str(PHASES[phase]),
-                             RETARGET_ACTION=action, RETARGET_UART=os.ttyname(slave)), stdout=log, stderr=subprocess.STDOUT)
+                proc = subprocess.Popen(
+                    [str(w / "build/.pioenvs/retarget-phase-test/program")],
+                    cwd=case,
+                    env=dict(
+                        env,
+                        DESK_TEST_PREFS_HOME=str(case / "prefs"),
+                        RETARGET_PHASE=str(PHASES[phase]),
+                        RETARGET_ACTION=action,
+                        RETARGET_UART=os.ttyname(slave),
+                    ),
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                )
                 start = time.monotonic()
                 while time.monotonic() - start < 12:
                     elapsed = time.monotonic() - start
@@ -107,12 +139,14 @@ desk_uart:
                     if elapsed >= next_height:
                         q += max(-3, min(3, goal - q))
                         reply(height())
-                        next_height = elapsed + .1
-                    if select.select([master], [], [], .01)[0]:
+                        next_height = elapsed + 0.1
+                    if select.select([master], [], [], 0.01)[0]:
                         wire.extend(os.read(master, 65536))
                         found = list(frames(wire))
                         for f in found[processed:]:
-                            events.append({"seconds": round(elapsed, 4), "body_hex": f.hex()})
+                            events.append(
+                                {"seconds": round(elapsed, 4), "body_hex": f.hex()}
+                            )
                             if f[0] == 0x15:
                                 value = values[f[1]]
                                 body = bytes([0x16, f[1], value >> 8, value & 255])
@@ -137,7 +171,8 @@ desk_uart:
                 try:
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    proc.kill(); proc.wait(timeout=5)
+                    proc.kill()
+                    proc.wait(timeout=5)
                     raise RuntimeError("Host ignored termination; killed")
             out = (case / "runtime.log").read_text()
             sent = [bytes.fromhex(e["body_hex"]) for e in events]
@@ -145,11 +180,15 @@ desk_uart:
             brakes = sum(f == bytes.fromhex("17010000") for f in sent)
             presses = sum(f == bytes.fromhex("170801") for f in sent)
             trigger = re.findall(r"TRIGGER phase=(\d+) dirty=(\d+) stop=(\d+)", out)
-            assert trigger == [(str(PHASES[phase]), "0" if phase == "Monitoring" else "1", "0")], trigger
+            assert trigger == [
+                (str(PHASES[phase]), "0" if phase == "Monitoring" else "1", "0")
+            ], trigger
             assert "START accepted=1" in out and "FINAL phase=0 dirty=0 stop=0" in out
             expected_brakes = int(action == "stop" or phase in ("Moving", "Monitoring"))
             assert brakes == expected_brakes, (brakes, expected_brakes)
-            assert presses == (0 if phase == "Recall" and action == "stop" else 1), presses
+            assert presses == (0 if phase == "Recall" and action == "stop" else 1), (
+                presses
+            )
             assert writes == [122, 456] and values[31] == 456, (writes, values)
             if action == "stop":
                 assert "STOP accepted=1" in out
@@ -160,18 +199,34 @@ desk_uart:
                     assert "Stopped; select target again" in out
                 else:
                     assert f"phase_after={PHASES[phase]}" in out
-                    assert "Command rejected: Preparing target or restoring original preset" in out
+                    assert (
+                        "Command rejected: Preparing target or restoring original preset"
+                        in out
+                    )
                     assert "Stopped; select target again" not in out
             assert "Command rejected: Target move interrupted" not in out
             if expected_brakes:
-                brake_at = next(e["seconds"] for e in events if e["body_hex"] == "17010000")
-                assert not any(e["seconds"] >= brake_at and e["body_hex"] == "170801" for e in events)
-                restore_index = next(i for i,e in enumerate(events) if e["body_hex"] == "191f01c8")
-                brake_index = next(i for i,e in enumerate(events) if e["body_hex"] == "17010000")
+                brake_at = next(
+                    e["seconds"] for e in events if e["body_hex"] == "17010000"
+                )
+                assert not any(
+                    e["seconds"] >= brake_at and e["body_hex"] == "170801"
+                    for e in events
+                )
+                restore_index = next(
+                    i for i, e in enumerate(events) if e["body_hex"] == "191f01c8"
+                )
+                brake_index = next(
+                    i for i, e in enumerate(events) if e["body_hex"] == "17010000"
+                )
                 if phase == "Moving":
-                    assert brake_index < restore_index, "Moving must Stop before restoring"
+                    assert brake_index < restore_index, (
+                        "Moving must Stop before restoring"
+                    )
                 if phase == "Monitoring":
-                    assert restore_index < brake_index, "Monitoring begins after RAM restoration"
+                    assert restore_index < brake_index, (
+                        "Monitoring begins after RAM restoration"
+                    )
         except Exception as ex:
             error = f"{type(ex).__name__}: {ex}"
         finally:
@@ -181,31 +236,55 @@ desk_uart:
                     try:
                         proc.wait(timeout=5)
                     except subprocess.TimeoutExpired:
-                        proc.kill(); proc.wait(timeout=5)
+                        proc.kill()
+                        proc.wait(timeout=5)
                         error = (error or "") + " host required SIGKILL"
             except Exception as ex:
                 error = (error or "") + " cleanup: " + repr(ex)
             finally:
-                os.close(master); os.close(slave)
-        result = {"phase": phase, "action": action, "passed": error is None, "error": error,
-                  "transport": "synthetic PTY only", "original": 456, "final_preset": values[31],
-                  "events": events, "peer_tx": tx}
+                os.close(master)
+                os.close(slave)
+        result = {
+            "phase": phase,
+            "action": action,
+            "passed": error is None,
+            "error": error,
+            "transport": "synthetic PTY only",
+            "original": 456,
+            "final_preset": values[31],
+            "events": events,
+            "peer_tx": tx,
+        }
         (case / "summary.json").write_text(json.dumps(result, indent=2) + "\n")
         return {k: v for k, v in result.items() if k not in ("events", "peer_tx")}
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        futures = [(phase, action, pool.submit(run, phase, action)) for phase in PHASES for action in ("retarget", "stop")]
+        futures = [
+            (phase, action, pool.submit(run, phase, action))
+            for phase in PHASES
+            for action in ("retarget", "stop")
+        ]
         results = []
         for phase, action, future in futures:
             try:
                 results.append(future.result())
             except Exception as ex:
-                result = dict(phase=phase, action=action, passed=False, error=repr(ex), transport="synthetic PTY only")
-                (w / f"{phase}-{action}" / "summary.json").write_text(json.dumps(result, indent=2) + "\n")
+                result = dict(
+                    phase=phase,
+                    action=action,
+                    passed=False,
+                    error=repr(ex),
+                    transport="synthetic PTY only",
+                )
+                (w / f"{phase}-{action}" / "summary.json").write_text(
+                    json.dumps(result, indent=2) + "\n"
+                )
                 results.append(result)
     (w / "summary.json").write_text(json.dumps(results, indent=2) + "\n")
     print(json.dumps(results), flush=True)
-    assert all(r["passed"] for r in results), "See per-case evidence, including all failures"
+    assert all(r["passed"] for r in results), (
+        "See per-case evidence, including all failures"
+    )
 
 
 if __name__ == "__main__":
