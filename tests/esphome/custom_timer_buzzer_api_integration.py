@@ -88,6 +88,8 @@ desk_uart:
     proc = client = actor = None
     events, values = [], []
     reset_sequence = False
+    probe_preempted = False
+    retry_marker = None
     try:
         with (work / "build.log").open("w") as log:
             build_host(cfg, work, env, log, uart_port=os.ttyname(slave))
@@ -99,8 +101,11 @@ desk_uart:
 
         async def desk_simulator():
             """Supply fresh telemetry and selective delayed acknowledgements."""
-            nonlocal reset_sequence
+            nonlocal reset_sequence, probe_preempted, retry_marker
             received, delayed = bytearray(), []
+            held_probe_reply = None
+            held_probe_at = 0
+            preempt_next_probe = False
             processed = seq = beep_count = cancel_count = 0
             start = next_height = time.monotonic()
             while True:
@@ -141,6 +146,8 @@ desk_uart:
                                     )
                             elif frame[2] == 2:
                                 cancel_count += 1
+                                if cancel_count == 2:
+                                    preempt_next_probe = True
                                 if cancel_count == 1:
                                     delayed.append(
                                         (
@@ -148,17 +155,32 @@ desk_uart:
                                             bytes([0xD8, 1, 2, frame[3], frame[4], 0]),
                                         )
                                     )
-                            else:  # Probe and timer-set requests receive acceptance.
-                                delay = 0.05 if frame[2] == 0 else 0.3
-                                delayed.append(
-                                    (
-                                        now + delay,
-                                        bytes(
-                                            [0xD8, 1, frame[2], frame[3], frame[4], 0]
-                                        ),
-                                    )
+                            else:
+                                reply = bytes(
+                                    [0xD8, 1, frame[2], frame[3], frame[4], 0]
                                 )
+                                if frame[2] == 0:
+                                    if preempt_next_probe:
+                                        held_probe_reply = reply
+                                        held_probe_at = now
+                                        preempt_next_probe = False
+                                    else:
+                                        if probe_preempted and retry_marker is None:
+                                            retry_marker = len(values)
+                                        os.write(master, encode(reply))
+                                else:
+                                    delayed.append((now + 0.3, reply))
                         else:
+                            if held_probe_reply is not None:
+                                assert frame[0] in (0xD1, 0xD3, 0xD5) and frame[2] == 0
+                                # CustomTimerBuzzer::timeout_ms is 3500 ms.
+                                assert now - held_probe_at < 3.5, (
+                                    "Probe timed out before interruption"
+                                )
+                                # Return the stale D8 while the competing read is pending.
+                                os.write(master, encode(held_probe_reply))
+                                held_probe_reply = None
+                                probe_preempted = True
                             reply = discovery_reply(frame, seq)
                             if reply is not None:
                                 os.write(master, encode(reply))
@@ -254,7 +276,26 @@ desk_uart:
             lambda: result_seen("No acknowledgement; result unknown, no retry", marker)
         )
         timeout_marker = len(values)
-        await wait_until(available)
+        await wait_until(lambda: probe_preempted)
+        await wait_until(lambda: retry_marker is not None, timeout=20)
+        assert (
+            next(
+                (
+                    v
+                    for k, v in reversed(values[:retry_marker])
+                    if k == keys["Available"]
+                ),
+                None,
+            )
+            is False
+        ), "Availability not lost before retry"
+        assert not any(
+            key == keys["Available"] and value is True
+            for key, value in values[timeout_marker:retry_marker]
+        ), "Interrupted probe accepted its late reply"
+        # Probes retry every 15 s and yield to background reads. Allow another
+        # interval if the first immediate reply also meets competing traffic.
+        await wait_until(available, timeout=35)
         assert not any(key == keys["Result"] for key, _ in values[timeout_marker:]), (
             values[timeout_marker:]
         )
@@ -280,6 +321,8 @@ desk_uart:
                 "controller acceptance and busy result reach API subscribers",
                 "Stop interrupts pending beep without waiting or retrying",
                 "read-only rediscovery after interruption",
+                "background traffic interrupts probe; late reply cannot restore availability",
+                "read-only probe retries after background interruption",
                 "write timeout result retained through rediscovery and sequence reset",
                 "missing cancel acknowledgement publishes unknown outcome without retry",
             ],
