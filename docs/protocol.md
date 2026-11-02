@@ -515,8 +515,9 @@ acknowledged. The fault remains set after returning to `Idle`, and `begin()`
 rejects further timer requests on that instance.
 `completed()` means the software sequence finished, not that the alarm state was
 verified. No timer-state query, direct sound command or immediate cancel frame
-is established for stock firmware. Physical local clicks remain invisible and can invalidate the
-sequence. The ESP-driven timer sequence is experimental. See [supported features and testing](validation.md).
+is established for stock firmware. Physical local clicks remain invisible and
+can invalidate the sequence. The ESP-driven timer sequence is experimental.
+See [supported features and testing](validation.md).
 
 ## TB01 timer and buzzer transaction
 
@@ -546,8 +547,7 @@ error. An accepted probe confirms the capability. A backend error leaves the
 operation's outcome unknown. See [TB01 actions and limits](custom-timer-buzzer.md)
 for argument ranges.
 
-A nonce can wrap after 65,536 requests; it cannot exclude every delayed response
-or undetected controller restart.
+The 16-bit nonce cannot exclude every delayed response or undetected restart.
 
 Stop and release requests immediately preempt a pending probe or write. Other
 user commands and maintenance are refused while a TB01 write is pending.
