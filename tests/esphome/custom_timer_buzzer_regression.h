@@ -143,6 +143,9 @@ class CustomTimerBuzzerAccess : public esphome::desk_uart::DeskUART {
       auto target_member = &CustomTimerBuzzerAccess::target_move_;
       desk->*direct_mode_member = false;
       desk->*auto_mode_member = false;
+      // The fixture switches from direct to preset mode after setup.
+      auto load_journal_member = &CustomTimerBuzzerAccess::load_journal_;
+      (desk->*load_journal_member)();
       desk->*enabled_member = true;
       const uint32_t now = esphome::millis();
       const bool refreshed = static_cast<uint32_t>(now - (desk->*last_member)) < 1000;

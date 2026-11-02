@@ -319,13 +319,13 @@ void DeskUART::setup() {
   if (this->sample_gap_sensor_)
     this->sample_gap_sensor_->publish_state(NAN);
   this->gap_window_start_ = millis();
-  // Recovery records remain relevant even after target controls are disabled.
-  this->load_journal_();
+  // Only explicit preset mode activates recovery at boot. Auto must identify
+  // the controller first; direct mode never imports the legacy workaround.
+  if (this->legacy_backend_ready_())
+    this->load_journal_();
   if (this->target_number_)
     this->target_number_->publish_state(NAN);
-  this->last_restore_pending_ = this->journal_error_() || this->target_move_.dirty();
-  if (this->restore_pending_sensor_)
-    this->restore_pending_sensor_->publish_state(this->last_restore_pending_);
+  this->publish_restore_pending_();
   if (this->timer_pending_sensor_)
     this->timer_pending_sensor_->publish_state(false);
   if (this->stop_locked_sensor_)
@@ -554,6 +554,8 @@ void DeskUART::loop() {
   this->custom_loop_(now);
 }
 bool DeskUART::recall_preset(uint8_t slot) {
+  if (this->auto_target_mode_ && !this->auto_target_ready_)
+    return this->result_(false, "Checking height control support; preset recall unavailable");
   this->yield_reset_speed_read_();
   if (this->custom_write_pending_())
     return this->result_(false, "Custom timer/buzzer transaction pending");
@@ -889,6 +891,8 @@ bool DeskUART::preset_access_allowed_(uint32_t now) const {
          this->limit_phase_ == LimitPhase::Idle;
 }
 bool DeskUART::set_preset_height(uint8_t slot, float cm) {
+  if (this->auto_target_mode_ && !this->auto_target_ready_)
+    return this->result_(false, "Checking height control support; preset editing unavailable");
   if (const char* error = this->journal_error_())
     return this->result_(false, error);
   if (this->firmware_export_active_)
@@ -925,7 +929,9 @@ void DeskUART::preset_settings_loop_(uint32_t now) {
       this->preset_known_[i] = false;
     }
   }
-  if (this->preset_settings_.busy() && !this->preset_access_allowed_(now))
+  if (this->preset_settings_.busy() &&
+      ((!this->auto_target_ready_ && this->auto_target_mode_ && this->preset_settings_.writing()) ||
+       !this->preset_access_allowed_(now)))
     this->preset_settings_.cancel(
         "Preset setting interrupted by movement, stale telemetry or another operation; no retry");
   this->preset_settings_.tick(now);
@@ -972,6 +978,8 @@ void DeskUART::preset_settings_loop_(uint32_t now) {
   }
 }
 const char* DeskUART::journal_error_() const {
+  if (this->journal_active_ && this->journal_write_error_)
+    return this->journal_write_error_;
   if (this->journal_block_reason_)
     return this->journal_block_reason_;
   if (this->cached_journal_valid_ &&
@@ -983,20 +991,22 @@ bool DeskUART::write_journal_(const desk_protocol::PresetJournal& journal) {
   const auto bytes = journal.encode();
   if (this->write_journal_storage_(this->v4_preference_key_, bytes.data(), bytes.size()))
     return true;
-  this->journal_block_reason_ =
+  this->journal_write_error_ =
       "Preset backup storage failed; original retained, restart to recheck storage";
   return false;
 }
 bool DeskUART::clear_legacy_journal_() {
   const uint8_t empty[8]{};
   if (!this->write_journal_storage_(this->preference_key_, empty, sizeof(empty))) {
-    this->journal_block_reason_ =
+    this->journal_write_error_ =
         "Legacy backup cleanup failed; restart to check the retained backup again";
     return false;
   }
   return true;
 }
 void DeskUART::load_journal_() {
+  this->journal_active_ = true;
+  this->journal_block_reason_ = nullptr;
   using Journal = desk_protocol::PresetJournal;
   Journal::Encoded bytes{};
   const auto current =
@@ -1079,7 +1089,7 @@ bool DeskUART::clear_cached_journal_() {
   return true;
 }
 void DeskUART::invalidate_journal_session_() {
-  if (!this->cached_journal_valid_ || this->journal_recheck_pending_)
+  if (!this->journal_active_ || !this->cached_journal_valid_ || this->journal_recheck_pending_)
     return;
   this->verified_journal_.valid = false;
   this->journal_recheck_pending_ = true;
@@ -1089,11 +1099,13 @@ void DeskUART::invalidate_journal_session_() {
   this->discard_pending_preset_("Pending preset cancelled by connection loss; press again");
 }
 void DeskUART::check_retained_preset_(uint16_t preset3_raw) {
-  if (this->journal_error_())
+  if (!this->journal_active_ || !this->legacy_backend_ready_() || this->journal_error_())
     return;
   if (!this->cached_journal_valid_ || preset3_raw == this->cached_journal_.original ||
       this->target_move_.busy())
     return;
+  if (!this->legacy_ownership_active_())
+    this->legacy_transaction_started_ = false;
   // A controller reboot and a legitimate local save are indistinguishable.
   // Keep the baseline and require a decision instead of deleting it.
   this->target_move_.recover(
@@ -1107,7 +1119,7 @@ void DeskUART::check_retained_preset_(uint16_t preset3_raw) {
       preset3_raw, this->cached_journal_.original);
 }
 bool DeskUART::save_journal_(bool active) {
-  if (this->journal_error_())
+  if (!this->journal_active_ || this->journal_error_())
     return false;
   this->verified_journal_.valid = false;
   if (!active) {
@@ -1143,6 +1155,11 @@ bool DeskUART::save_journal_(bool active) {
   return true;
 }
 void DeskUART::keep_awake_loop_(uint32_t now) {
+  // A real borrow retains its stale-height abort and automatic recheck even
+  // while auto is Unknown. Dormant journals still wait for classification.
+  if (!this->journal_active_ ||
+      (!this->legacy_backend_ready_() && !this->legacy_ownership_active_()))
+    return;
   if (this->journal_error_())
     return;
   using Phase = desk_protocol::TemporaryPreset::Phase;
@@ -1163,7 +1180,7 @@ void DeskUART::keep_awake_loop_(uint32_t now) {
     this->recovery_check_active_ = this->target_move_.check_recovery(now);
   }
   if (this->direct_mode_)
-    return;  // Recovery above remains mandatory; direct never borrows a preset.
+    return;  // Direct control never borrows a preset.
   if (this->keep_awake_active_) {
     const Phase phase = this->target_move_.phase();
     const bool before_or_during_recall = phase == Phase::CurrentRaw || phase == Phase::Original ||
@@ -1178,10 +1195,10 @@ void DeskUART::keep_awake_loop_(uint32_t now) {
     }
     return;
   }
-  if (!this->target_detected_() || this->journal_recheck_pending_ || this->pending_preset_ ||
-      !this->keep_awake_enabled_ || !this->target_enabled_ || this->keep_awake_fault_ ||
-      this->preset_settings_.busy() || !this->preset_access_allowed_(now) ||
-      this->custom_beep_deferral_.active(now) ||
+  if (!this->legacy_backend_ready_() || !this->target_detected_() ||
+      this->journal_recheck_pending_ || this->pending_preset_ || !this->keep_awake_enabled_ ||
+      !this->target_enabled_ || this->keep_awake_fault_ || this->preset_settings_.busy() ||
+      !this->preset_access_allowed_(now) || this->custom_beep_deferral_.active(now) ||
       static_cast<uint32_t>(now - this->last_keep_awake_) < 30000)
     return;
   const auto height =
@@ -1190,6 +1207,7 @@ void DeskUART::keep_awake_loop_(uint32_t now) {
     return;
   if (!this->target_move_.begin_keep_awake(now))
     return;
+  this->legacy_transaction_started_ = true;
   this->keep_awake_active_ = true;
   this->keep_awake_pressed_ = false;
   this->keep_awake_q_ = this->last_q_;
@@ -1257,6 +1275,7 @@ bool DeskUART::move_to_height(float cm) {
   const auto tenths = static_cast<uint16_t>(std::lround(cm * 10.0f));
   if (!this->target_move_.begin(tenths, now))
     return this->result_(false, "Target transaction refused");
+  this->legacy_transaction_started_ = true;
   this->last_target_error_ = nullptr;
   this->sync_target_ = true;
   ESP_LOGI(TAG, "Requested target %.1f cm; preserving preset 3", tenths / 10.0f);
@@ -1270,6 +1289,8 @@ void DeskUART::invalidate_detection_() {
   this->detection_.reset();
   this->auto_target_ready_ = false;
   this->detection_cancelled_at_ = millis();
+  if (!this->legacy_ownership_active_())
+    this->unload_journal_();
   this->discard_pending_preset_("Pending preset cancelled; firmware detection required");
   // Keep ownership of the old backend until its brake/restore has completed.
 }
@@ -1281,14 +1302,13 @@ const char* DeskUART::target_backend_name_() const {
   return this->direct_mode_ ? "Direct height control" : "Height control using preset 3";
 }
 void DeskUART::detection_loop_(uint32_t now) {
-  if (this->auto_target_mode_ && this->target_enabled_) {
+  if (this->auto_target_mode_) {
     const bool fresh = this->height_seen_ && this->monitor_.fresh(now) &&
                        static_cast<uint32_t>(now - this->last_height_received_) <= 750;
     if (!fresh)
       this->invalidate_detection_();
     else {
-      const bool idle = this->direct_access_allowed_(now) && !this->direct_.busy() &&
-                        !this->keep_awake_active_ && !this->keep_awake_recovery_;
+      const bool idle = this->discovery_access_allowed_(now) && !this->direct_.busy();
       if (this->detection_.busy() && !idle)
         this->invalidate_detection_();
       if (idle) {
@@ -1308,6 +1328,16 @@ void DeskUART::detection_loop_(uint32_t now) {
         if (this->detection_.backend() != desk_protocol::TargetDetection::Backend::Unknown) {
           const bool direct =
               this->detection_.backend() == desk_protocol::TargetDetection::Backend::Direct;
+          // A real legacy transaction may have retained RAM ownership through
+          // invalidation. Drop its now-dormant state only after cleanup ends.
+          if (direct) {
+            if (this->journal_active_)
+              this->unload_journal_();
+            // A legacy keep-awake failure remains sticky across Unknown/stock,
+            // but cannot gate a newly confirmed direct backend.
+            this->keep_awake_fault_ = false;
+            this->soft_abort_error_ = this->last_target_error_ = nullptr;
+          }
           if (direct != this->direct_mode_) {
             this->direct_mode_ = direct;
             this->direct_.disconnect();
@@ -1315,6 +1345,9 @@ void DeskUART::detection_loop_(uint32_t now) {
             this->direct_probe_done_ = false;
           }
           this->auto_target_ready_ = true;
+          if (!direct && !this->journal_active_)
+            this->load_journal_();
+          this->publish_restore_pending_();
         }
       }
     }
@@ -1326,6 +1359,63 @@ void DeskUART::detection_loop_(uint32_t now) {
     if (this->target_backend_sensor_)
       this->target_backend_sensor_->publish_state(name);
   }
+}
+bool DeskUART::legacy_ownership_active_() const {
+  using Phase = desk_protocol::TemporaryPreset::Phase;
+  const auto phase = this->target_move_.phase();
+  return this->target_move_.brake_pending() ||
+         (this->target_move_.busy() && phase != Phase::Fault && phase != Phase::RecoveryRead) ||
+         (this->legacy_transaction_started_ && this->target_move_.dirty());
+}
+void DeskUART::unload_journal_() {
+  // This is RAM-only. Never discard an original or resolve storage because a
+  // newly identified controller can use direct commands.
+  if (this->legacy_ownership_active_())
+    return;
+  this->journal_active_ = false;
+  this->cached_journal_valid_ = false;
+  this->cached_journal_ = {};
+  this->journal_block_reason_ = nullptr;
+  this->verified_journal_.valid = false;
+  this->journal_recheck_pending_ = false;
+  this->keep_awake_recovery_ = this->keep_awake_active_ = false;
+  this->recovery_check_active_ = this->accept_current_active_ = this->restore_requested_ = false;
+  this->legacy_transaction_started_ = false;
+  if (!this->keep_awake_fault_)
+    this->soft_abort_error_ = this->last_target_error_ = nullptr;
+  this->target_move_ = desk_protocol::TemporaryPreset(this->height_profile_);
+}
+void DeskUART::publish_restore_pending_() {
+  if (this->auto_target_mode_ && !this->auto_target_ready_ && !this->legacy_ownership_active_()) {
+    if (this->restore_pending_sensor_ && this->restore_pending_sensor_->has_state())
+      this->restore_pending_sensor_->invalidate_state();
+    return;
+  }
+  const bool quiet_restore = this->keep_awake_active_ && this->target_move_.keep_awake() &&
+                             !this->target_move_.failed() && !this->keep_awake_fault_ &&
+                             !this->release_fault_ && !this->stop_latched_ &&
+                             this->monitor_.fresh(millis());
+  this->last_restore_pending_ =
+      this->journal_error_() || (this->target_move_.dirty() && !quiet_restore);
+  if (this->restore_pending_sensor_ &&
+      (!this->restore_pending_sensor_->has_state() ||
+       this->restore_pending_sensor_->state != this->last_restore_pending_))
+    this->restore_pending_sensor_->publish_state(this->last_restore_pending_);
+}
+
+bool DeskUART::discovery_access_allowed_(uint32_t now) const {
+  // Read-only capability discovery must not depend on a dormant journal, its
+  // load errors, or whether a target-height number is exposed. A real borrow
+  // still owns the bus until its write/brake/cleanup is resolved.
+  return !this->custom_.pending() && !this->reset_speed_blocking_() && !this->child_lock_busy_() &&
+         !this->legacy_ownership_active_() && !this->keep_awake_active_ &&
+         !this->firmware_export_active_ && this->monitor_.fresh(now) && this->height_seen_ &&
+         static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
+         this->stable_ms_(now) >= 1500 && !this->stop_latched_ && !this->release_fault_ &&
+         !this->timer_.busy() && !this->preset_settings_.busy() && !this->pulse_.active() &&
+         !this->release_ack_.pending() && !this->stop_ack_.pending() && !this->pending_preset_ &&
+         this->limit_phase_ == LimitPhase::Idle && this->identity_pending_ == 255 &&
+         static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000;
 }
 bool DeskUART::direct_access_allowed_(uint32_t now) const {
   return !this->custom_.pending() && !this->reset_speed_blocking_() && !this->child_lock_busy_() &&
@@ -1915,7 +2005,7 @@ void DeskUART::direct_loop_(uint32_t now) {
     this->result_(true,
                   "Controller accepted the target; actual height and standstill not confirmed");
   if (fresh && this->target_detected_() && !this->direct_probe_done_ && !this->direct_.busy() &&
-      this->direct_access_allowed_(now)) {
+      this->discovery_access_allowed_(now)) {
     this->direct_probe_done_ = this->direct_.probe(now);
   }
   if (this->direct_.awaiting_set() && !this->direct_.set_sent() &&
@@ -1960,6 +2050,11 @@ bool DeskUART::step_height(bool up) {
   return true;
 }
 bool DeskUART::restore_temporary_preset() {
+  if (!this->journal_active_ ||
+      (!this->legacy_backend_ready_() && !this->legacy_ownership_active_()))
+    return this->result_(false, this->auto_target_mode_ && !this->auto_target_ready_
+                                    ? "Checking height control support; preset recovery unavailable"
+                                    : "Preset recovery is not used with direct height control");
   if (const char* error = this->journal_error_())
     return this->result_(false, error);
   if (this->firmware_export_active_)
@@ -1980,6 +2075,7 @@ bool DeskUART::restore_temporary_preset() {
     this->target_move_.recover(this->cached_journal_.original, this->cached_journal_.temporary);
   const bool retried = this->target_move_.restore_backup(now);
   if (retried) {
+    this->legacy_transaction_started_ = true;
     this->keep_awake_active_ = false;
     this->keep_awake_recovery_ = false;
     this->restore_requested_ = true;
@@ -2003,6 +2099,11 @@ bool DeskUART::recovery_access_allowed_(uint32_t now) const {
          this->limit_phase_ == LimitPhase::Idle;
 }
 bool DeskUART::accept_current_preset() {
+  if (!this->journal_active_ ||
+      (!this->legacy_backend_ready_() && !this->legacy_ownership_active_()))
+    return this->result_(false, this->auto_target_mode_ && !this->auto_target_ready_
+                                    ? "Checking height control support; preset recovery unavailable"
+                                    : "Preset recovery is not used with direct height control");
   if (const char* error = this->journal_error_())
     return this->result_(false, error);
   if (this->firmware_export_active_)
@@ -2018,6 +2119,7 @@ bool DeskUART::accept_current_preset() {
     this->target_move_.recover(this->cached_journal_.original, this->cached_journal_.temporary);
   if (!this->target_move_.accept_current(now))
     return this->result_(false, "No failed preset backup to discard");
+  this->legacy_transaction_started_ = true;
   this->accept_current_active_ = true;
   this->journal_recheck_pending_ = false;
   this->keep_awake_active_ = false;
@@ -2027,10 +2129,16 @@ bool DeskUART::accept_current_preset() {
   return this->result_(true, "Checking current preset twice before discarding backup; no movement");
 }
 void DeskUART::target_loop_(uint32_t now) {
+  if (!this->legacy_backend_ready_() && !this->legacy_ownership_active_()) {
+    this->publish_restore_pending_();
+    return;
+  }
   if (this->reset_speed_blocking_())
     return;
-  if (this->journal_error_())
+  if (this->journal_error_()) {
+    this->publish_restore_pending_();
     return;
+  }
   if (!this->target_enabled_ && !this->target_move_.busy())
     return;
   using Phase = desk_protocol::TemporaryPreset::Phase;
@@ -2142,19 +2250,9 @@ void DeskUART::target_loop_(uint32_t now) {
     this->keep_awake_active_ = false;
     this->last_keep_awake_ = now;
   }
-  // Hide only healthy automatic cycles in the HA entity, never the internal
-  // journal/interlock. Boot recovery, user moves, Stop and failures stay visible.
-  const bool quiet_restore = this->keep_awake_active_ && this->target_move_.keep_awake() &&
-                             !this->target_move_.failed() && !this->keep_awake_fault_ &&
-                             !this->release_fault_ && !this->stop_latched_ &&
-                             this->monitor_.fresh(now);
-  const bool restore_pending =
-      this->journal_error_() || (this->target_move_.dirty() && !quiet_restore);
-  if (restore_pending != this->last_restore_pending_) {
-    this->last_restore_pending_ = restore_pending;
-    if (this->restore_pending_sensor_)
-      this->restore_pending_sensor_->publish_state(this->last_restore_pending_);
-  }
+  if (!this->legacy_ownership_active_())
+    this->legacy_transaction_started_ = false;
+  this->publish_restore_pending_();
 }
 bool DeskUART::set_timer(uint16_t minutes) {
   this->yield_custom_probe_();
@@ -2377,7 +2475,7 @@ const char* DeskUART::control_reason_(uint32_t now, bool presentation) const {
       (!presentation || this->child_lock_detection_.busy() || this->child_lock_.operation() != 0 ||
        !this->child_lock_.state_known()))
     return presentation ? this->child_lock_status_text_(now) : "Panel-lock request in progress";
-  if (this->auto_target_mode_ && this->target_enabled_ && !this->target_detected_())
+  if (this->auto_target_mode_ && !this->target_detected_())
     return this->detection_.error() ? this->detection_.error()
                                     : "Checking height control support; target control unavailable";
   if (this->direct_mode_) {

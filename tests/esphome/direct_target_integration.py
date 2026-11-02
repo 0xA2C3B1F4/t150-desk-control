@@ -33,9 +33,9 @@ def main():
     priority: -100
     then:
       - delay: 4s
-      - lambda: ESP_LOGI("direct_test", "journal_blocked=%d", !id(desk)->move_to_height(78));
+      - lambda: ESP_LOGI("direct_test", "restore_unused=%d", !id(desk)->restore_temporary_preset());
       - delay: 1s
-      - lambda: ESP_LOGI("direct_test", "accept_current=%d", id(desk)->accept_current_preset());
+      - lambda: ESP_LOGI("direct_test", "accept_unused=%d", !id(desk)->accept_current_preset());
       - delay: 3s
       - lambda: |-
           ESP_LOGI("direct_test", "first=%d", id(desk)->move_to_height(78));
@@ -95,6 +95,7 @@ desk_uart:
     preferences.write_bytes(
         struct.pack("=IB", zlib.crc32(b"desk-preset-journal-v1:desk"), len(old)) + old
     )
+    retained_preferences = preferences.read_bytes()
     try:
         with (work / "build.log").open("w") as log:
             build_host(cfg, work, env, log, uart_port=os.ttyname(slave))
@@ -210,8 +211,8 @@ desk_uart:
             proc.wait(timeout=5)
         out = (work / "runtime.log").read_text()
         for marker in (
-            "journal_blocked=1",
-            "accept_current=1",
+            "restore_unused=1",
+            "accept_unused=1",
             "first=1",
             "export_blocked=1",
             "timer_blocked=1",
@@ -225,6 +226,7 @@ desk_uart:
         assert sets == 5, (sets, events)
         assert brakes == 3, (brakes, events)
         assert banks == original
+        assert preferences.read_bytes() == retained_preferences
         assert not any(e["body_hex"].startswith(("19", "1b", "ef")) for e in events)
         assert not any(
             8.5 < e["seconds"] < 11.9 and e["body_hex"].startswith("d10101")
@@ -254,7 +256,7 @@ desk_uart:
             preset_eeprom=original,
             events=events,
             checks=[
-                "legacy journal blocks direct until explicit double-read acceptance",
+                "legacy journal stays untouched and does not block direct control",
                 "no preset, EEPROM or reset writes",
                 "Stop then new explicit request, no automatic retarget",
                 "native preset preempts direct without a second brake",

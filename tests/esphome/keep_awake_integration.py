@@ -75,6 +75,8 @@ def main():
     priority: -100
     then:
       - lambda: |-
+          keep_awake_test::Probe::auto_keeps_active_recovery_guards();
+          keep_awake_test::Probe::auto_preserves_keep_awake_fault();
           keep_awake_test::Probe::empty_rx_crosses_freshness_boundary();
           keep_awake_test::Probe::stop_cancels_confirmed_restore();
           keep_awake_test::Probe::gap_cancels_recovery();
@@ -429,6 +431,8 @@ desk_uart:
                 proc.terminate()
                 proc.wait(timeout=5)
             text = re.sub(r"\x1b\[[0-9;]*m", "", (d / "runtime.log").read_text())
+            assert "AUTO_ACTIVE_RECOVERY=passed" in text
+            assert "AUTO_FAULT_LATCH=passed" in text
             assert "EMPTY_RX_BOUNDARY=passed" in text
             assert "STOP_CONFIRMED_RESTORE=passed" in text
             assert "GAP_CANCELS_RECOVERY=passed" in text

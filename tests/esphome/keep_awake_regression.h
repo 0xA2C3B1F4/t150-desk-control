@@ -90,6 +90,7 @@ class Probe : public esphome::desk_uart::DeskUART {
       if (has_number)
         p.set_preset_height_number(3, &preset);
       p.target_enabled_ = true;
+      p.journal_active_ = true;
       p.cached_journal_valid_ = true;
       p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
       p.cached_journal_.profile = p.height_profile_.identity();
@@ -145,6 +146,7 @@ class Probe : public esphome::desk_uart::DeskUART {
       p.set_uart_parent(&wire);
       p.set_height_sensor(&height);
       p.target_enabled_ = true;
+      p.journal_active_ = true;
       p.cached_journal_valid_ = true;
       p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
       p.cached_journal_.profile = p.height_profile_.identity();
@@ -231,6 +233,7 @@ class Probe : public esphome::desk_uart::DeskUART {
     using Phase = desk_protocol::TemporaryPreset::Phase;
     for (bool restoring : {false, true}) {
       Probe p;
+      p.journal_active_ = true;
       p.cached_journal_valid_ = true;
       p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
       p.cached_journal_.profile = p.height_profile_.identity();
@@ -268,6 +271,7 @@ class Probe : public esphome::desk_uart::DeskUART {
       t.journal_cleared(true);
     }
     Probe p;
+    p.journal_active_ = true;
     p.cached_journal_valid_ = true;
     p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
     p.cached_journal_.profile = p.height_profile_.identity();
@@ -329,6 +333,7 @@ class Probe : public esphome::desk_uart::DeskUART {
     p.last_q_ = 6;
     require(p.recall_preset(1), "user yield accepted");
     require(p.soft_abort_error_, "yield must track restoration freshness");
+    p.journal_active_ = true;
     p.cached_journal_valid_ = true;
     p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
     p.cached_journal_.profile = p.height_profile_.identity();
@@ -370,6 +375,7 @@ class Probe : public esphome::desk_uart::DeskUART {
     take();
     t.abort_keep_awake(1004, false);
     p.soft_abort_error_ = p.last_target_error_ = t.error();
+    p.journal_active_ = true;
     p.cached_journal_valid_ = true;
     p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
     p.cached_journal_.profile = p.height_profile_.identity();
@@ -403,9 +409,182 @@ class Probe : public esphome::desk_uart::DeskUART {
     ESP_LOGI("fixture", "STALE_FINAL_READBACK=passed");
   }
 
+  static void auto_keeps_active_recovery_guards() {
+    using Phase = desk_protocol::TemporaryPreset::Phase;
+    const Phase phases[] = {Phase::Write, Phase::Verify, Phase::CheckRaw, Phase::Recall,
+                            Phase::Moving};
+    for (unsigned stage = 0; stage < 5; ++stage) {
+      Probe p;
+      Wire wire;
+      p.set_uart_parent(&wire);
+      const uint32_t now = esphome::millis();
+      prepare_auto(p, now);
+      p.keep_awake_active_ = p.legacy_transaction_started_ = true;
+      p.keep_awake_q_ = p.last_q_;
+      auto& t = p.target_move_;
+      desk_protocol::Frame frame;
+      require(t.begin_keep_awake(now), "auto keep-awake starts");
+      require(t.take_frame(frame), "raw read");
+      t.accept(value(0x17, 123), now);
+      require(t.take_frame(frame), "original read");
+      t.accept(value(0x1F, 456), now);
+      t.commit(true, now);
+      if (stage >= 1) {
+        require(t.take_frame(frame), "temporary write");
+        frame = {};
+        frame.size = 5;
+        frame.bytes[0] = 0x1A;
+        frame.bytes[1] = 0x1F;
+        t.accept(frame, now);
+      }
+      if (stage >= 2) {
+        require(t.take_frame(frame), "temporary verify");
+        t.accept(value(0x1F, 123), now);
+      }
+      if (stage >= 3) {
+        require(t.take_frame(frame), "raw recheck");
+        t.accept(value(0x17, 123), now);
+      }
+      if (stage == 4) {
+        t.recalled(now, p.last_q_);
+        p.keep_awake_pressed_ = true;
+      }
+      require(t.phase() == phases[stage], "seed exact active phase");
+      p.last_height_received_ = now - 800;
+      require(p.monitor_.fresh(now), "monitor window remains fresh at short gap");
+      p.invalidate_detection_();
+      require(!p.auto_target_ready_ && p.journal_active_ && p.legacy_ownership_active_(),
+              "Unknown retains real legacy ownership");
+      p.keep_awake_loop_(now);
+      require(t.failed() && t.interrupted_by_change(), "short gap aborts active keep-awake");
+      require(t.phase() != Phase::Recall && t.phase() != Phase::Moving,
+              "short gap cannot advance to a preset press");
+      require(t.brake_pending() == (stage == 4), "only an already-sent press needs braking");
+      require(!t.take_frame(frame), "abort drops queued preset work");
+    }
+    Probe p;
+    Wire wire;
+    p.set_uart_parent(&wire);
+    const uint32_t now = esphome::millis();
+    prepare_auto(p, now);
+    p.legacy_transaction_started_ = true;
+    p.target_move_.recover(456, 123);
+    p.invalidate_journal_session_();
+    p.invalidate_detection_();
+    require(p.journal_recheck_pending_ && p.legacy_ownership_active_(),
+            "owned reconnect requires original check");
+    p.keep_awake_loop_(now);
+    require(p.target_move_.phase() == Phase::RecoveryRead && !p.journal_recheck_pending_,
+            "owned recheck runs before backend rediscovery");
+    desk_protocol::Frame request;
+    require(
+        p.target_move_.take_frame(request) && request.bytes[0] == 0x15 && request.bytes[1] == 0x1F,
+        "owned recheck only reads preset 3");
+    p.target_move_.accept(value(0x1F, 456), now);
+    p.target_loop_(now);
+    require(!p.target_move_.dirty() && !p.legacy_ownership_active_(),
+            "matching original releases ownership");
+    require(!p.restore_temporary_preset() && !p.accept_current_preset(),
+            "completed ownership cannot authorize recovery while Unknown");
+    select_direct(p, now);
+    require(p.direct_mode_ && !p.journal_active_ && !p.cached_journal_valid_,
+            "Direct unloads the completed legacy RAM state");
+    require(wire.sent.empty(), "recovery and classification issue no mutation");
+    ESP_LOGI("fixture", "AUTO_ACTIVE_RECOVERY=passed");
+  }
+  static void auto_preserves_keep_awake_fault() {
+    Probe p;
+    Wire wire;
+    p.set_uart_parent(&wire);
+    const uint32_t now = esphome::millis();
+    prepare_auto(p, now);
+    p.keep_awake_fault_ = true;
+    p.invalidate_detection_();
+    require(p.keep_awake_fault_ && !p.journal_active_, "gap cannot clear keep-awake fault");
+    // Model the Preset classification hook without reading external preferences.
+    p.auto_target_ready_ = p.journal_active_ = true;
+    p.keep_awake_enabled_ = true;
+    p.last_keep_awake_ = now - 31000;
+    p.keep_awake_loop_(now);
+    require(p.keep_awake_fault_ && !p.keep_awake_active_ && !p.target_move_.busy(),
+            "confirmed Preset cannot silently re-arm a faulted cycle");
+    p.journal_write_error_ = "fixture write fault";
+    p.invalidate_detection_();
+    select_direct(p, now);
+    require(p.direct_mode_ && !p.keep_awake_fault_ && !p.journal_active_ && !p.journal_error_(),
+            "confirmed Direct removes irrelevant keep-awake blocker");
+    require(p.journal_write_error_ != nullptr, "Direct retains the per-boot storage fault");
+    p.journal_active_ = true;
+    require(p.journal_error_() != nullptr, "Preset reactivation exposes the write fault");
+    require(wire.sent.empty(), "fault handling sends no preset or movement command");
+    ESP_LOGI("fixture", "AUTO_FAULT_LATCH=passed");
+  }
+
  private:
   bool requested_{false}, replaced_{false};
   uint32_t requested_at_{0};
+  static void prepare_auto(Probe& p, uint32_t now) {
+    p.target_enabled_ = p.auto_target_mode_ = p.auto_target_ready_ = true;
+    p.journal_active_ = p.cached_journal_valid_ = true;
+    p.cached_journal_.state = desk_protocol::PresetJournal::State::Retained;
+    p.cached_journal_.profile = p.height_profile_.identity();
+    p.cached_journal_.original = 456;
+    p.cached_journal_.temporary = 123;
+    desk_protocol::Frame height;
+    height.size = 32;
+    height.bytes[0] = 5;
+    height.bytes[20] = 75;
+    require(p.monitor_.observe(height, now), "auto initial height");
+    p.height_seen_ = true;
+    p.last_q_ = 75;
+    p.last_height_received_ = now;
+    p.last_height_change_ = now - 2000;
+    p.last_preset_recall_ = now - 4000;
+  }
+  static void select_direct(Probe& p, uint32_t now) {
+    require(p.discovery_access_allowed_(now), "discovery can run after legacy cleanup");
+    require(p.detection_.start(now), "read-only detection starts");
+    const char* identity[] = {"T150-22-03", "LUMI LEGEND GROUP", "1.5.0",
+                              "1.6",        "1.9.0118",          "21/01/18"};
+    const uint8_t widths[] = {16, 17, 5, 5, 8, 8};
+    uint16_t sequence = 1;
+    desk_protocol::Frame request;
+    while (p.detection_.take_frame(request)) {
+      desk_protocol::Frame reply;
+      if (request.bytes[0] == 0x11) {
+        const unsigned index = request.bytes[1] == 9 ? 5 : request.bytes[1] - 3;
+        require(index < 6, "known identity selector");
+        reply.size = widths[index] + 4;
+        reply.bytes[0] = 0x12;
+        reply.bytes[1] = request.bytes[1];
+        std::memcpy(reply.bytes + 2, identity[index], std::strlen(identity[index]));
+      } else if (request.bytes[0] == 0x15) {
+        reply = value(request.bytes[1], request.bytes[1] == 0x0B ? 24 : 39);
+      } else {
+        require(request.bytes[0] == 0xD1 && request.bytes[2] == 0, "GET-only detection");
+        reply.size = 37;
+        reply.bytes[0] = 0xD2;
+        reply.bytes[1] = 1;
+        reply.bytes[2] = 3;
+        std::memcpy(reply.bytes + 5, "DT02", 4);
+        reply.bytes[9] = request.bytes[3];
+        reply.bytes[10] = request.bytes[4];
+        reply.bytes[14] = reply.bytes[18] = 123;
+        reply.bytes[22] = 6;
+        reply.bytes[25] = 2;
+        reply.bytes[26] = 0xEB;
+        reply.bytes[28] = 24;
+        reply.bytes[30] = 39;
+      }
+      reply.bytes[reply.size - 2] = sequence >> 8;
+      reply.bytes[reply.size - 1] = sequence++ & 255;
+      p.detection_.accept(reply, now);
+    }
+    require(p.detection_.backend() == desk_protocol::TargetDetection::Backend::Direct,
+            "direct classification requires protocol replies");
+    p.detection_loop_(now);
+  }
+
   static desk_protocol::Frame value(uint8_t selector, uint16_t raw) {
     desk_protocol::Frame f;
     f.size = 6;

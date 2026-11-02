@@ -1,0 +1,5 @@
+# Use after installing TB01. Keep secrets.yaml and the examples directory layout.
+# The base is a package so TB01 can replace its panel-timer shortcuts.
+packages:
+  desk: !include stamp-c3-firmware-update.yaml
+  timer_buzzer: !include packages/custom-timer-buzzer.yaml

@@ -1,0 +1,160 @@
+# Optional TB01 controls. Include after a supplied desk example as a package.
+# Changing a value never sends a command. Use Start timer or Play buzzer.
+web_server:
+  sorting_groups:
+    - id: desk_group_buzzer
+      name: Buzzer
+      sorting_weight: 35
+
+desk_uart:
+  id: desk
+  experimental_custom_timer_buzzer: true
+  experimental_target_height: true
+  target_height_mode: direct
+  keep_awake: auto
+  restore_preset_3: !remove
+  accept_current_preset_3: !remove
+  preset_restore_pending: !remove
+  experimental_timer_buttons: false
+  timer_30min: !remove
+  timer_60min: !remove
+  timer_90min: !remove
+  timer_120min: !remove
+  cancel_timer: !remove
+  timer_command_pending: !remove
+  custom_available:
+    name: Custom timer and buzzer available
+    web_server:
+      sorting_group_id: desk_group_diagnostics
+      sorting_weight: 70
+  custom_command_result:
+    id: tb01_command_result
+    name: Custom timer and buzzer result
+    web_server:
+      sorting_group_id: desk_group_diagnostics
+      sorting_weight: 80
+
+number:
+  - platform: template
+    id: tb01_timer_duration
+    name: Timer duration
+    icon: mdi:timer-outline
+    unit_of_measurement: min
+    min_value: 2
+    max_value: 720
+    step: 1
+    initial_value: 30
+    optimistic: true
+    restore_value: true
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_timer
+      sorting_weight: 10
+  - platform: template
+    id: tb01_buzzer_length
+    name: Buzzer pulse length
+    icon: mdi:volume-high
+    unit_of_measurement: ms
+    min_value: 50
+    max_value: 2000
+    step: 1
+    initial_value: 200
+    optimistic: true
+    restore_value: true
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_buzzer
+      sorting_weight: 10
+  - platform: template
+    id: tb01_buzzer_pause
+    name: Buzzer pause
+    icon: mdi:timer-outline
+    unit_of_measurement: ms
+    min_value: 50
+    max_value: 5000
+    step: 1
+    initial_value: 300
+    optimistic: true
+    restore_value: true
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_buzzer
+      sorting_weight: 20
+  - platform: template
+    id: tb01_buzzer_count
+    name: Buzzer repetitions
+    icon: mdi:repeat
+    min_value: 1
+    max_value: 20
+    step: 1
+    initial_value: 3
+    optimistic: true
+    restore_value: true
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_buzzer
+      sorting_weight: 30
+
+button:
+  - platform: template
+    id: tb01_start_timer
+    name: Start timer
+    icon: mdi:timer-play-outline
+    web_server:
+      sorting_group_id: desk_group_timer
+      sorting_weight: 20
+    on_press:
+      - lambda: |-
+          const float minutes = id(tb01_timer_duration).state;
+          if (minutes >= 2 && minutes <= 720 && minutes == std::floor(minutes)) {
+            id(desk)->custom_set_timer(static_cast<int>(minutes));
+          } else {
+            id(tb01_command_result).publish_state("Enter a whole timer duration from 2 to 720 min");
+          }
+  - platform: template
+    id: tb01_cancel_timer
+    name: Cancel timer
+    icon: mdi:timer-off-outline
+    web_server:
+      sorting_group_id: desk_group_timer
+      sorting_weight: 30
+    on_press:
+      - lambda: id(desk)->custom_cancel_timer();
+  - platform: template
+    id: tb01_play_buzzer
+    name: Play buzzer
+    icon: mdi:volume-high
+    web_server:
+      sorting_group_id: desk_group_buzzer
+      sorting_weight: 40
+    on_press:
+      - lambda: |-
+          const float length = id(tb01_buzzer_length).state;
+          const float pause = id(tb01_buzzer_pause).state;
+          const float count = id(tb01_buzzer_count).state;
+          if (length >= 50 && length <= 2000 && length == std::floor(length) &&
+              pause >= 50 && pause <= 5000 && pause == std::floor(pause) &&
+              count >= 1 && count <= 20 && count == std::floor(count)) {
+            id(desk)->custom_beep(static_cast<int>(length), static_cast<int>(pause),
+                                 static_cast<int>(count));
+          } else {
+            id(tb01_command_result).publish_state("Use whole numbers within the buzzer limits");
+          }
+
+api:
+  actions:
+    - action: custom_timer_set
+      variables:
+        minutes: int
+      then:
+        - lambda: id(desk)->custom_set_timer(minutes);
+    - action: custom_timer_cancel
+      then:
+        - lambda: id(desk)->custom_cancel_timer();
+    - action: custom_beep
+      variables:
+        on_ms: int
+        off_ms: int
+        count: int
+      then:
+        - lambda: id(desk)->custom_beep(on_ms, off_ms, count);

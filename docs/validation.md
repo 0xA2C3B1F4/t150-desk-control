@@ -42,6 +42,10 @@ The [TB01 image](custom-timer-buzzer.md) was built from the exact RS01 R7 source
 with pinned LLVM 23.1.0. Its full-image SHA-256 is
 `d9154fc156515d9d2d169b73130ee6ab71bd21061f2e9ac5fb2107735ffb4f2a`.
 The adapter checks used ESPHome 2026.10.1.
+The TB01 control package was also checked after encrypted OTA installation:
+web buzzer playback, web and HA timer controls, saved selections and startup
+without temporary-preset recovery. Buzzer output and timer indicator changes
+were confirmed on the desk.
 
 | Feature               | Checked on hardware                                                                              |
 | --------------------- | ------------------------------------------------------------------------------------------------ |
@@ -77,6 +81,11 @@ been tested on the physical controller. An unnoticed full 256-byte DMA-ring lap
 remains indistinguishable with the current 8-bit cursors.
 
 ## Automated tests
+
+ESPHome host tests verify that direct height control leaves legacy preset backups
+untouched, including damaged or conflicting records. They cover backend changes,
+reconnection, active preset recovery and command admission while detection is
+incomplete. Stock preset recovery remains covered separately.
 
 Release tests cover source and annotated-tag validation, repeatable assets,
 checksum and allowed-file failures, and draft-only API operations. Synthetic inputs
