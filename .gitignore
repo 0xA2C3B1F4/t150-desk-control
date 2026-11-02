@@ -14,6 +14,7 @@ firmware/
 !tests/fixtures/*.bin
 
 # Build and dependency data
+node_modules/
 build/
 .esphome/
 .pio/
