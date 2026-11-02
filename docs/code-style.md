@@ -109,9 +109,9 @@ changing patch sources.
 
 ## Web
 
-Use Node 26.13.0 and the Prettier version locked in `package-lock.json`. The helper
-installs its dependencies and cache under `TMPDIR`, then formats the tracked
-maintenance-page source and its JavaScript test:
+Use Node 26.13.0 and the Prettier version locked in `tools/style/package-
+lock.json`. The helper installs its dependencies and cache under `TMPDIR`, then
+formats the tracked maintenance-page source and its JavaScript test:
 
 ```sh
 python tools/format_assets.py --check --group web

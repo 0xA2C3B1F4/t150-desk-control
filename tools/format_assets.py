@@ -52,9 +52,9 @@ def require_version(command, expected):
 
 def run_prettier(node, prettier, files, mode):
     """Check the formatter identity, then run it with the repository's configuration."""
-    version = json.loads((ROOT / "package.json").read_text())["devDependencies"][
-        "prettier"
-    ]
+    version = json.loads((ROOT / "tools/style/package.json").read_text())[
+        "devDependencies"
+    ]["prettier"]
     require_version([str(node), str(prettier)], version)
     subprocess.run(
         [
@@ -103,7 +103,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="desk-prettier-", dir=tmp) as directory:
         prefix = Path(directory)
         for name in ("package.json", "package-lock.json"):
-            shutil.copyfile(ROOT / name, prefix / name)
+            shutil.copyfile(ROOT / "tools/style" / name, prefix / name)
         subprocess.run(
             [
                 str(node),

@@ -65,8 +65,8 @@ class AssetStyleTest(unittest.TestCase):
 
     def test_manifests_and_installer_agree(self):
         """Node and Prettier pins must agree with their installer and npm lockfile."""
-        package = json.loads((ROOT / "package.json").read_text())
-        lock = json.loads((ROOT / "package-lock.json").read_text())
+        package = json.loads((ROOT / "tools/style/package.json").read_text())
+        lock = json.loads((ROOT / "tools/style/package-lock.json").read_text())
         node = (ROOT / ".node-version").read_text().strip()
         self.assertEqual(node, install_ci_node.VERSION)
         self.assertEqual(node, package["engines"]["node"])
@@ -77,9 +77,9 @@ class AssetStyleTest(unittest.TestCase):
 
     def test_formatter_errors_are_not_hidden(self):
         """A failed check must propagate to the invoking CI job."""
-        version = json.loads((ROOT / "package.json").read_text())["devDependencies"][
-            "prettier"
-        ]
+        version = json.loads((ROOT / "tools/style/package.json").read_text())[
+            "devDependencies"
+        ]["prettier"]
         with patch("format_assets.subprocess.check_output", return_value=version):
             with patch(
                 "format_assets.subprocess.run",

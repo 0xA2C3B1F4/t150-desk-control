@@ -1,5 +1,5 @@
 # Generated output and dependency data are owned by their generators.
-package-lock.json
+**/package-lock.json
 node_modules/
 build/
 .esphome/
