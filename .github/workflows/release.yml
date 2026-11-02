@@ -75,6 +75,7 @@ jobs:
     needs: preflight
     uses: ./.github/workflows/test.yml
     with:
+      full-suite: true
       source-ref: ${{ inputs.commit }}
       external-ref: ${{ needs.preflight.outputs.external-ref }}
     permissions:

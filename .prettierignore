@@ -1,0 +1,10 @@
+# Generated output and dependency data are owned by their generators.
+**/package-lock.json
+node_modules/
+build/
+.esphome/
+.pio/
+.pioenvs/
+.piolibdeps/
+components/desk_firmware_update/*.h
+tools/patches/*.S

@@ -2,6 +2,7 @@
 """Local-index compatibility checks; no browser or hardware access."""
 
 import gzip
+from html.parser import HTMLParser
 import importlib.util
 from pathlib import Path
 import re
@@ -124,8 +125,20 @@ class LayoutTest(unittest.TestCase):
     def test_initial_controls_and_distinct_document_owner(self):
         """Verify controls start disabled and do not use sessionStorage."""
         html = (ROOT / "components/desk_firmware_update/ui.html").read_text()
-        for button in re.findall(r"<button[^>]*>", html):
-            self.assertIn(" disabled ", button)
+        buttons = []
+
+        class ButtonParser(HTMLParser):
+            """Collect button attributes independently of HTML whitespace."""
+
+            def handle_starttag(self, tag, attrs):
+                """Record attributes for each button in the source document."""
+                if tag == "button":
+                    buttons.append(dict(attrs))
+
+        ButtonParser().feed(html)
+        self.assertTrue(buttons)
+        for button in buttons:
+            self.assertIn("disabled", button)
         self.assertNotIn("sessionStorage", html)
 
     def test_installed_esphome_index(self):

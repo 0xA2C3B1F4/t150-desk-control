@@ -104,7 +104,13 @@ class GitHubReleaseTest(unittest.TestCase):
         """Require all workflow jobs and matrix variants for release validation."""
         jobs = yaml.safe_load((ROOT / ".github/workflows/test.yml").read_text())["jobs"]
         matrix_jobs = {"native", "esphome", "github-example"}
-        standalone_jobs = {"style", "release-checks", "release-examples"}
+        standalone_jobs = {
+            "changes",
+            "ci-result",
+            "style",
+            "release-checks",
+            "release-examples",
+        }
         self.assertEqual(set(jobs), matrix_jobs | standalone_jobs)
         expected = set()
         for job_id in matrix_jobs:
@@ -122,11 +128,13 @@ class GitHubReleaseTest(unittest.TestCase):
         """Reject unsuccessful or missing jobs and runs with wrong context or result."""
         api = FakeAPI(self.root, self.sha)
         gh.validate_report(self.report(api), self.version, self.sha)
-        for state in ["skipped", "failure", "cancelled", None]:
-            api.jobs[0]["conclusion"] = state
-            with self.assertRaises(ValueError):
-                self.report(api)
-        api.jobs[0]["conclusion"] = "success"
+        for job in api.jobs:
+            for state in ["skipped", "failure", "cancelled", None]:
+                with self.subTest(job=job["name"], state=state):
+                    job["conclusion"] = state
+                    with self.assertRaises(ValueError):
+                        self.report(api)
+            job["conclusion"] = "success"
         api.jobs.pop()
         with self.assertRaises(ValueError):
             self.report(api)

@@ -23,12 +23,12 @@ Copy one file from `examples/esphome/github/` into Device Builder or a directory
 beside your `secrets.yaml`. ESPHome downloads all packages and components; no
 local checkout or `packages/` directory is needed.
 
-| Configuration | Purpose |
-|---|---|
-| [stamp-c3.yaml](../examples/esphome/github/stamp-c3.yaml) | Stamp-C3 controls and web UI |
-| [esp32.yaml](../examples/esphome/github/esp32.yaml) | ESP32-WROOM-32 controls and web UI |
-| [desk.yaml](../examples/esphome/github/desk.yaml) | Monitoring-only ESP32 example; check the pin choices |
-| [stamp-c3-firmware-export.yaml](../examples/esphome/github/stamp-c3-firmware-export.yaml) | Stamp-C3 with the controller firmware reader |
+| Configuration                                                                             | Purpose                                                                 |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| [stamp-c3.yaml](../examples/esphome/github/stamp-c3.yaml)                                 | Stamp-C3 controls and web UI                                            |
+| [esp32.yaml](../examples/esphome/github/esp32.yaml)                                       | ESP32-WROOM-32 controls and web UI                                      |
+| [desk.yaml](../examples/esphome/github/desk.yaml)                                         | Monitoring-only ESP32 example; check the pin choices                    |
+| [stamp-c3-firmware-export.yaml](../examples/esphome/github/stamp-c3-firmware-export.yaml) | Stamp-C3 with the controller firmware reader                            |
 | [stamp-c3-firmware-update.yaml](../examples/esphome/github/stamp-c3-firmware-update.yaml) | Stamp-C3 with firmware maintenance, panel lock and reset/speed controls |
 
 Keep the installed device's `device_name` and secrets when switching
@@ -68,11 +68,11 @@ report an unknown revision. Neither sensor sends UART commands or changes
 
 The main YAML is the file passed to `esphome` or opened in Device Builder.
 
-| Workflow | YAML and secrets | Component source |
-|---|---|---|
-| Local checkout | Keep files in `examples/esphome/`, with `secrets.yaml` beside the device YAML | Default local source |
-| Device Builder | One GitHub YAML and `secrets.yaml` in its configuration directory | GitHub packages and components |
-| Downloaded GitHub YAML | Selected YAML and `secrets.yaml` together | GitHub packages and components |
+| Workflow               | YAML and secrets                                                              | Component source               |
+| ---------------------- | ----------------------------------------------------------------------------- | ------------------------------ |
+| Local checkout         | Keep files in `examples/esphome/`, with `secrets.yaml` beside the device YAML | Default local source           |
+| Device Builder         | One GitHub YAML and `secrets.yaml` in its configuration directory             | GitHub packages and components |
+| Downloaded GitHub YAML | Selected YAML and `secrets.yaml` together                                     | GitHub packages and components |
 
 Copy the keys from `secrets.example.yaml` and fill in your credentials.
 Generate an API encryption key with `openssl rand -base64 32` if needed.
@@ -177,33 +177,33 @@ Configuration validation checks the listed dependencies. Keep the component
 
 ### Connection and status
 
-| Key | Type | Default | Requirements and notes |
-|---|---|---|---|
-| `id` | ID | generated | Keep it stable: it derives the flash key of the preset recovery journal |
-| `uart_id` | UART ID | the default UART bus | UART at 115200 baud, 8N1, with both TX and RX |
-| `height` | sensor | **required** | — |
-| `load_raw` | sensor | — | Diagnostic; integer raw value with no unit. See [raw load telemetry](#raw-load-telemetry) |
-| `display_unit` | `cm` or `in` | `cm` | Sets height entity units, input conversion and number limits; independent of panel units |
-| `connected` | binary sensor | — | — |
-| `control_status` / `command_result` | text sensor | — | — |
-| `uart_frame_errors` | sensor | — | Diagnostic. Checksum, length, overflow and incomplete-frame timeout errors since boot; published at most once per second |
-| `height_sample_gap` | sensor | — | Diagnostic. Longest interval in ms between accepted height samples while connected, per 60-second window; unknown when no samples arrived |
-| `uart_observation` | boolean | `false` | Cumulative DEBUG log every five seconds; no entity or UART commands |
+| Key                                 | Type          | Default              | Requirements and notes                                                                                                                    |
+| ----------------------------------- | ------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                | ID            | generated            | Keep it stable: it derives the flash key of the preset recovery journal                                                                   |
+| `uart_id`                           | UART ID       | the default UART bus | UART at 115200 baud, 8N1, with both TX and RX                                                                                             |
+| `height`                            | sensor        | **required**         | —                                                                                                                                         |
+| `load_raw`                          | sensor        | —                    | Diagnostic; integer raw value with no unit. See [raw load telemetry](#raw-load-telemetry)                                                 |
+| `display_unit`                      | `cm` or `in`  | `cm`                 | Sets height entity units, input conversion and number limits; independent of panel units                                                  |
+| `connected`                         | binary sensor | —                    | —                                                                                                                                         |
+| `control_status` / `command_result` | text sensor   | —                    | —                                                                                                                                         |
+| `uart_frame_errors`                 | sensor        | —                    | Diagnostic. Checksum, length, overflow and incomplete-frame timeout errors since boot; published at most once per second                  |
+| `height_sample_gap`                 | sensor        | —                    | Diagnostic. Longest interval in ms between accepted height samples while connected, per 60-second window; unknown when no samples arrived |
+| `uart_observation`                  | boolean       | `false`              | Cumulative DEBUG log every five seconds; no entity or UART commands                                                                       |
 
 ### Movement and stop
 
-| Key | Type | Default | Requirements and notes |
-|---|---|---|---|
-| `experimental_preset_buttons` | boolean | `false` | — |
-| `preset_1` / `preset_2` / `preset_3` | button | — | `experimental_preset_buttons: true` |
-| `experimental_target_height` | boolean | `false` | — |
-| `target_height_mode` | `auto`, `preset` or `direct` | `preset` | Auto detects the supported stock/DT02 identity; direct requires experimental target opt-in |
-| `target_height_backend` | text sensor | not created | Configured or detected target backend, `Unknown` or `Disabled` |
-| `target_height` | number, 0.1 selected-unit steps | — | `experimental_target_height: true` |
-| `up` / `down` | button, 1 cm target step | — | `experimental_target_height: true` |
-| `min_height` / `max_height` | float, 73.0–118.0 cm | `73.0` / `118.0` | `min_height` below `max_height`; also bounds the height numbers |
-| `stop` | button | — | — |
-| `stop_locked` | binary sensor | — | — |
+| Key                                  | Type                            | Default          | Requirements and notes                                                                     |
+| ------------------------------------ | ------------------------------- | ---------------- | ------------------------------------------------------------------------------------------ |
+| `experimental_preset_buttons`        | boolean                         | `false`          | —                                                                                          |
+| `preset_1` / `preset_2` / `preset_3` | button                          | —                | `experimental_preset_buttons: true`                                                        |
+| `experimental_target_height`         | boolean                         | `false`          | —                                                                                          |
+| `target_height_mode`                 | `auto`, `preset` or `direct`    | `preset`         | Auto detects the supported stock/DT02 identity; direct requires experimental target opt-in |
+| `target_height_backend`              | text sensor                     | not created      | Configured or detected target backend, `Unknown` or `Disabled`                             |
+| `target_height`                      | number, 0.1 selected-unit steps | —                | `experimental_target_height: true`                                                         |
+| `up` / `down`                        | button, 1 cm target step        | —                | `experimental_target_height: true`                                                         |
+| `min_height` / `max_height`          | float, 73.0–118.0 cm            | `73.0` / `118.0` | `min_height` below `max_height`; also bounds the height numbers                            |
+| `stop`                               | button                          | —                | —                                                                                          |
+| `stop_locked`                        | binary sensor                   | —                | —                                                                                          |
 
 ### Panel lock
 
@@ -213,32 +213,32 @@ Configuration validation checks the listed dependencies. Keep the component
 
 ### Preset heights and recovery
 
-| Key | Type | Default | Requirements and notes |
-|---|---|---|---|
-| `preset_1_height` / `preset_2_height` / `preset_3_height` | number, 0.1 selected-unit steps | — | — |
-| `restore_preset_3` / `accept_current_preset_3` | button | — | — |
-| `preset_restore_pending` | binary sensor | — | — |
+| Key                                                       | Type                            | Default | Requirements and notes |
+| --------------------------------------------------------- | ------------------------------- | ------- | ---------------------- |
+| `preset_1_height` / `preset_2_height` / `preset_3_height` | number, 0.1 selected-unit steps | —       | —                      |
+| `restore_preset_3` / `accept_current_preset_3`            | button                          | —       | —                      |
+| `preset_restore_pending`                                  | binary sensor                   | —       | —                      |
 
 ### Keeping the panel awake
 
-| Key | Type | Default | Requirements and notes |
-|---|---|---|---|
+| Key          | Type              | Default | Requirements and notes                            |
+| ------------ | ----------------- | ------- | ------------------------------------------------- |
 | `keep_awake` | `auto` or boolean | `false` | Experimental target opt-in; direct rejects `true` |
 
 ### Timer sequences
 
-| Key | Type | Default | Requirements and notes |
-|---|---|---|---|
-| `experimental_timer_buttons` | boolean | `false` | — |
-| `timer_30min` / `timer_60min` / `timer_90min` / `timer_120min` / `cancel_timer` | button | — | `experimental_timer_buttons: true` |
-| `timer_command_pending` | binary sensor | — | `experimental_timer_buttons: true` |
+| Key                                                                             | Type          | Default | Requirements and notes             |
+| ------------------------------------------------------------------------------- | ------------- | ------- | ---------------------------------- |
+| `experimental_timer_buttons`                                                    | boolean       | `false` | —                                  |
+| `timer_30min` / `timer_60min` / `timer_90min` / `timer_120min` / `cancel_timer` | button        | —       | `experimental_timer_buttons: true` |
+| `timer_command_pending`                                                         | binary sensor | —       | `experimental_timer_buttons: true` |
 
 ### Load limits
 
-| Key | Type | Default | Requirements and notes |
-|---|---|---|---|
-| `upward_load_limit` / `downward_load_limit` | number, raw 1–65535 | — | — |
-| `restore_upward_load_limit` / `restore_downward_load_limit` | button | — | the matching `*_load_limit` |
+| Key                                                         | Type                | Default | Requirements and notes      |
+| ----------------------------------------------------------- | ------------------- | ------- | --------------------------- |
+| `upward_load_limit` / `downward_load_limit`                 | number, raw 1–65535 | —       | —                           |
+| `restore_upward_load_limit` / `restore_downward_load_limit` | button              | —       | the matching `*_load_limit` |
 
 The component also registers the `desk_uart.stop` action described under
 [Stop and recovery](#stop-and-recovery).
@@ -351,11 +351,11 @@ blocks both recovery actions; preserve the data for inspection.
 `keep_awake` defaults to `false`. Enabling it requires
 `experimental_target_height: true`.
 
-| Setting | Preset backend | DT02/CL01 direct backend |
-|---|---|---|
-| `false` | No workaround | No ESP workaround |
-| `auto` | Enable preset-3 workaround | Rely on firmware sleep fix |
-| `true` | Enable preset-3 workaround | Rejected in explicit direct mode; no workaround after auto detection selects direct |
+| Setting | Preset backend             | DT02/CL01 direct backend                                                            |
+| ------- | -------------------------- | ----------------------------------------------------------------------------------- |
+| `false` | No workaround              | No ESP workaround                                                                   |
+| `auto`  | Enable preset-3 workaround | Rely on firmware sleep fix                                                          |
+| `true`  | Enable preset-3 workaround | Rejected in explicit direct mode; no workaround after auto detection selects direct |
 
 The patched sleep behavior uses the normal telemetry subscription, not periodic
 keep-awake commands. It does not wake an already sleeping UART. No keep-awake
@@ -437,10 +437,10 @@ Check the command result and that pending recovery turns off. Both choices
 verify the current value before completing. Stop, changing values, lost telemetry
 or a failed storage update leaves recovery pending; resolve the cause and retry.
 
-| Reported problem | Action |
-|---|---|
-| Different height profile | Use the original component/profile and component ID to resolve the backup. |
-| Storage or legacy cleanup failed | Restart to recheck; preserve the data if the error persists. |
+| Reported problem                         | Action                                                                         |
+| ---------------------------------------- | ------------------------------------------------------------------------------ |
+| Different height profile                 | Use the original component/profile and component ID to resolve the backup.     |
+| Storage or legacy cleanup failed         | Restart to recheck; preserve the data if the error persists.                   |
 | Unreadable backup or disagreeing records | Preserve the records for inspection; neither button can choose or repair them. |
 
 ### Automatic keep-awake has paused

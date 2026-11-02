@@ -10,8 +10,10 @@ args = parse_args(description=__doc__)
 work = args.work_dir
 env = test_env(work)
 snippet = (ROOT / "examples/esphome/existing-device.yaml").read_text()
+source = "source: github://0xA2C3B1F4/t150-desk-control@main"
+assert snippet.count(source) == 1, "Expected the existing-device GitHub source"
 snippet = snippet.replace(
-    "source: github://0xA2C3B1F4/t150-desk-control@main",
+    source,
     f"source:\n      type: local\n      path: {ROOT}/components",
 )
 config = (

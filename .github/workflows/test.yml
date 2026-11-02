@@ -1,10 +1,15 @@
 name: Tests
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
   workflow_call:
     inputs:
+      full-suite:
+        description: Run all checks when called by another workflow
+        type: boolean
+        default: true
       source-ref:
         type: string
         default: ""
@@ -13,8 +18,51 @@ on:
         default: ""
 permissions:
   contents: read
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && !inputs.full-suite && inputs.source-ref == '' }}
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.select.outputs.full }}
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.source-ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Configure temporary directories
+        run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "PIP_CACHE_DIR=$RUNNER_TEMP/pip-cache" >> "$GITHUB_ENV"
+      - run: python -m pip install -r requirements-ci.txt
+      - name: Check CI selection and documentation
+        run: |
+          python -m unittest discover -s tests/ci -v
+          python tools/check_docs.py
+      - id: select
+        name: Select checks for the complete change
+        env:
+          CI_FULL_SUITE: ${{ inputs.full-suite }}
+          CI_SOURCE_REF: ${{ inputs.source-ref }}
+        run: python tools/ci.py select
+      - name: Install formatter for documentation-only changes
+        if: steps.select.outputs.full == 'false'
+        run: python tools/install_ci_node.py
+      - name: Check Markdown formatting for documentation-only changes
+        if: steps.select.outputs.full == 'false'
+        run: python tools/format_assets.py --check --group markdown
+
   style:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -38,8 +86,14 @@ jobs:
         run: |
           ruff format --check .
           ruff check .
+      - name: Install pinned formatter runtime
+        run: python tools/install_ci_node.py
+      - name: Check asset formatting
+        run: python tools/format_assets.py --check --group web --group data --group markdown
 
   native:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -89,12 +143,46 @@ jobs:
           cmake --build "$RUNNER_TEMP/native" --parallel 2
           ctest --test-dir "$RUNNER_TEMP/native" --output-on-failure
   esphome:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ matrix.test == 'component_layout' && 40 || 20 }}
     strategy:
       fail-fast: false
       matrix:
-        test: [existing_device_config, source_metadata_integration, component_packaging, component_layout, config_validation, identity_integration, firmware_export_config, firmware_export_integration, firmware_export_lifecycle, firmware_update_lifecycle, firmware_update_config, firmware_profile_integration, integration, stop_integration, load_limits_integration, load_raw_integration, target_integration, retarget_integration, retarget_phase_integration, auto_target_integration, child_lock_integration, reset_speed_integration, direct_target_integration, direct_target_review_integration, preset_settings_integration, timer_integration, keep_awake_integration, preset_persistence_integration, profile_journal_integration, display_units_integration]
+        test:
+          [
+            existing_device_config,
+            source_metadata_integration,
+            component_packaging,
+            component_layout,
+            config_validation,
+            identity_integration,
+            firmware_export_config,
+            firmware_export_integration,
+            firmware_export_lifecycle,
+            firmware_update_lifecycle,
+            firmware_update_config,
+            firmware_profile_integration,
+            integration,
+            stop_integration,
+            load_limits_integration,
+            load_raw_integration,
+            target_integration,
+            retarget_integration,
+            retarget_phase_integration,
+            auto_target_integration,
+            child_lock_integration,
+            reset_speed_integration,
+            direct_target_integration,
+            direct_target_review_integration,
+            preset_settings_integration,
+            timer_integration,
+            keep_awake_integration,
+            preset_persistence_integration,
+            profile_journal_integration,
+            display_units_integration,
+          ]
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
@@ -140,6 +228,8 @@ jobs:
           retention-days: 7
 
   github-example:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -176,6 +266,8 @@ jobs:
           retention-days: 7
 
   release-checks:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-24.04
     env:
       PYTHONDONTWRITEBYTECODE: "1"
@@ -198,6 +290,8 @@ jobs:
       - run: python tools/check_firmware_catalog.py
 
   release-examples:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -227,3 +321,18 @@ jobs:
             ${{ runner.temp }}/desk-release-examples/run/summary.json
           if-no-files-found: ignore
           retention-days: 7
+
+  ci-result:
+    if: ${{ always() }}
+    needs: [changes, style, native, esphome, github-example, release-checks, release-examples]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.source-ref || github.sha }}
+          persist-credentials: false
+      - name: Require every selected check to pass
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 tools/ci.py result

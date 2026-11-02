@@ -9,17 +9,17 @@ Host tests and successful builds do not establish physical behavior.
 
 These checks used the R7 image and the updated `FA FA` sender together.
 
-| Feature | Checked on hardware |
-|---|---|
-| Installation | Browser preparation from CL01, installation and comparison of all application bytes by full readback |
-| UART and controls | Controller discovery, telemetry, preset and load-setting readbacks, and remote Stop during a preset move |
-| Reset | Stop during descent, a stationary pause, explicit continuation and completed calibration with controller outputs off; physical movement confirmed by the operator |
-| Motion speed | Normal/Slow selection and comparison runs in both directions, with short and longer direct-target moves; preset values unchanged. Target-position differences remained, including Slow upward moves stopping below the requested height. See [positioning observations](reset-speed.md#motion-speed). |
-| Control status | Ready displayed in the browser; reset, pause, continuation and completion states observed through the ESPHome API |
-| Standby and wake | Panel display went dark while ESPHome was stopped for the test. A local button woke the panel; UART, identification and Ready returned. Target movement and Stop worked after waking, with operator confirmation. Presets and load limits were unchanged. |
-| Patched keep-awake | Stationary telemetry stayed continuous in automatic direct mode, without new UART errors or gaps. This mode uses the firmware sleep fix and does not borrow a preset. |
-| Timer controls | All four menu selections and cancellation, including operator confirmation of the panel display; alarm expiry was not tested |
-| Downward load base | Stationary write, controller readback and restoration of the original value; force response and homing with a changed value were not tested |
+| Feature            | Checked on hardware                                                                                                                                                                                                                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Installation       | Browser preparation from CL01, installation and comparison of all application bytes by full readback                                                                                                                                                                                                  |
+| UART and controls  | Controller discovery, telemetry, preset and load-setting readbacks, and remote Stop during a preset move                                                                                                                                                                                              |
+| Reset              | Stop during descent, a stationary pause, explicit continuation and completed calibration with controller outputs off; physical movement confirmed by the operator                                                                                                                                     |
+| Motion speed       | Normal/Slow selection and comparison runs in both directions, with short and longer direct-target moves; preset values unchanged. Target-position differences remained, including Slow upward moves stopping below the requested height. See [positioning observations](reset-speed.md#motion-speed). |
+| Control status     | Ready displayed in the browser; reset, pause, continuation and completion states observed through the ESPHome API                                                                                                                                                                                     |
+| Standby and wake   | Panel display went dark while ESPHome was stopped for the test. A local button woke the panel; UART, identification and Ready returned. Target movement and Stop worked after waking, with operator confirmation. Presets and load limits were unchanged.                                             |
+| Patched keep-awake | Stationary telemetry stayed continuous in automatic direct mode, without new UART errors or gaps. This mode uses the firmware sleep fix and does not borrow a preset.                                                                                                                                 |
+| Timer controls     | All four menu selections and cancellation, including operator confirmation of the panel display; alarm expiry was not tested                                                                                                                                                                          |
+| Downward load base | Stationary write, controller readback and restoration of the original value; force response and homing with a changed value were not tested                                                                                                                                                           |
 
 ### Original, DT02 and CL01
 
@@ -27,14 +27,14 @@ These results apply to the original, DT02 and CL01 configurations with earlier
 ESPHome software. They do not validate the current sender or Control status
 layout with those images, or establish R7 coverage.
 
-| Feature | Checked on hardware |
-|---|---|
-| Stamp-C3 controls | Browser login, height display, preset recall and editing, Stop, UART reconnect and raw-load reporting |
+| Feature                         | Checked on hardware                                                                                                                                         |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stamp-C3 controls               | Browser login, height display, preset recall and editing, Stop, UART reconnect and raw-load reporting                                                       |
 | Preset target backend with CL01 | Upward and downward target moves, changed-target Stop, restored presets retained across power cycles, backup recovery after ESP restart, and Restore/Accept |
-| Keep-awake | Preset priority, inactivity timing and interruption; patched telemetry continuity |
-| DT02 direct target with CL01 | Upward and downward target moves, cold-start movement, remote Stop, target changes, unlocked-panel interruption and unchanged presets |
-| Firmware maintenance | Installation and full application readback for original, DT02 and CL01; browser cancellation/retry; interrupted-write recovery through the maintenance API |
-| CL01 panel lock | Physical button blocking, remote movement and Stop, lock persistence, browser lock/unlock and confirmed-state display |
+| Keep-awake                      | Preset priority, inactivity timing and interruption; patched telemetry continuity                                                                           |
+| DT02 direct target with CL01    | Upward and downward target moves, cold-start movement, remote Stop, target changes, unlocked-panel interruption and unchanged presets                       |
+| Firmware maintenance            | Installation and full application readback for original, DT02 and CL01; browser cancellation/retry; interrupted-write recovery through the maintenance API  |
+| CL01 panel lock                 | Physical button blocking, remote movement and Stop, lock persistence, browser lock/unlock and confirmed-state display                                       |
 
 ## Controller firmware fixes
 
@@ -78,7 +78,19 @@ ESPHome candidate. The earlier R7 hardware results above apply to the unchanged
 controller image. See [release procedure](releases.md#maintainer-workflow).
 
 The CI workflow defines Debug/Release native tests with ASan/UBSan, ESPHome host
-UART tests and Stamp-C3/ESP32 builds. Tests use dummy credentials and never upload firmware.
+UART tests and Stamp-C3/ESP32 builds. Tests use dummy credentials and never upload
+firmware.
+
+Pull requests run once per update. A PR only adding or modifying `README.md` or
+Markdown under `docs/` runs the CI selection tests and documentation checks.
+These check whitespace, closed code fences and local link files; they do not
+check URL availability or heading fragments. Selection uses the whole PR diff.
+Other changes, including deletions, file-type changes and `CHANGELOG.md`, run
+the full suite. A newer PR update cancels its previous run.
+
+Main pushes, manual runs and release validation run every test. The `ci-result`
+check requires all selected jobs to pass. Release validation also requires each
+individual test job to succeed; skipped jobs cannot qualify a release.
 
 Native and host tests cover unit conversions, framing, presets, Stop ordering,
 target changes, recovery, keep-awake, timers, load values, identity and firmware

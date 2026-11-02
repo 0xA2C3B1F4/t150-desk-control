@@ -30,10 +30,10 @@ See [release preparation](docs/releases.md) for versioning and validation.
 
 You need a compatible controller, a Wi-Fi ESP32 and three UART wires. [Connect TX, RX and ground](docs/hardware.md#uart-wiring); power the ESP32 separately through USB.
 
-| Board | Configuration | ESP32 TX / RX | Coverage |
-|---|---|---|---|
-| M5Stack Stamp-C3, 4 MB | [stamp-c3.yaml](examples/esphome/github/stamp-c3.yaml) | GPIO4 / GPIO5 | Hardware tested |
-| ESP32-WROOM-32, 4 MB | [esp32.yaml](examples/esphome/github/esp32.yaml) | GPIO17 / GPIO16 | Build tested |
+| Board                  | Configuration                                          | ESP32 TX / RX   | Coverage        |
+| ---------------------- | ------------------------------------------------------ | --------------- | --------------- |
+| M5Stack Stamp-C3, 4 MB | [stamp-c3.yaml](examples/esphome/github/stamp-c3.yaml) | GPIO4 / GPIO5   | Hardware tested |
+| ESP32-WROOM-32, 4 MB   | [esp32.yaml](examples/esphome/github/esp32.yaml)       | GPIO17 / GPIO16 | Build tested    |
 
 For an existing ESPHome device, merge [existing-device.yaml](examples/esphome/existing-device.yaml)
 into your configuration and keep your network, API and OTA settings.
@@ -59,12 +59,12 @@ The original examples remain available for a [local checkout](docs/esphome.md#lo
 
 Firmware tools are separate optional builds:
 
-| Tool | Guide |
-|---|---|
-| Read and download only | [Firmware reader](docs/firmware-export.md) |
-| Read, patch, install and verify | [Firmware maintenance](docs/firmware-update.md) |
-| Enable CL01 lock controls | [Panel lock](docs/child-lock.md) |
-| Enable RS01 R7 calibration and speed controls | [Reset and motion speed](docs/reset-speed.md) |
+| Tool                                          | Guide                                           |
+| --------------------------------------------- | ----------------------------------------------- |
+| Read and download only                        | [Firmware reader](docs/firmware-export.md)      |
+| Read, patch, install and verify               | [Firmware maintenance](docs/firmware-update.md) |
+| Enable CL01 lock controls                     | [Panel lock](docs/child-lock.md)                |
+| Enable RS01 R7 calibration and speed controls | [Reset and motion speed](docs/reset-speed.md)   |
 
 ## Use the C++ library elsewhere
 
