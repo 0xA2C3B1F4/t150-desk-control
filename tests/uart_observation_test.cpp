@@ -3,7 +3,13 @@
 #include <iostream>
 #include <limits>
 
-#define CHECK(x) do { if (!(x)) { std::cerr << __FILE__ << ':' << __LINE__ << ": " #x "\n"; std::exit(1); } } while (false)
+#define CHECK(x)                                                \
+  do {                                                          \
+    if (!(x)) {                                                 \
+      std::cerr << __FILE__ << ':' << __LINE__ << ": " #x "\n"; \
+      std::exit(1);                                             \
+    }                                                           \
+  } while (false)
 
 int main() {
   desk_protocol::UARTObservation observation;

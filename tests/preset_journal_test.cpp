@@ -4,7 +4,13 @@
 #include <string>
 
 using namespace desk_protocol;
-#define CHECK(x) do { if (!(x)) { std::cerr << __LINE__ << ": " #x "\n"; std::exit(1); } } while (false)
+#define CHECK(x)                             \
+  do {                                       \
+    if (!(x)) {                              \
+      std::cerr << __LINE__ << ": " #x "\n"; \
+      std::exit(1);                          \
+    }                                        \
+  } while (false)
 
 // Frozen vector generated independently with Python struct.pack and zlib.crc32.
 // Format: <IHBB + <HHIIIiIHHHHHHHHHhhH + <HH + <I CRC32.
@@ -26,20 +32,22 @@ static PresetJournal retained() {
   journal.temporary = 8;
   return journal;
 }
-static void checksum(PresetJournal::Encoded &bytes) {
+static void checksum(PresetJournal::Encoded& bytes) {
   journal_detail::write32(bytes.data() + 60, journal_detail::crc32(bytes.data(), 60));
 }
-static void rejected(const uint8_t *data, std::size_t size) {
+static void rejected(const uint8_t* data, std::size_t size) {
   auto unchanged = retained();
   unchanged.original = 0xBA98;
   const auto before = unchanged.encode();
   CHECK(!PresetJournal::decode(data, size, unchanged));
   CHECK(unchanged.encode() == before);
 }
-static void rejected(const PresetJournal::Encoded &data) { rejected(data.data(), data.size()); }
+static void rejected(const PresetJournal::Encoded& data) {
+  rejected(data.data(), data.size());
+}
 
 static void encoding() {
-  const uint8_t check[] = {'1','2','3','4','5','6','7','8','9'};
+  const uint8_t check[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
   CHECK(journal_detail::crc32(check, sizeof(check)) == 0xCBF43926U);
   const auto bytes = golden();
   const auto expected = retained();
@@ -76,9 +84,11 @@ static void malformed_records() {
       rejected(altered);
     }
   }
-  for (std::size_t length = 0; length < bytes.size(); ++length) rejected(bytes.data(), length);
+  for (std::size_t length = 0; length < bytes.size(); ++length)
+    rejected(bytes.data(), length);
   std::array<uint8_t, 65> oversized{};
-  for (std::size_t i = 0; i < bytes.size(); ++i) oversized[i] = bytes[i];
+  for (std::size_t i = 0; i < bytes.size(); ++i)
+    oversized[i] = bytes[i];
   rejected(oversized.data(), oversized.size());
   rejected(nullptr, 64);
   // Recomputed checksums must not hide invalid envelope values.
@@ -102,7 +112,8 @@ static void identity() {
   const auto known = HeightProfile::known_t150();
   const auto key = known.identity();
   const auto empty = HeightProfileIdentity{};
-  for (uint8_t byte : empty.bytes) CHECK(byte == 0);
+  for (uint8_t byte : empty.bytes)
+    CHECK(byte == 0);
   CHECK(key != empty);
   CHECK(key == HeightProfile::known_t150().identity());
   // Every identity byte is compared, including revision, signed values and the
@@ -128,11 +139,21 @@ static void identity() {
   CHECK(research_key == HeightProfile::research(scalars, 24, 39, false).identity());
   CHECK(research_key != HeightProfile::research(scalars, 25, 39, true).identity());
   CHECK(research_key != HeightProfile::research(scalars, 24, 40, true).identity());
-  CHECK(research_key != HeightProfile::research(HeightProfile::Scalars(5,460,725,-1182,1188),24,39,true).identity());
-  CHECK(research_key != HeightProfile::research(HeightProfile::Scalars(4,461,725,-1182,1188),24,39,true).identity());
-  CHECK(research_key != HeightProfile::research(HeightProfile::Scalars(4,460,726,-1182,1188),24,39,true).identity());
-  CHECK(research_key != HeightProfile::research(HeightProfile::Scalars(4,460,725,-1183,1188),24,39,true).identity());
-  CHECK(research_key != HeightProfile::research(HeightProfile::Scalars(4,460,725,-1182,1189),24,39,true).identity());
+  CHECK(research_key !=
+        HeightProfile::research(HeightProfile::Scalars(5, 460, 725, -1182, 1188), 24, 39, true)
+            .identity());
+  CHECK(research_key !=
+        HeightProfile::research(HeightProfile::Scalars(4, 461, 725, -1182, 1188), 24, 39, true)
+            .identity());
+  CHECK(research_key !=
+        HeightProfile::research(HeightProfile::Scalars(4, 460, 726, -1182, 1188), 24, 39, true)
+            .identity());
+  CHECK(research_key !=
+        HeightProfile::research(HeightProfile::Scalars(4, 460, 725, -1183, 1188), 24, 39, true)
+            .identity());
+  CHECK(research_key !=
+        HeightProfile::research(HeightProfile::Scalars(4, 460, 725, -1182, 1189), 24, 39, true)
+            .identity());
 }
 
 static void legacy() {
@@ -142,7 +163,7 @@ static void legacy() {
     CHECK(historical.bytes[i] == vector[8 + i]);
   CHECK(historical == HeightProfile::known_t150().identity());
   for (uint8_t version = 0x31; version <= 0x33; ++version) {
-    const uint8_t bytes[] = {version,0x4B,0x53,0x44,0xCD,0xAB,0x34,0x12};
+    const uint8_t bytes[] = {version, 0x4B, 0x53, 0x44, 0xCD, 0xAB, 0x34, 0x12};
     LegacyPresetJournal old;
     CHECK(LegacyPresetJournal::decode(bytes, sizeof(bytes), old));
     CHECK(old.magic == (0x44534B00U | version));
@@ -160,7 +181,7 @@ static void legacy() {
   LegacyPresetJournal out;
   const uint8_t cleared[8]{};
   CHECK(!LegacyPresetJournal::decode(cleared, sizeof(cleared), out));
-  uint8_t bad[] = {0x34,0x4B,0x53,0x44,0xCD,0xAB,0x34,0x12,0};
+  uint8_t bad[] = {0x34, 0x4B, 0x53, 0x44, 0xCD, 0xAB, 0x34, 0x12, 0};
   CHECK(!LegacyPresetJournal::decode(bad, 8, out));
   bad[0] = 0x33;
   CHECK(!LegacyPresetJournal::decode(bad, sizeof(bad), out));

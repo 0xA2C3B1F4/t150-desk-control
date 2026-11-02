@@ -5,18 +5,30 @@
 #include <initializer_list>
 
 using namespace desk_protocol;
-#define CHECK(x) do { if (!(x)) { std::cerr << __LINE__ << ": " #x "\n"; std::exit(1); } } while (false)
+#define CHECK(x)                             \
+  do {                                       \
+    if (!(x)) {                              \
+      std::cerr << __LINE__ << ": " #x "\n"; \
+      std::exit(1);                          \
+    }                                        \
+  } while (false)
 
 // Frozen pre-profile behavior: this oracle deliberately does not use profile
 // helpers. Exhaustive checks catch changes in rounding, range and selection.
 static uint32_t legacy_height(uint16_t q) {
-  if (q >= 4 && q <= 7) return 730;
-  if (q >= 457 && q <= 459) return 1188;
+  if (q >= 4 && q <= 7)
+    return 730;
+  if (q >= 457 && q <= 459)
+    return 1188;
   return static_cast<uint32_t>(q) + 725;
 }
-static bool legacy_target(uint16_t tenths, uint16_t &raw) {
-  if (tenths < 730 || tenths > 1180) return false;
-  if (tenths == 730) { raw = 8; return true; }
+static bool legacy_target(uint16_t tenths, uint16_t& raw) {
+  if (tenths < 730 || tenths > 1180)
+    return false;
+  if (tenths == 730) {
+    raw = 8;
+    return true;
+  }
   raw = static_cast<uint16_t>((static_cast<uint32_t>(tenths - 725) * 39 + 23) / 24);
   return raw >= 8 && raw <= 740;
 }
@@ -36,13 +48,16 @@ static void legacy_compatibility() {
     CHECK(actual == input * 24 / 39);
     const bool accepted = legacy_target(value, expected);
     CHECK(metric_target_raw(value, actual) == accepted);
-    if (accepted) CHECK(actual == expected);
+    if (accepted)
+      CHECK(actual == expected);
     CHECK(profile.target_raw(value, actual) == accepted);
-    if (accepted) CHECK(actual == expected);
+    if (accepted)
+      CHECK(actual == expected);
 
     const bool preset_valid = value >= 8 && value <= 740;
     CHECK(preset_height(value, actual) == preset_valid);
-    if (preset_valid) CHECK(actual == legacy_height(static_cast<uint16_t>(input * 24 / 39)));
+    if (preset_valid)
+      CHECK(actual == legacy_height(static_cast<uint16_t>(input * 24 / 39)));
     CHECK(profile.keep_awake_raw(value) == (value >= 6 && value <= 740));
   }
 }
@@ -51,12 +66,15 @@ using Error = HeightProfile::Error;
 static HeightProfile::Scalars known_scalars() {
   return HeightProfile::Scalars(4, 460, 725, -1182, 1188);
 }
-static void candidate(const HeightProfile &profile, uint32_t tenths,
-                      uint16_t first, uint16_t last, uint32_t count) {
+static void candidate(const HeightProfile& profile, uint32_t tenths, uint16_t first, uint16_t last,
+                      uint32_t count) {
   const auto result = profile.inverse_candidates(tenths, 24, 39);
   CHECK(result.error == Error::None);
   CHECK(result.count == count);
-  if (count) { CHECK(result.first == first); CHECK(result.last == last); }
+  if (count) {
+    CHECK(result.first == first);
+    CHECK(result.last == last);
+  }
 }
 static void inverse_and_formatting() {
   const auto profile = HeightProfile::known_t150();
@@ -130,8 +148,8 @@ static void assessment_and_binary32() {
   candidate(snapshot, 730, 7, 12, 6);
   CHECK(!research.assess(24, 39).control_approved && !research.control_approved());
 
-  const auto synthetic = HeightProfile::research(
-      HeightProfile::Scalars(5, 620, 625, -1242, 1248), 24, 39, true);
+  const auto synthetic =
+      HeightProfile::research(HeightProfile::Scalars(5, 620, 625, -1242, 1248), 24, 39, true);
   const auto checked = synthetic.assess(24, 39);
   CHECK(checked.mapping_usable && !checked.control_approved);
   CHECK(checked.raw_lower == 8 && checked.raw_upper == 1007);
@@ -166,36 +184,40 @@ static void assessment_and_binary32() {
   CHECK(!scaled_overflow.scaled_q(65535, out) && out == 0xABCD);
   CHECK(!known.target_raw(729, out) && out == 0xABCD);
   CHECK(!known.preset_height(741, out) && out == 0xABCD);
-  CHECK(HeightProfile::research(known_scalars(), 65535, 1, true)
-            .assess(65535, 1).error == Error::RawBounds);
-  for (const auto &invalid : {
-      HeightProfile::research(known_scalars(), 0, 39, true),
-      HeightProfile::research(known_scalars(), 24, 0, true)}) {
+  CHECK(HeightProfile::research(known_scalars(), 65535, 1, true).assess(65535, 1).error ==
+        Error::RawBounds);
+  for (const auto& invalid : {HeightProfile::research(known_scalars(), 0, 39, true),
+                              HeightProfile::research(known_scalars(), 24, 0, true)}) {
     CHECK(!invalid.scaled_q(100, out));
     CHECK(invalid.assess(24, 39).error == Error::InvalidScale);
   }
 
-  const auto wider = HeightProfile::research(HeightProfile::Scalars(4, 620, 725, -1182, 1188), 24, 39, true);
+  const auto wider =
+      HeightProfile::research(HeightProfile::Scalars(4, 620, 725, -1182, 1188), 24, 39, true);
   CHECK(wider.assess(24, 39).error == Error::NonmonotonicMapping);
   CHECK(wider.inverse_candidates(1188, 24, 39).error == Error::NonmonotonicMapping);
   CHECK(HeightProfile::research(HeightProfile::Scalars(4, 460, 725, -1182, 100), 24, 39, true)
-            .assess(24, 39).error == Error::NonmonotonicMapping);
-  CHECK(HeightProfile::research(known_scalars(), 1, 65535, true)
-            .assess(1, 65535).error == Error::RawBounds);
+            .assess(24, 39)
+            .error == Error::NonmonotonicMapping);
+  CHECK(HeightProfile::research(known_scalars(), 1, 65535, true).assess(1, 65535).error ==
+        Error::RawBounds);
   CHECK(HeightProfile::research(HeightProfile::Scalars(460, 4, 725, -1182, 1188), 24, 39, true)
-            .assess(24, 39).error == Error::InvalidScalars);
+            .assess(24, 39)
+            .error == Error::InvalidScalars);
   CHECK(HeightProfile::research(HeightProfile::Scalars(10, 460, 725, -1182, 1188), 24, 39, true)
-            .assess(24, 39).error == Error::HomingOutsideBounds);
+            .assess(24, 39)
+            .error == Error::HomingOutsideBounds);
   CHECK(HeightProfile::research(HeightProfile::Scalars(5, 6, 725, -1182, 1188), 24, 39, true)
-            .assess(24, 39).error == Error::NoBiasInterval);
-  const auto bad = HeightProfile::research(HeightProfile::Scalars(4, 460, 725, 1, 1188), 24, 39, true);
+            .assess(24, 39)
+            .error == Error::NoBiasInterval);
+  const auto bad =
+      HeightProfile::research(HeightProfile::Scalars(4, 460, 725, 1, 1188), 24, 39, true);
   CHECK(bad.assess(24, 39).error == Error::InvalidScalars);
   CHECK(!bad.display(0).valid);
-  for (const auto &extreme : {
-      HeightProfile::Scalars(4, 0xFFFFFFFFU, 725, -1182, 1188),
-      HeightProfile::Scalars(4, 460, 0xFFFFFFFFU, -1182, 1188),
-      HeightProfile::Scalars(4, 460, 725, INT32_MIN, 1188),
-      HeightProfile::Scalars(4, 460, 725, -1182, 0xFFFFFFFFU)}) {
+  for (const auto& extreme : {HeightProfile::Scalars(4, 0xFFFFFFFFU, 725, -1182, 1188),
+                              HeightProfile::Scalars(4, 460, 0xFFFFFFFFU, -1182, 1188),
+                              HeightProfile::Scalars(4, 460, 725, INT32_MIN, 1188),
+                              HeightProfile::Scalars(4, 460, 725, -1182, 0xFFFFFFFFU)}) {
     const auto invalid = HeightProfile::research(extreme, 24, 39, true);
     CHECK(invalid.assess(24, 39).error == Error::InvalidScalars);
     CHECK(!invalid.display(65535).valid);
@@ -205,15 +227,19 @@ static void assessment_and_binary32() {
 }
 
 static Frame parameter(uint8_t selector, uint16_t raw) {
-  Frame f; f.size = 6; f.bytes[0] = 0x16; f.bytes[1] = selector;
-  f.bytes[2] = static_cast<uint8_t>(raw >> 8); f.bytes[3] = static_cast<uint8_t>(raw);
+  Frame f;
+  f.size = 6;
+  f.bytes[0] = 0x16;
+  f.bytes[1] = selector;
+  f.bytes[2] = static_cast<uint8_t>(raw >> 8);
+  f.bytes[3] = static_cast<uint8_t>(raw);
   return f;
 }
 static void research_recovery_is_inert() {
-  for (const auto &profile : {
-      HeightProfile::research(HeightProfile::Scalars(5, 620, 625, -1242, 1248), 24, 39, true),
-      HeightProfile::research(known_scalars(), 24, 39, true),
-      HeightProfile::research(known_scalars(), 24, 39, false)}) {
+  for (const auto& profile :
+       {HeightProfile::research(HeightProfile::Scalars(5, 620, 625, -1242, 1248), 24, 39, true),
+        HeightProfile::research(known_scalars(), 24, 39, true),
+        HeightProfile::research(known_scalars(), 24, 39, false)}) {
     TemporaryPreset move(profile);
     move.recover(456, 122);
     const auto retained = [&]() {
@@ -224,28 +250,38 @@ static void research_recovery_is_inert() {
       CHECK(!move.take_frame(frame) && !move.take_brake());
     };
     retained();
-    CHECK(!move.retry_restore(1)); retained();
-    CHECK(!move.restore_backup(2)); retained();
-    CHECK(!move.check_recovery(3)); retained();
-    CHECK(!move.accept_current(4)); retained();
+    CHECK(!move.retry_restore(1));
+    retained();
+    CHECK(!move.restore_backup(2));
+    retained();
+    CHECK(!move.check_recovery(3));
+    retained();
+    CHECK(!move.accept_current(4));
+    retained();
 
     // Imported backups must remain available without allowing recovery,
     // cancellation or reconnection to bypass the profile's command gate.
     move.cancel(5);
-    move.tick(3000, true, 2500, true); retained();
+    move.tick(3000, true, 2500, true);
+    retained();
     move.connection_lost(3001);
-    move.tick(6000, true, 2500, true); retained();
+    move.tick(6000, true, 2500, true);
+    retained();
     auto reply = parameter(0x1F, 456);
     reply.bytes[5] = 1;
-    move.accept(reply, 6001); retained();
+    move.accept(reply, 6001);
+    retained();
     reply.bytes[5] = 2;
-    move.accept(reply, 6002); retained();
+    move.accept(reply, 6002);
+    retained();
     reply = parameter(0x1F, 122);
     reply.bytes[5] = 3;
-    move.accept(reply, 6003); retained();
+    move.accept(reply, 6003);
+    retained();
     move.commit(true, 6004);
     move.journal_cleared(true);
-    move.tick(9000, true, 2500, true); retained();
+    move.tick(9000, true, 2500, true);
+    retained();
   }
 }
 static void keep_awake_preserves_raw() {

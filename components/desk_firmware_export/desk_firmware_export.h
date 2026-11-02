@@ -13,15 +13,15 @@
 namespace esphome::desk_firmware_export {
 class FirmwareExport : public Component, public AsyncWebHandler {
  public:
-  void set_desk(desk_uart::DeskUART *desk) { desk_ = desk; }
+  void set_desk(desk_uart::DeskUART* desk) { desk_ = desk; }
   // Called by the guarded ESPHome OTA entry point on the main loop.
   static bool begin_ota();
   static void end_ota();
   void setup() override;
   void loop() override;
   float get_setup_priority() const override { return setup_priority::WIFI; }
-  bool canHandle(AsyncWebServerRequest *request) const override;
-  void handleRequest(AsyncWebServerRequest *request) override;
+  bool canHandle(AsyncWebServerRequest* request) const override;
+  void handleRequest(AsyncWebServerRequest* request) override;
   bool start_read() { return enqueue_(Command::Start); }
   bool cancel_read() { return enqueue_(Command::Cancel); }
   bool clear_image() { return enqueue_(Command::Clear); }
@@ -32,14 +32,15 @@ class FirmwareExport : public Component, public AsyncWebHandler {
   std::string profile_values_text();
   float progress();
   bool image_ready();
+
  protected:
   virtual bool blocks_ota_() const;  // mutex_ held by the caller
   bool ota_active_{false};
   using Receiver = desk_protocol::FirmwareExport;
   enum class Command { None, Start, Cancel, Clear };
   struct Snapshot {
-    const char *state{"idle"};
-    const char *error{nullptr};
+    const char* state{"idle"};
+    const char* error{nullptr};
     size_t received{0}, expected{0}, image_size{0};
     unsigned bad{0}, duplicates{0};
     bool busy{false}, ready{false}, closed{false};
@@ -48,17 +49,18 @@ class FirmwareExport : public Component, public AsyncWebHandler {
     desk_protocol::firmware_profile::Result profile;
   };
   static constexpr size_t MIN_FREE_HEAP = 48 * 1024;
-  static FirmwareExport *instance_;
-  static uint8_t *allocate_(void *context, size_t size);
-  static void IRAM_ATTR uart_notify_(uart_port_t port, uart_select_notif_t event, BaseType_t *woken);
-  static bool transmit_(void *context, const uint8_t *bytes, size_t size);
+  static FirmwareExport* instance_;
+  static uint8_t* allocate_(void* context, size_t size);
+  static void IRAM_ATTR uart_notify_(uart_port_t port, uart_select_notif_t event,
+                                     BaseType_t* woken);
+  static bool transmit_(void* context, const uint8_t* bytes, size_t size);
   uint32_t errors_();
   bool enqueue_(Command command);
   void start_();
   void finish_();
   void update_snapshot_();
   void clear_();
-  desk_uart::DeskUART *desk_{nullptr};
+  desk_uart::DeskUART* desk_{nullptr};
   uart_port_t port_{UART_NUM_1};
   Receiver receiver_;
   std::shared_ptr<uint8_t> buffer_;
@@ -76,10 +78,14 @@ class FirmwareExport : public Component, public AsyncWebHandler {
 class OTAOperation {
  public:
   OTAOperation() : admitted_(FirmwareExport::begin_ota()) {}
-  ~OTAOperation() { if (admitted_) FirmwareExport::end_ota(); }
-  OTAOperation(const OTAOperation &) = delete;
-  OTAOperation &operator=(const OTAOperation &) = delete;
+  ~OTAOperation() {
+    if (admitted_)
+      FirmwareExport::end_ota();
+  }
+  OTAOperation(const OTAOperation&) = delete;
+  OTAOperation& operator=(const OTAOperation&) = delete;
   explicit operator bool() const { return admitted_; }
+
  private:
   bool admitted_;
 };

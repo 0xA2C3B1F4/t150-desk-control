@@ -1,0 +1,59 @@
+# Google-derived style for clang-format 23.1.0.
+# LLVM is the base so Google raw-string rules are not inherited.
+# Explicit layout options follow Google; project overrides apply below.
+BasedOnStyle: LLVM
+AccessModifierOffset: -1
+AlignEscapedNewlines: Left
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakBeforeMultilineStrings: true
+AttributeMacros:
+- __capability
+- absl_nonnull
+- absl_nullable
+- absl_nullability_unknown
+BreakTemplateDeclarations: true
+IncludeBlocks: Preserve
+IncludeCategories:
+- Regex: ^<ext/.*\.h>
+  Priority: 2
+  SortPriority: 0
+  CaseSensitive: false
+- Regex: ^<.*\.h>
+  Priority: 1
+  SortPriority: 0
+  CaseSensitive: false
+- Regex: ^<.*
+  Priority: 2
+  SortPriority: 0
+  CaseSensitive: false
+- Regex: .*
+  Priority: 3
+  SortPriority: 0
+  CaseSensitive: false
+IncludeIsMainRegex: ([-_](test|unittest))?$
+IndentCaseLabels: true
+KeepEmptyLines:
+  AtEndOfFile: false
+  AtStartOfBlock: false
+  AtStartOfFile: true
+ObjCBinPackProtocolList: Never
+PackConstructorInitializers: NextLine
+PenaltyBreakBeforeFirstCallParameter: 1
+PenaltyReturnTypeOnItsOwnLine: 200
+PointerAlignment: Left
+SpacesBeforeTrailingComments: 2
+IndentWidth: 2
+Standard: c++17
+ColumnLimit: 100
+SortIncludes: Never
+SortUsingDeclarations: Never
+QualifierAlignment: Leave
+InsertBraces: false
+RemoveBracesLLVM: false
+RemoveParentheses: Leave
+RemoveSemicolon: false
+BreakStringLiterals: false
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortBlocksOnASingleLine: Never
+AllowShortLambdasOnASingleLine: None

@@ -67,6 +67,40 @@ constructors, and checks the layout of every docstring. Describe constructors
 by the state or resources they initialize. Do not exempt a whole file or test
 directory just to avoid writing useful explanations.
 
+## C and C++
+
+Use clang-format 23.1.0. The shared helper checks its version and selects the
+tracked component and test sources, including `tools/test_reset_speed_header.cpp`:
+
+```sh
+python tools/format_cpp.py --check
+python tools/format_cpp.py --fix
+```
+
+Use `--clang-format /path/to/clang-format` if that version is not on `PATH`.
+CI runs the same check in `native (Debug)` using the pinned LLVM toolchain.
+
+`.clang-format` uses Google-derived layout with two-space indentation and a
+100-character target. It uses an LLVM base with explicit Google settings to
+keep raw-string formatting disabled. Include order, using-declaration order,
+qualifiers and string contents stay unchanged. Short single-statement inline
+methods may stay on one line; longer bodies, conditionals and loops are expanded.
+The formatter parses C++17 syntax used by ESPHome components. Native tests
+enforce C++11 compatibility for the portable protocol library.
+
+Use descriptive `snake_case` names for functions and variables and `PascalCase`
+for types. Follow the surrounding convention for constants and ESPHome members.
+Preserve public names and interfaces during formatting. Keep changes to naming,
+control flow and ownership separate from layout changes. Explain constraints in
+comments instead of restating statements.
+
+The helper excludes the four protected firmware headers `ui.h`,
+`child_lock_patch.h`, `reset_speed_patch.h` and `dt02_patch.h`, the exact protocol
+include wrappers, and hash-bound sources under `tools/patches`. Do not format
+these files by hand or edit generated output. For C++ changes, run the native
+Debug and Release tests with sanitizers and the component tests affected by the
+change.
+
 ## Generated and embedded code
 
 Keep firmware payloads, protocol values and exact upstream search strings
@@ -82,4 +116,5 @@ fixtures or generated and hash-bound files.
 
 Keep unrelated formatting and behavior changes out of the same PR. When a
 style rollout includes lint corrections, review its pure formatting diff and
-its other changes separately. Other languages retain their existing style.
+its other changes separately. Languages without a formatter configuration
+retain their existing style.
