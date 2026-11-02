@@ -39,7 +39,9 @@ verify the repository settings: Actions enabled with read-only default tokens,
 SHA-pinned actions and approval for outside fork runs; a `release` environment
 restricted to `main`; and protection against updating or deleting `v*` tags,
 without bypass actors. Allow new tags and enable immutable releases before
-publishing. Workflow files do not configure these settings.
+publishing. Require the `ci-result` status check for PRs into `main`; individual
+matrix jobs may be skipped for documentation changes. Workflow files do not
+configure these settings.
 
 1. Select a clean full commit SHA on `main` whose target version matches the
    intended release.
@@ -65,9 +67,9 @@ publishing. Workflow files do not configure these settings.
 The first tag's README may describe release preparation. Use its release page
 and attached YAMLs for installation.
 
-Other PRs may merge during preparation. Release stages compare workflow and
-release-tool blobs with the candidate; infrastructure changes block an older
-candidate until reconsidered. Retry network failures on the same source.
+Other PRs may merge during preparation. Release stages compare workflow,
+release-tool and CI-helper blobs with the candidate. Infrastructure changes block
+an older candidate until reconsidered. Retry network failures on the same source.
 A code fix after tagging needs a new version and tag.
 
 ## Local tools

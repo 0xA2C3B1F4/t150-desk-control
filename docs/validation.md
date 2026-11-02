@@ -78,7 +78,19 @@ ESPHome candidate. The earlier R7 hardware results above apply to the unchanged
 controller image. See [release procedure](releases.md#maintainer-workflow).
 
 The CI workflow defines Debug/Release native tests with ASan/UBSan, ESPHome host
-UART tests and Stamp-C3/ESP32 builds. Tests use dummy credentials and never upload firmware.
+UART tests and Stamp-C3/ESP32 builds. Tests use dummy credentials and never upload
+firmware.
+
+Pull requests run once per update. A PR only adding or modifying `README.md` or
+Markdown under `docs/` runs the CI selection tests and documentation checks.
+These check whitespace, closed code fences and local link files; they do not
+check URL availability or heading fragments. Selection uses the whole PR diff.
+Other changes, including deletions, file-type changes and `CHANGELOG.md`, run
+the full suite. A newer PR update cancels its previous run.
+
+Main pushes, manual runs and release validation run every test. The `ci-result`
+check requires all selected jobs to pass. Release validation also requires each
+individual test job to succeed; skipped jobs cannot qualify a release.
 
 Native and host tests cover unit conversions, framing, presets, Stop ordering,
 target changes, recovery, keep-awake, timers, load values, identity and firmware
