@@ -45,6 +45,11 @@ OUTPUT_APP_SHA256 = "ad1f321c570de25abef0f106175a5722d709b92e5db6d3da792bed9cc55
 
 
 def compile_patch(llvm_bin=None):
+    """Compile RS01 sections in TMPDIR and return their bytes and symbols.
+
+    Check the generated C-source marker and link against CL01 symbols. External
+    LLVM tools perform the build, and temporary files are removed on exit.
+    """
     check_source()
     task_tmp = os.environ.get("TMPDIR")
     if not task_tmp or not Path(task_tmp).is_dir() or not os.access(task_tmp, os.W_OK):
@@ -140,6 +145,10 @@ def compile_patch(llvm_bin=None):
 
 
 def identify(data):
+    """Return the flash offset of an exact saved CL01 full or application image.
+
+    Raise ImageError when the image size and digest do not match a supported input.
+    """
     if len(data) == FULL_SIZE and sha256(data) == SOURCE_FULL_SHA256:
         return 0
     if len(data) == APP_SIZE and sha256(data) == SOURCE_APP_SHA256:
@@ -150,6 +159,12 @@ def identify(data):
 
 
 def build(data, llvm_bin=None):
+    """Build RS01 from exact CL01 bytes and return its verified image and manifest.
+
+    Require intact hooks and an erased RS01 reservation, confine changes to
+    declared spans, and verify the output digest and erased tail after the
+    install payload.
+    """
     origin = identify(data)
     sections, symbols = compile_patch(llvm_bin)
     original_hooks = {
@@ -237,6 +252,10 @@ def build(data, llvm_bin=None):
 
 
 def main():
+    """Write RS01 and its manifest to new files, reporting input or build failures.
+
+    Remove the new image if its manifest cannot be written.
+    """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("source", type=Path)
     p.add_argument("output", type=Path)

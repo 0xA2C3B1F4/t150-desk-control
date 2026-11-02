@@ -31,6 +31,10 @@ TARGETS = (
 
 
 def audit(data):
+    """Inventory literals, direct calls and memory layout in the exact CL01 image.
+
+    The scans include data bytes and do not establish indirect-call or alias coverage.
+    """
     if len(data) != FULL_SIZE or identify(data) != 0:
         raise ValueError(
             "The static inventory requires the exact saved full CL01 R3 image"
@@ -112,6 +116,7 @@ def audit(data):
 
 
 def main():
+    """Read a saved image and print the static inventory or create a new report file."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("source", type=Path)
     p.add_argument("--report", type=Path)

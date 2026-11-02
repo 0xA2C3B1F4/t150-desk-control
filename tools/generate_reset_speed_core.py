@@ -13,12 +13,21 @@ PREFIX = "// reset_speed.c SHA-256: "
 
 
 def check_source():
+    """Reject assembly whose recorded C-source digest is missing or stale.
+
+    This checks the source marker, not the complete compiler output.
+    """
     expected = PREFIX + hashlib.sha256(SOURCE.read_bytes()).hexdigest()
     if not OUTPUT.is_file() or OUTPUT.read_text().splitlines()[1] != expected:
         raise ValueError("reset_speed_core.S is stale; regenerate with clang 23.1.0")
 
 
 def generate(clang):
+    """Return Cortex-M0 assembly and its source marker from the supplied clang.
+
+    Require a version banner containing "clang version 23.1.0" and capture
+    assembly output without writing the generated assembly file.
+    """
     version = subprocess.run(
         [str(clang), "--version"], capture_output=True, text=True, check=True
     ).stdout.splitlines()[0]
@@ -55,6 +64,11 @@ def generate(clang):
 
 
 def main():
+    """Check the source marker, or compare or replace assembly using --clang.
+
+    --check without --clang checks only the C-source digest marker. Generation
+    requires a version banner containing "clang version 23.1.0".
+    """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--clang", type=Path)
     p.add_argument("--check", action="store_true")

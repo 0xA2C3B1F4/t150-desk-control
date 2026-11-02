@@ -22,6 +22,7 @@ CONFIG_SCHEMA = cv.All(
 
 
 def validate_reader(config):
+    """Require a desk for standalone export and reject unguarded OTA platforms."""
     if "desk_id" not in config and "desk_firmware_update" not in fv.full_config.get():
         raise cv.Invalid("desk_id is required for the standalone firmware reader")
     for ota in fv.full_config.get().get("ota", []):
@@ -36,6 +37,7 @@ FINAL_VALIDATE_SCHEMA = validate_reader
 
 
 async def to_code(config):
+    """Register a reader instance only when a standalone desk_id is configured."""
     # The updater loads this implementation as a base without a reader instance.
     if "desk_id" not in config:
         return

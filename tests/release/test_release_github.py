@@ -1,3 +1,5 @@
+"""Verify GitHub release gates and draft writes against an in-memory API fixture."""
+
 import copy
 import io
 from pathlib import Path
@@ -17,7 +19,10 @@ import release_github as gh  # noqa: E402
 
 
 class FakeAPI:
+    """Model the workflow, artifact and draft endpoints used by release validation."""
+
     def __init__(self, root, commit):
+        """Seed a successful workflow and empty release, asset and write lists."""
         self.commit = commit
         self.run = {
             "id": 7,
@@ -39,6 +44,7 @@ class FakeAPI:
         self.zip_bytes = b""
 
     def request(self, path, method="GET", data=None, raw=False, upload=False):
+        """Serve fixture metadata and record writes, rejecting unknown reads."""
         if method != "GET":
             self.writes.append((path, method, data))
             if upload:
@@ -58,6 +64,7 @@ class FakeAPI:
         raise AssertionError(path)
 
     def pages(self, path, key=None):
+        """Serve fixture jobs, artifacts, assets or releases from known endpoints."""
         if "/jobs?" in path:
             return self.jobs
         if "/artifacts" in path:
@@ -69,15 +76,19 @@ class FakeAPI:
         raise AssertionError(path)
 
     def archive(self, artifact_id):
+        """Return the configured artifact ZIP bytes without a network request."""
         return self.zip_bytes
 
 
 class GitHubReleaseTest(unittest.TestCase):
+    """Check release eligibility and draft operations without publishing to GitHub."""
+
     setUp = fixtures.ReleaseTest.setUp
     git = fixtures.ReleaseTest.git
     package = fixtures.ReleaseTest.package
 
     def report(self, api, stage="candidate-check"):
+        """Build a fixture validation report for the requested release stage."""
         return gh.build_report(
             api,
             self.root,
@@ -90,6 +101,7 @@ class GitHubReleaseTest(unittest.TestCase):
         )
 
     def test_required_jobs_match_all_workflow_jobs(self):
+        """Require all workflow jobs and matrix variants for release validation."""
         jobs = yaml.safe_load((ROOT / ".github/workflows/test.yml").read_text())["jobs"]
         matrix_jobs = {"native", "esphome", "github-example"}
         standalone_jobs = {"style", "release-checks", "release-examples"}
@@ -107,6 +119,7 @@ class GitHubReleaseTest(unittest.TestCase):
         self.assertEqual(gh.required_jobs(ROOT), expected)
 
     def test_missing_failed_skipped_jobs_and_foreign_run_rejected(self):
+        """Reject unsuccessful or missing jobs and runs with wrong context or result."""
         api = FakeAPI(self.root, self.sha)
         gh.validate_report(self.report(api), self.version, self.sha)
         for state in ["skipped", "failure", "cancelled", None]:
@@ -130,6 +143,7 @@ class GitHubReleaseTest(unittest.TestCase):
                 gh.verify_run(run, 9, True)
 
     def test_candidate_artifact_bound_to_actual_run(self):
+        """Reject a stored candidate report when its workflow no longer succeeds."""
         api = FakeAPI(self.root, self.sha)
         report = self.report(api)
         package = release.package_bytes(self.root, self.version, self.sha)
@@ -149,6 +163,7 @@ class GitHubReleaseTest(unittest.TestCase):
             )
 
     def test_zip_allowlist(self):
+        """Reject ZIP entries outside the exact allowlist, including ../escape."""
         data = io.BytesIO()
         with zipfile.ZipFile(data, "w") as archive:
             archive.writestr("../escape", "invalid")
@@ -156,6 +171,7 @@ class GitHubReleaseTest(unittest.TestCase):
             gh.unpack(data.getvalue(), Path(self.temp.name) / "bad-zip")
 
     def test_draft_create_update_and_published_rejection(self):
+        """Allow matching draft writes and refuse published or wrong-commit releases."""
         api = FakeAPI(self.root, self.sha)
         self.git("tag", "-a", "v" + self.version, "-m", "fixture")
         directory = Path(self.temp.name) / "output"

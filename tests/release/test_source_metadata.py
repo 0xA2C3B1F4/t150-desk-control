@@ -18,7 +18,10 @@ spec.loader.exec_module(metadata)
 
 
 class SourceMetadataTest(unittest.TestCase):
+    """Verify source identity across real Git layouts and unavailable metadata."""
+
     def setUp(self):
+        """Create a temporary component repository with valid identity metadata."""
         self.temp = tempfile.TemporaryDirectory(
             dir=os.environ["TMPDIR"], prefix="desk-source-"
         )
@@ -38,6 +41,7 @@ class SourceMetadataTest(unittest.TestCase):
         self.git("commit", "-m", "fixture")
 
     def git(self, *args, cwd=None):
+        """Run fixture Git without inherited settings or repository hooks."""
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
         env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
         return subprocess.check_output(
@@ -55,9 +59,11 @@ class SourceMetadataTest(unittest.TestCase):
         ).strip()
 
     def read(self, component=None):
+        """Read source identity from the fixture component or a supplied copy."""
         return metadata.source_metadata(component or self.component)
 
     def test_clean_dirty_ignored_and_foreign_environment(self):
+        """Ignore caches and foreign Git settings when detecting local changes."""
         expected = self.git("rev-parse", "HEAD")
         self.assertEqual(
             self.read(), dict(version="2026.11.0", revision=expected, state="clean")
@@ -85,6 +91,7 @@ class SourceMetadataTest(unittest.TestCase):
         self.assertEqual(self.read()["state"], "dirty")
 
     def test_copied_components_foreign_repo_and_missing_metadata(self):
+        """Leave foreign Git identity and invalid version metadata unknown."""
         dest = self.root / "config/components/desk_uart"
         shutil.copytree(self.component, dest)
         self.assertEqual(self.read(dest)["revision"], "unknown")
@@ -99,6 +106,7 @@ class SourceMetadataTest(unittest.TestCase):
         self.assertEqual(self.read()["version"], "unknown")
 
     def test_git_failures_never_mean_clean(self):
+        """Leave Git identity unknown when commands are unavailable or fail."""
         for error in [
             FileNotFoundError(),
             subprocess.TimeoutExpired("git", 3),
@@ -114,6 +122,7 @@ class SourceMetadataTest(unittest.TestCase):
                 )
 
     def test_worktree_shallow_submodule_and_annotated_tags(self):
+        """Resolve fixture commits in varied Git layouts and through both tag types."""
         expected = self.git("rev-parse", "HEAD")
         worktree = Path(self.temp.name) / "worktree"
         self.git("worktree", "add", "--detach", str(worktree))

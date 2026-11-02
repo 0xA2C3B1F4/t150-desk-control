@@ -17,15 +17,26 @@ import release
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Prevent authenticated API requests from following any redirect."""
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        """Decline redirects so urllib exposes the original redirect response."""
         return None
 
 
 class API:
+    """Access GitHub release and Actions endpoints with a caller-supplied token."""
+
     def __init__(self, token):
+        """Store the API token without making a network request."""
         self.token = token
 
     def request(self, path, method="GET", data=None, raw=False, upload=False):
+        """Send an authenticated JSON or binary request to a fixed GitHub API host.
+
+        Require an absolute API path and disable redirects. Decode a nonempty
+        response as JSON and propagate HTTP errors to the caller.
+        """
         host = "https://uploads.github.com" if upload else "https://api.github.com"
         if not path.startswith("/") or path.startswith("//"):
             raise ValueError("Invalid API path")
@@ -49,6 +60,7 @@ class API:
         return json.loads(content) if content else None
 
     def pages(self, path, key=None):
+        """Collect paginated API results, failing after 1,000 pages without an end."""
         result = []
         for page in range(1, 1001):
             data = self.request(
@@ -61,6 +73,10 @@ class API:
         raise ValueError("API pagination exceeded limit")
 
     def archive(self, artifact_id):
+        """Download a bounded artifact ZIP through its HTTPS redirect.
+
+        Follow the signed download URL separately so it receives no GitHub token.
+        """
         try:
             self.request(
                 f"/repos/{release.REPOSITORY}/actions/artifacts/{int(artifact_id)}/zip"
@@ -81,6 +97,7 @@ class API:
 
 
 def required_jobs(root):
+    """Return required CI job names, expanding ESPHome jobs from run_all.TESTS."""
     tree = ast.parse((Path(root) / "tests/esphome/run_all.py").read_text())
     tests = next(
         ast.literal_eval(n.value)
@@ -111,6 +128,7 @@ def required_jobs(root):
 
 
 def validate_report(report, version, commit, stage=None):
+    """Reject report metadata with mismatched identity, stage or failed job results."""
     if (
         report.get("schema_version") != 1
         or report.get("passed") is not True
@@ -129,6 +147,10 @@ def validate_report(report, version, commit, stage=None):
 
 
 def verify_run(run, workflow_id, successful):
+    """Require the expected repository, workflow and main-branch dispatch context.
+
+    Also require successful completion when requested by the caller.
+    """
     if (
         run.get("repository", {}).get("full_name") != release.REPOSITORY
         or run.get("workflow_id") != workflow_id
@@ -143,6 +165,11 @@ def verify_run(run, workflow_id, successful):
 def build_report(
     api, root, version, commit, workflow_sha, run_id, stage, candidate_run_id=None
 ):
+    """Require exactly one successful latest job per required CI check.
+
+    Return a validation report for the requested stage with source infrastructure
+    and tool metadata. Artifact contents are checked separately.
+    """
     if stage == "tagged-draft" and (
         not isinstance(candidate_run_id, int) or candidate_run_id < 1
     ):
@@ -187,6 +214,10 @@ def build_report(
 
 
 def unpack(data, directory):
+    """Extract artifact files whose names exactly match the allowlist.
+
+    Enforce the expanded-size limit and require a new output directory.
+    """
     expected = {"package/" + name for name in release.ASSETS} | {
         "validation-report.json"
     }
@@ -204,6 +235,11 @@ def unpack(data, directory):
 
 
 def previous_candidate(api, run_id, directory, root, version, commit):
+    """Download and revalidate a successful candidate package against current source.
+
+    Create the output directory and reject stale reports, changed job results
+    or assets that differ from the deterministic package.
+    """
     base = f"/repos/{release.REPOSITORY}"
     workflow_id = api.request(base + "/actions/workflows/release.yml")["id"]
     run = api.request(base + f"/actions/runs/{run_id}")
@@ -247,6 +283,7 @@ def previous_candidate(api, run_id, directory, root, version, commit):
 
 
 def remote_tag(api, version, commit):
+    """Require an annotated remote version tag to resolve to the expected commit."""
     base = f"/repos/{release.REPOSITORY}"
     obj = api.request(base + "/git/ref/tags/v" + version)["object"]
     if obj["type"] != "tag":
@@ -263,6 +300,11 @@ def remote_tag(api, version, commit):
 
 
 def draft(api, directory, root, version, commit, run_id, workflow_sha):
+    """Create or update a verified release draft and replace its allowlisted assets.
+
+    Recheck tags, source assets and Actions results before writing. Refuse
+    published or ambiguous releases and verify each uploaded asset digest.
+    """
     release.verify_tag(root, version, commit)
     remote_tag(api, version, commit)
     release.verify_package(directory / "package", version, commit)
@@ -336,6 +378,11 @@ def draft(api, directory, root, version, commit, run_id, workflow_sha):
 
 
 def main():
+    """Validate a candidate and dispatch report, artifact download or draft handling.
+
+    Use GH_TOKEN for GitHub requests. Report and candidate-download write to
+    --output; draft reads the package there, validates it and never publishes.
+    """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("command", choices=["report", "candidate-download", "draft"])
     p.add_argument("--source-root", type=Path, required=True)

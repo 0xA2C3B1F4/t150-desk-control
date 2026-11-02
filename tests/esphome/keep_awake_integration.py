@@ -49,6 +49,7 @@ DURATIONS = {
 
 
 def main():
+    """Verify preset restoration and recovery across synthetic keep-awake scenarios."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--recovery-only",

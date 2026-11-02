@@ -21,6 +21,7 @@ from desk_test_support import (
 
 
 def main():
+    """Verify DT02 requests and braking leave preset banks unchanged."""
     work = parse_args(__doc__).work_dir
     env = test_env(work)
     master, slave = open_pty()

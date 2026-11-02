@@ -62,11 +62,10 @@ Test docstrings describe the property or failure case being checked. CLI
 module docstrings may appear in `--help`; review that output when changing them.
 Preserve accurate claims about simulation, firmware bytes and hardware behavior.
 
-Missing-docstring checks, D100 through D107, are temporarily disabled until
-missing documentation is added in the next Python style PR. That PR removes
-the D1 exemption. Existing docstring layout checks already run in CI. A whole
-file or test directory must not be exempted simply to avoid writing useful
-explanations.
+CI requires docstrings for public modules, classes, functions, methods and
+constructors, and checks the layout of every docstring. Describe constructors
+by the state or resources they initialize. Do not exempt a whole file or test
+directory just to avoid writing useful explanations.
 
 ## Generated and embedded code
 

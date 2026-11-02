@@ -16,6 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def production_probe(work):
+    """Compile and run the host admission probe in the supplied work directory.
+
+    Create include symlinks and an executable there, then return its JSON output.
+    """
     package = Path(esphome.__file__).resolve().parent
     for name in ("desk_uart", "desk_firmware_export", "desk_firmware_update"):
         link = work / "include/esphome/components" / name
@@ -55,6 +59,7 @@ def production_probe(work):
 
 
 def validate(catalog, probe):
+    """Reject catalog entries that disagree with schema, production or builder pins."""
     schema = json.loads((ROOT / "metadata/firmware-catalog.schema.json").read_text())
     jsonschema.Draft202012Validator(schema).validate(catalog)
     images = catalog["images"]
@@ -95,6 +100,10 @@ def validate(catalog, probe):
 
 
 def main():
+    """Compile the production probe, validate the catalog and print the report.
+
+    Also write the report to --output when requested.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--catalog", type=Path, default=ROOT / "metadata/firmware-catalog.json"

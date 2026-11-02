@@ -12,6 +12,7 @@ OTA_GUARD = "void t150_ota_patch_guard() {}\n"
 
 
 def load(path):
+    """Execute a Python source file as a module and return it for patch generation."""
     spec = importlib.util.spec_from_file_location(path.stem, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -19,6 +20,7 @@ def load(path):
 
 
 def patch_ota(source):
+    """Return guarded OTA source only when the upstream hash and anchor match."""
     if hashlib.sha256(source).hexdigest() != OTA_SHA256:
         raise ValueError("Unreviewed ESPHome OTA source; refusing maintenance guard")
     source = source.decode("utf-8")
@@ -41,6 +43,11 @@ def patch_ota(source):
 
 
 def apply(build):
+    """Regenerate selected build sources from pristine inputs.
+
+    Validate all transformations and reject symlink targets before writing.
+    Leave timestamps unchanged when the generated content already matches.
+    """
     build = Path(build)
     config = json.loads((build / "desk-patches.json").read_text(encoding="utf-8"))
     updates = []

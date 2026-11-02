@@ -1,3 +1,5 @@
+"""Check that catalog mutations cannot bypass firmware metadata validation."""
+
 import copy
 import json
 from pathlib import Path
@@ -10,7 +12,10 @@ import check_firmware_catalog as checker  # noqa: E402 - Load tools after the sy
 
 
 class CatalogTest(unittest.TestCase):
+    """Exercise catalog rejection with a matching in-memory probe fixture."""
+
     def setUp(self):
+        """Load a catalog and matching probe fixture for metadata mutations."""
         self.catalog = json.loads((ROOT / "metadata/firmware-catalog.json").read_text())
         # Mutations test the validator; CI also builds the independent production probe.
         self.probe = {
@@ -21,6 +26,7 @@ class CatalogTest(unittest.TestCase):
         }
 
     def test_rejects_metadata_divergence(self):
+        """Reject divergent image metadata and unsupported firmware transitions."""
         mutations = [
             lambda c: c["images"][0].update(sha256="0" * 64),
             lambda c: c["images"][0].update(application_size=65536),

@@ -23,6 +23,7 @@ import child_lock_protocol as protocol
 
 
 def synthetic_source():
+    """Create deterministic fake flash bytes with expected hooks and an erased cave."""
     image = bytearray((index * 17 + 13) & 255 for index in range(65536))
     image[0x4388:0x4390] = bytes.fromhex("0246128a00200a42")
     image[0x85F8:0x85FC] = bytes.fromhex("fff712f8")
@@ -32,7 +33,10 @@ def synthetic_source():
 
 
 class BuilderTests(unittest.TestCase):
+    """Check builder guards and placement with synthetic hashes and compiler stubs."""
+
     def setUp(self):
+        """Prepare fake source, compiled sections and the expected patched image."""
         self.source = synthetic_source()
         self.sections = {
             "gpio_hook": b"G" * 8,
@@ -55,6 +59,7 @@ class BuilderTests(unittest.TestCase):
         self.expected_full = bytes(expected)
 
     def identities(self):
+        """Return a context manager overriding image pins with fixture digests."""
         return patch.multiple(
             builder,
             SOURCE_FULL_SHA256=builder.sha256(self.source),
@@ -64,6 +69,7 @@ class BuilderTests(unittest.TestCase):
         )
 
     def test_real_hashes_refuse_synthetic_and_mutated_sources_before_compiling(self):
+        """Verify unsupported or mutated inputs fail before the compiler is invoked."""
         for value in (
             self.source,
             self.source[0x2800:],
@@ -87,6 +93,7 @@ class BuilderTests(unittest.TestCase):
             compile_mock.assert_not_called()
 
     def test_full_and_application_outputs_match_and_preserve_other_bytes(self):
+        """Verify full and app builds place declared sections and record digests."""
         with (
             self.identities(),
             patch.object(
@@ -137,6 +144,7 @@ class BuilderTests(unittest.TestCase):
             )
 
     def test_local_hook_and_erased_cave_checks_reject_inconsistent_sources(self):
+        """Verify local hooks and reservations reject input after identity bypass."""
         for offset in (0x4388, 0x85F8, 0x7BAE, 0x8C00, 0x93FF):
             source = bytearray(self.source)
             source[offset] ^= 1
@@ -151,6 +159,7 @@ class BuilderTests(unittest.TestCase):
                     builder.build(bytes(source))
 
     def test_unexpected_compiler_output_is_refused_by_final_hash(self):
+        """Verify altered compiled bytes fail final full and app image pin checks."""
         modified = dict(self.sections)
         modified["child_lock"] = b"X" + modified["child_lock"][1:]
         with (
@@ -164,6 +173,7 @@ class BuilderTests(unittest.TestCase):
                     builder.build(source)
 
     def test_cli_refuses_existing_output_without_building(self):
+        """Verify CLI rejection preserves existing output without running a build."""
         temporary = os.environ.get("TMPDIR")
         self.assertTrue(
             temporary and Path(temporary).is_dir(), "TMPDIR must be configured"
@@ -192,6 +202,7 @@ class BuilderTests(unittest.TestCase):
             self.assertEqual(output.read_bytes(), b"preserve")
 
     def test_saved_image_reader_accepts_regular_full_and_app_files(self):
+        """Verify regular full and app image files are read unchanged."""
         temporary = os.environ.get("TMPDIR")
         self.assertTrue(
             temporary and Path(temporary).is_dir(), "TMPDIR must be configured"
@@ -207,6 +218,7 @@ class BuilderTests(unittest.TestCase):
     def test_saved_image_reader_refuses_symlinks_fifos_and_wrong_sizes_before_opening(
         self,
     ):
+        """Verify unsafe file kinds and wrong sizes are rejected before os.open."""
         temporary = os.environ.get("TMPDIR")
         self.assertTrue(
             temporary and Path(temporary).is_dir(), "TMPDIR must be configured"
@@ -234,11 +246,15 @@ class BuilderTests(unittest.TestCase):
 
 
 class ProtocolTests(unittest.TestCase):
+    """Check CL01 wire encoding and strict reply validation without a device."""
+
     @staticmethod
     def body():
+        """Return a valid unlock reply with reserved nonce and sequence bytes."""
         return bytes.fromhex("d4 01 02 00 00 01 00 43 4c 30 31 fa fd fd fe")
 
     def test_known_request_wires(self):
+        """Verify get, lock and unlock vectors have expected escaping and XOR."""
         self.assertEqual(
             protocol.request("get", 0), bytes.fromhex("fa d3 01 00 00 00 d2 fd")
         )
@@ -252,6 +268,7 @@ class ProtocolTests(unittest.TestCase):
         )
 
     def test_request_rejects_unknown_operations_and_out_of_range_nonces(self):
+        """Verify requests reject unknown operations and non-16-bit nonces."""
         for operation, nonce in (
             ("LOCK", 1),
             ("stop", 1),
@@ -266,6 +283,7 @@ class ProtocolTests(unittest.TestCase):
                 protocol.request(operation, nonce)
 
     def test_round_trip_all_bytes_and_reserved_escapes(self):
+        """Verify all bytes round-trip and reserved bytes use canonical escapes."""
         body = bytes(range(256))
         encoded = protocol.frame(body)
         self.assertEqual(protocol.unframe(encoded), body)
@@ -274,6 +292,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn(bytes.fromhex("fe fe"), encoded)
 
     def test_strict_reply_fields_and_nonce(self):
+        """Verify reply fields and reject invalid layouts or mismatched nonces."""
         result = protocol.reply(protocol.frame(self.body()), expected_nonce=0xFAFD)
         self.assertEqual(
             result,
@@ -310,6 +329,7 @@ class ProtocolTests(unittest.TestCase):
             protocol.reply(protocol.frame(self.body()), expected_nonce=0xFAFE)
 
     def test_unknown_operation_is_accepted_only_in_bad_request_replies(self):
+        """Verify an unknown echoed operation is valid only with bad_request status."""
         for operation in (3, 127, 255):
             for status in (0, 1, 2, 3):
                 body = bytearray(self.body())
@@ -327,6 +347,7 @@ class ProtocolTests(unittest.TestCase):
                             protocol.reply(protocol.frame(bytes(body)))
 
     def test_malformed_frames_are_rejected(self):
+        """Verify truncated, malformed, duplicated and checksum-damaged frames fail."""
         valid = protocol.frame(self.body())
         bad_checksum = bytearray(valid)
         bad_checksum[-2] ^= 1

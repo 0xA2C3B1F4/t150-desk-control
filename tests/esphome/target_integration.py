@@ -19,6 +19,7 @@ from desk_test_support import (
 
 
 def main():
+    """Verify target moves restore borrowed presets and preserve local edits."""
     work = parse_args(__doc__).work_dir
     env = test_env(work)
     master, slave = open_pty()

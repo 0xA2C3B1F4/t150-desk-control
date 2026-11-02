@@ -89,6 +89,7 @@ IDENTITY = {
 
 
 def main():
+    """Verify RS01 ownership, cancellation and DT02 refresh barriers over a PTY."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--only", nargs="+", choices=CASES)
     parser.add_argument(

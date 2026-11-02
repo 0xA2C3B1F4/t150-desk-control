@@ -19,6 +19,10 @@ from build_child_lock_patch import (
 
 
 def render(llvm_bin=None):
+    """Compile replacement CL01 sections and return the C++ header text.
+
+    Include reconstruction and application helpers without reading a vendor image.
+    """
     sections, _ = compile_patch(llvm_bin)
     lines = [
         "#pragma once",
@@ -74,6 +78,7 @@ def render(llvm_bin=None):
 
 
 def main():
+    """Regenerate the CL01 header or fail when --check finds different output."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--llvm-bin", type=Path)

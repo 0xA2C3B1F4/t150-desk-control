@@ -57,6 +57,7 @@ MotionSpeedSelect = ns.class_("MotionSpeedSelect", select.Select)
 
 
 def validate_motion(config):
+    """Validate motion-control prerequisites and normalize height entity units."""
     if any(k in config for k in ("reset_desk", "continue_reset")):
         if not config["experimental_reset_controls"]:
             raise cv.Invalid("Reset buttons require experimental_reset_controls: true")
@@ -133,6 +134,7 @@ def validate_motion(config):
 
 
 def display_bounds(config):
+    """Return selectable display limits, rounding inch limits inward to tenths."""
     if config["display_unit"] == "cm":
         return config["min_height"], config["max_height"]
     # Keep selectable tenths of an inch inside the configured centimetre range.
@@ -345,6 +347,7 @@ FINAL_VALIDATE_SCHEMA = cv.All(
 
 
 async def to_code(config):
+    """Generate the configured UART component, source metadata and desk entities."""
     metadata = source_metadata()
     cg.add_define("DESK_SOURCE_VERSION", metadata["version"])
     cg.add_define("DESK_SOURCE_REVISION", metadata["revision"])
@@ -538,5 +541,6 @@ async def to_code(config):
     synchronous=True,
 )
 async def stop_action_to_code(config, action_id, template_arg, args):
+    """Bind a synchronous Stop action to the configured desk component."""
     parent = await cg.get_variable(config[CONF_ID])
     return cg.new_Pvariable(action_id, template_arg, parent)

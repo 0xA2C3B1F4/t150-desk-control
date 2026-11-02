@@ -14,6 +14,7 @@ from desk_test_support import ROOT, build_host, open_pty, parse_args, test_env
 
 
 def main():
+    """Verify profile-bound backup recovery and storage failures in the host."""
     work = parse_args(__doc__).work_dir
     env = test_env(work)
     config = work / "host.yaml"

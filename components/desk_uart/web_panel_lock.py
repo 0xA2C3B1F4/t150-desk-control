@@ -93,6 +93,7 @@ NEW_SELECT_JSON = (
 
 
 def replace_once(text, old, new):
+    """Replace one expected web-source anchor, rejecting missing or repeated matches."""
     if text.count(old) != 1:
         raise ValueError(
             "Unsupported ESPHome web asset; expected exactly one confirmed-switch anchor"
@@ -101,6 +102,7 @@ def replace_once(text, old, new):
 
 
 def decorate_header(source):
+    """Add confirmed desk controls to a gzip header, rejecting inconsistent patches."""
     pattern = r"(#ifdef USE_WEBSERVER_GZIP\s+constexpr uint8_t INDEX_GZ\[\] PROGMEM = \{)([^}]+)(\};)"
     matches = list(re.finditer(pattern, source))
     if len(matches) != 1:
@@ -132,6 +134,7 @@ def decorate_header(source):
 
 
 def decorate_server(source):
+    """Add desk-specific JSON fields without duplicating existing decorations."""
     if NEW_JSON in source:
         if INCLUDE not in source:
             raise ValueError("Missing panel lock type declaration")

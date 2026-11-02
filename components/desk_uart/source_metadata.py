@@ -10,6 +10,7 @@ VERSION_PATTERN = r"[0-9]{4}\.(?:[1-9]|1[0-2])\.(?:0|[1-9][0-9]*)"
 
 
 def read_version(component=None):
+    """Read the component version, rejecting invalid schema or version values."""
     component = Path(component or Path(__file__).parent)
     data = json.loads((component / "project_version.json").read_text())
     if (
@@ -23,6 +24,12 @@ def read_version(component=None):
 
 
 def source_metadata(component=None):
+    """Return advisory version, revision and worktree state.
+
+    Use unknown for unavailable fields. Accept Git identity only from the
+    component repository, ignoring the caller's Git environment and parent
+    configuration repositories.
+    """
     component = Path(component or Path(__file__).parent).resolve()
     result = {"version": "unknown", "revision": "unknown", "state": "unknown"}
     try:

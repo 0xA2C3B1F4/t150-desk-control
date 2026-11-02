@@ -29,6 +29,7 @@ UART_PLACEHOLDER = "/dev/null"
 
 
 def encode(body):
+    """Return a T150 wire frame with an XOR checksum and escaped delimiter bytes."""
     check = 0
     for b in body:
         check ^= b
@@ -41,6 +42,7 @@ def encode(body):
 
 
 def frames(data):
+    """Yield decoded T150 bodies, rejecting invalid frame lengths or XOR checksums."""
     active, escaped, body = False, False, bytearray()
     for b in data:
         if not active:

@@ -11,6 +11,7 @@ from desk_test_support import ROOT, parse_args, test_env
 
 
 def main():
+    """Verify isolated component generation and builds need no portable-library tree."""
     work = parse_args(__doc__).work_dir
     source = work / "source"
     shutil.copytree(

@@ -9,6 +9,7 @@ import esphome.final_validate as fv
 
 
 def research_url(value):
+    """Accept an empty research link or a bounded HTTPS URL with a restricted path."""
     value = cv.string_strict(value)
     if len(value) > 240 or not re.fullmatch(r"(|https://[A-Za-z0-9./_-]+)", value):
         raise cv.Invalid(
@@ -35,6 +36,7 @@ CONFIG_SCHEMA = cv.All(
 
 
 def validate_exclusive(config):
+    """Require web authentication and reject a simultaneous standalone reader."""
     if not fv.full_config.get().get("web_server", {}).get("auth"):
         raise cv.Invalid("Firmware installation requires web_server.auth")
     if fv.full_config.get().get("desk_firmware_export", {}).get("desk_id") is not None:
@@ -46,6 +48,7 @@ FINAL_VALIDATE_SCHEMA = validate_exclusive
 
 
 async def to_code(config):
+    """Register firmware maintenance with its desk and optional research link."""
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     cg.add(var.set_desk(await cg.get_variable(config["desk_id"])))

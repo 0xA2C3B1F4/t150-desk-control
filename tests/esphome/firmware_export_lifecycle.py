@@ -52,11 +52,13 @@ STATUS_TEXT = {
 
 
 def check(condition, description):
+    """Raise AssertionError with the supplied description when a fixture check fails."""
     if not condition:
         raise AssertionError(description)
 
 
 def validate_snapshot(row):
+    """Check export state, retained image metadata and HTTP/entity agreement."""
     case, point, fixture = row["case"], row["checkpoint"], row["profile_fixture"]
     http, entities = row["http"], row["entities"]
     context = f"{case}/{point}"
@@ -224,6 +226,10 @@ def validate_snapshot(row):
 
 
 def validate_download(row, run):
+    """Verify download status, headers and retained synthetic image bytes.
+
+    Reject file paths outside the case's run directory.
+    """
     expected, context = row["expected_image"], f"{row['case']}/{row['checkpoint']}"
     path = (run / row["file"]).resolve()
     check(path.parent == run.resolve(), f"{context}: output path escapes run directory")
@@ -257,6 +263,7 @@ def validate_download(row, run):
 
 
 def validate_output(run, output, cases):
+    """Validate ordered case checkpoints and return snapshot/download record counts."""
     rows = [json.loads(line) for line in output.splitlines() if line.strip()]
     check(
         rows and rows[-1] == {"kind": "result", "passed": True, "cases": len(cases)},
@@ -322,6 +329,7 @@ def validate_output(run, output, cases):
 
 
 def main():
+    """Build host fixtures to verify retained images and export downloads."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--source-root",

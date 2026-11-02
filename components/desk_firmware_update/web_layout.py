@@ -87,6 +87,7 @@ def decorate_header(source):
 
 
 def patch_file(path):
+    """Atomically update a web header; warn and return False on handled errors."""
     temporary = None
     try:
         source = path.read_text(encoding="utf-8")
