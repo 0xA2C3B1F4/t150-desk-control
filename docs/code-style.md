@@ -103,26 +103,9 @@ these files by hand or edit generated output. For C++ changes, run the native
 Debug and Release tests with sanitizers and the component tests affected by the
 change.
 
-After formatting `reset_speed.c`, regenerate its assembly with Clang 23.1.0:
-
-```sh
-python tools/generate_reset_speed_core.py --clang /path/to/llvm/bin/clang
-```
-
-Verify the generated assembly and embedded patch with the same toolchain:
-
-```sh
-python tools/generate_reset_speed_core.py --clang /path/to/llvm/bin/clang --check
-python tools/embed_reset_speed_patch.py --llvm-bin /path/to/llvm/bin --check
-```
-
-Set `TMPDIR` to an existing writable temporary directory for patch builds. The
-C-source SHA-256 comment may change during formatting; generated instructions,
-patch bytes, symbol addresses and accepted image hashes must stay unchanged.
-Stop if those differ. Do not update expected bytes or hashes to accept a
-formatting change. CI checks both the generated assembly and embedded bytes.
-The assembly comparison ignores only the compiler identification string in
-`.ident`, which the patch linker discards; instructions and data remain exact.
+Formatting must preserve generated firmware bytes and accepted image hashes.
+Follow the [patch reproduction checks](validation.md#patch-reproduction) when
+changing patch sources.
 
 ## Generated and embedded code
 
