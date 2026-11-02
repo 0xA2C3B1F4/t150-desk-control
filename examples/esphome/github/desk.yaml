@@ -2,7 +2,7 @@
 # Preserve device_name and existing secrets when updating an installed device.
 substitutions:
   device_name: t150-desk-control
-  t150_ref: main  # Use the same release tag or commit for packages and components.
+  t150_ref: main # Use the same release tag or commit for packages and components.
   build_directory: build/${device_name}
 
 packages:

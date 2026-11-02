@@ -86,18 +86,26 @@ def main():
         r"^  t150_ref: .*", f"  t150_ref: {source_ref}", original, flags=re.M
     )
     assert count == 1
-    text = re.sub(
+    text, count = re.subn(
         r"^  build_directory: .*", f"  build_directory: {work}/build", text, flags=re.M
     )
+    assert count == 1, "Expected the isolated build-directory substitution"
     if args.device_name:
         assert re.fullmatch(r"[a-z0-9-]+", args.device_name)
-        text = re.sub(
+        text, count = re.subn(
             r"^  device_name: .*",
             f"  device_name: {args.device_name}",
             text,
             flags=re.M,
         )
+        assert count == 1, "Expected the existing device-name substitution"
     if args.source_mode == "local":
+        assert text.count(wrapper["packages"]["desk"]) == 1, (
+            "Expected the GitHub package source"
+        )
+        assert text.count(wrapper["external_components"]["source"]) == 1, (
+            "Expected the GitHub component source"
+        )
         text = text.replace(
             wrapper["packages"]["desk"],
             f"!include {ROOT}/examples/esphome/{args.example}.yaml",

@@ -42,6 +42,35 @@ class AssetStyleTest(unittest.TestCase):
         ):
             self.assertEqual(format_assets.selected_files(self.root, ["web"]), [name])
 
+    def test_data_scope_keeps_generated_files_and_vendor_data_out(self):
+        """Select tracked YAML and JSON without formatting the npm lock or fixtures."""
+        selected = [
+            "library.json",
+            "metadata/new.schema.json",
+            "examples/new.yaml",
+            ".github/workflows/test.yml",
+            "tests/fixtures/manifest.json",
+        ]
+        protected = [
+            "package-lock.json",
+            "tools/style/package-lock.json",
+            "tests/fixtures/sample.bin",
+            "vendor/data.json",
+            "build/generated.yaml",
+            "components/node_modules/pkg/package.json",
+        ]
+        for name in selected:
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("{}\n")
+        with patch(
+            "format_assets.subprocess.check_output",
+            return_value="\0".join(selected + protected) + "\0",
+        ):
+            self.assertEqual(
+                format_assets.selected_files(self.root, ["data"]), sorted(selected)
+            )
+
     def test_symlinked_source_is_rejected(self):
         """A tracked source symlink cannot redirect a formatter write."""
         name = "components/desk_firmware_update/ui.html"

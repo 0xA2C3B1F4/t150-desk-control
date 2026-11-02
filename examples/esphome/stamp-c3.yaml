@@ -30,20 +30,20 @@ external_components:
   - <<:
       source:
         type: local
-        path: ../../components  # Relative to the main YAML; expects examples/esphome/.
+        path: ../../components # Relative to the main YAML; expects examples/esphome/.
     # For Device Builder or copied YAML, uncomment GitHub below instead.
     # If keeping a local source after moving this file, update path above.
     # source: github://0xA2C3B1F4/t150-desk-control@main
     components: [desk_uart]
 
 logger:
-  hardware_uart: UART0  # Stamp USB-serial, G21/G20. Desk uses UART1 on G4/G5.
+  hardware_uart: UART0 # Stamp USB-serial, G21/G20. Desk uses UART1 on G4/G5.
   baud_rate: 115200
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  reboot_timeout: 0s  # Keep local control running during Wi-Fi outages.
+  reboot_timeout: 0s # Keep local control running during Wi-Fi outages.
 
 api:
   encryption:
@@ -56,8 +56,8 @@ ota:
 
 web_server:
   port: 80
-  version: 3  # Native entity groups; assets remain local.
-  local: true  # Serve the interface from the ESP32, including JavaScript.
+  version: 3 # Native entity groups; assets remain local.
+  local: true # Serve the interface from the ESP32, including JavaScript.
   log: false
   sorting_groups:
     - id: desk_group_control
@@ -95,7 +95,7 @@ uart:
 desk_uart:
   id: desk
   uart_id: desk_serial
-  display_unit: cm  # Or in. min_height/max_height below always use centimetres.
+  display_unit: cm # Or in. min_height/max_height below always use centimetres.
   controller_model:
     name: Controller model
     web_server:
