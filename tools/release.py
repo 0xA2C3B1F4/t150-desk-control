@@ -139,6 +139,7 @@ def infrastructure(root, candidate, workflow):
             for p in text(root, "ls-tree", "-r", "--name-only", ref).splitlines()
             if (
                 p.startswith(".github/workflows/")
+                or p in {"tools/ci.py", "tools/check_docs.py", "requirements-ci.txt"}
                 or p.startswith("tools/release")
                 and p.endswith(".py")
             )

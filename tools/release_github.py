@@ -107,6 +107,8 @@ def required_jobs(root):
     )
     return (
         {
+            "changes",
+            "ci-result",
             "style",
             "native (Debug)",
             "native (Release)",

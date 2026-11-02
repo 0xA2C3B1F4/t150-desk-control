@@ -30,6 +30,9 @@ class ReleaseTest(unittest.TestCase):
             "requirements-dev.txt",
             "CHANGELOG.md",
             *release.YAMLS.values(),
+            "tools/ci.py",
+            "tools/check_docs.py",
+            "requirements-ci.txt",
             "tools/release.py",
             "tools/release_github.py",
             ".github/workflows/release.yml",
@@ -189,6 +192,30 @@ class ReleaseTest(unittest.TestCase):
         (directory / "stamp-c3.yaml").write_text("changed")
         with self.assertRaises(ValueError):
             release.verify_package(directory, self.version, self.sha)
+
+    def test_ci_helpers_are_bound_to_the_release_candidate(self):
+        """Reject later changes to selection, documentation checks or their dependencies."""
+        for name in ("tools/ci.py", "tools/check_docs.py", "requirements-ci.txt"):
+            for operation in ("modify", "delete"):
+                with self.subTest(path=name, operation=operation):
+                    path = self.root / name
+                    original = path.read_bytes()
+                    if operation == "modify":
+                        path.write_bytes(original + b"\n# changed\n")
+                    else:
+                        path.unlink()
+                    self.git("add", name)
+                    self.git("commit", "-m", "change CI infrastructure")
+                    with self.assertRaises(ValueError):
+                        release.infrastructure(
+                            self.root, self.sha, self.git("rev-parse", "HEAD")
+                        )
+                    path.write_bytes(original)
+                    self.git("add", name)
+                    self.git("commit", "-m", "restore fixture")
+                    release.infrastructure(
+                        self.root, self.sha, self.git("rev-parse", "HEAD")
+                    )
 
     def test_infrastructure_only_allows_unrelated_main_changes(self):
         """Allow unrelated main changes while rejecting release-infrastructure drift."""
