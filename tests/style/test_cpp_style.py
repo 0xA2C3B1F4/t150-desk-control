@@ -81,6 +81,8 @@ class CppStyleTest(unittest.TestCase):
             "tests/five.h",
             "tests/six.hpp",
             "tools/test_reset_speed_header.cpp",
+            "tools/patches/reset_speed.c",
+            "tools/patches/uart_parser.c",
         }
         protected = {
             "components/desk_firmware_update/ui.h",
@@ -88,8 +90,9 @@ class CppStyleTest(unittest.TestCase):
             "components/desk_firmware_update/reset_speed_patch.h",
             "components/desk_firmware_update/dt02_patch.h",
             "lib/desk_protocol/include/desk_protocol/protocol.h",
-            "tools/patches/reset_speed.c",
-            "tools/patches/uart_parser.c",
+            "tools/patches/reset_speed.S",
+            "tools/patches/reset_speed_core.S",
+            "tools/patches/unselected.c",
             "tools/other.cpp",
             "build/generated.cpp",
             "third_party/vendor.h",

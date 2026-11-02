@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check or format the repository's tracked C/C++ sources with pinned clang-format.
 
-Generated firmware headers, include wrappers and patch sources stay outside the
+Firmware payload headers, include wrappers and assembly stay outside the
 selection. Both modes use the repository's root .clang-format configuration.
 """
 
@@ -15,7 +15,11 @@ from install_ci_llvm import verify_clang_format
 
 ROOT = Path(__file__).resolve().parents[1]
 SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".h", ".hpp"}
-EXTRA_SOURCE = "tools/test_reset_speed_header.cpp"
+EXTRA_SOURCES = {
+    "tools/test_reset_speed_header.cpp",
+    "tools/patches/reset_speed.c",
+    "tools/patches/uart_parser.c",
+}
 EXCLUDED = {
     "components/desk_firmware_update/ui.h",
     "components/desk_firmware_update/child_lock_patch.h",
@@ -44,7 +48,7 @@ def source_files(root):
     """Return tracked sources in scope, rejecting missing files and symlinks.
 
     Newly staged files are included. Untracked files and sources outside the
-    declared components/tests paths and explicit tool fixture are excluded.
+    declared components/tests paths and explicit tool sources are excluded.
     """
     root = Path(root).resolve()
     top = Path(os.fsdecode(_git_output(root, "rev-parse", "--show-toplevel")).strip())
@@ -61,7 +65,7 @@ def source_files(root):
             continue
         in_tree = relative.parts[0] in {"components", "tests"}
         if not (
-            in_tree and relative.suffix in SUFFIXES or str(relative) == EXTRA_SOURCE
+            in_tree and relative.suffix in SUFFIXES or str(relative) in EXTRA_SOURCES
         ):
             continue
         path = root

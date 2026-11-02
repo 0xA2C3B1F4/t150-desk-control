@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 from pathlib import Path
+import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,11 +64,41 @@ def generate(clang):
     )
 
 
+def _normalize_compiler_identity(assembly):
+    """Normalize one .ident string while preserving all other assembly text.
+
+    Homebrew and upstream Clang use different identification strings. The
+    patch linker discards the .comment section produced by this directive.
+    Reject missing, repeated or malformed identification directives.
+    """
+    lines = assembly.splitlines(keepends=True)
+    identities = []
+    pattern = re.compile(r'([ \t]*\.ident[ \t]+)"[^"\\\r\n]*"([ \t]*)(\r?\n|$)')
+    for index, line in enumerate(lines):
+        if match := pattern.fullmatch(line):
+            identities.append(index)
+            lines[index] = match[1] + '"<compiler identity>"' + match[2] + match[3]
+        elif re.match(r"[ \t]*\.ident\b", line):
+            raise ValueError("Malformed compiler identification directive")
+    if len(identities) != 1:
+        raise ValueError("Expected exactly one compiler identification directive")
+    return "".join(lines)
+
+
+def check_assembly(expected, generated):
+    """Require identical generated assembly apart from compiler identification."""
+    if _normalize_compiler_identity(expected) != _normalize_compiler_identity(
+        generated
+    ):
+        raise ValueError("reset_speed_core.S differs from pinned compiler output")
+
+
 def main():
     """Check the source marker, or compare or replace assembly using --clang.
 
     --check without --clang checks only the C-source digest marker. Generation
-    requires a version banner containing "clang version 23.1.0".
+    requires a version banner containing "clang version 23.1.0". With --clang,
+    comparison ignores only the quoted compiler identification in .ident.
     """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--clang", type=Path)
@@ -80,8 +111,10 @@ def main():
         p.error("--clang requires the pinned clang 23.1.0 executable")
     result = generate(a.clang)
     if a.check:
-        if OUTPUT.read_text() != result:
-            p.error("reset_speed_core.S differs from pinned compiler output")
+        try:
+            check_assembly(OUTPUT.read_text(), result)
+        except ValueError as error:
+            p.error(str(error))
     else:
         OUTPUT.write_text(result)
 

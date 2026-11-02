@@ -69,8 +69,10 @@ directory just to avoid writing useful explanations.
 
 ## C and C++
 
-Use clang-format 23.1.0. The shared helper checks its version and selects the
-tracked component and test sources, including `tools/test_reset_speed_header.cpp`:
+Use clang-format 23.1.0. The shared helper selects tracked component and test
+sources, `tools/test_reset_speed_header.cpp`, and the two patch sources
+`tools/patches/reset_speed.c` and `tools/patches/uart_parser.c`. It checks the
+formatter version before running:
 
 ```sh
 python tools/format_cpp.py --check
@@ -96,10 +98,31 @@ comments instead of restating statements.
 
 The helper excludes the four protected firmware headers `ui.h`,
 `child_lock_patch.h`, `reset_speed_patch.h` and `dt02_patch.h`, the exact protocol
-include wrappers, and hash-bound sources under `tools/patches`. Do not format
+include wrappers, and assembly sources under `tools/patches`. Do not format
 these files by hand or edit generated output. For C++ changes, run the native
 Debug and Release tests with sanitizers and the component tests affected by the
 change.
+
+After formatting `reset_speed.c`, regenerate its assembly with Clang 23.1.0:
+
+```sh
+python tools/generate_reset_speed_core.py --clang /path/to/llvm/bin/clang
+```
+
+Verify the generated assembly and embedded patch with the same toolchain:
+
+```sh
+python tools/generate_reset_speed_core.py --clang /path/to/llvm/bin/clang --check
+python tools/embed_reset_speed_patch.py --llvm-bin /path/to/llvm/bin --check
+```
+
+Set `TMPDIR` to an existing writable temporary directory for patch builds. The
+C-source SHA-256 comment may change during formatting; generated instructions,
+patch bytes, symbol addresses and accepted image hashes must stay unchanged.
+Stop if those differ. Do not update expected bytes or hashes to accept a
+formatting change. CI checks both the generated assembly and embedded bytes.
+The assembly comparison ignores only the compiler identification string in
+`.ident`, which the patch linker discards; instructions and data remain exact.
 
 ## Generated and embedded code
 
@@ -111,8 +134,8 @@ separate review and the relevant generator or component tests.
 Edit generators or source assets instead of generated headers. Preserve the
 exact include wrappers under `lib/desk_protocol/include/desk_protocol`.
 Formatter checks exclude ignored dependencies, caches and build outputs.
-`.editorconfig` provides editor defaults without normalizing assembly, binary
-fixtures or generated and hash-bound files.
+`.editorconfig` provides editor defaults. Assembly, binary fixtures and the
+protected firmware headers keep their existing whitespace.
 
 Keep unrelated formatting and behavior changes out of the same PR. When a
 style rollout includes lint corrections, review its pure formatting diff and
