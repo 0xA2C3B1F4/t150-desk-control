@@ -233,6 +233,17 @@ Configuration validation checks the listed dependencies. Keep the component
 | `timer_30min` / `timer_60min` / `timer_90min` / `timer_120min` / `cancel_timer` | button        | —       | `experimental_timer_buttons: true` |
 | `timer_command_pending`                                                         | binary sensor | —       | `experimental_timer_buttons: true` |
 
+### Custom timer and buzzer
+
+| Key                                | Type          | Default | Requirements and notes                   |
+| ---------------------------------- | ------------- | ------- | ---------------------------------------- |
+| `experimental_custom_timer_buzzer` | boolean       | `false` | Exact TB01 controller firmware           |
+| `custom_available`                 | binary sensor | —       | `experimental_custom_timer_buzzer: true` |
+| `custom_command_result`            | text sensor   | —       | `experimental_custom_timer_buzzer: true` |
+
+See [TB01 actions and limits](custom-timer-buzzer.md) for custom timer set,
+cancellation and buzzer API actions.
+
 ### Load limits
 
 | Key                                                         | Type                | Default | Requirements and notes      |
@@ -374,6 +385,9 @@ Timer buttons emulate T-key presses after a quiet interval. Keep physical
 buttons untouched while the sequence is pending. Cancellation takes about
 15 seconds. Timer controls do not read back the selected duration or remaining
 time. An aborted sequence can leave a partial selection.
+
+The optional [TB01 custom timer](custom-timer-buzzer.md) uses direct commands
+for 2–720 minutes and cancellation. It shares the native T timer and indicator.
 
 ## Raw load telemetry
 

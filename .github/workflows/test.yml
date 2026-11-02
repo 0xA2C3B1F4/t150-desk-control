@@ -137,6 +137,16 @@ jobs:
           python3 tools/embed_child_lock_patch.py --check
           python3 tools/generate_reset_speed_core.py --clang clang --check
           python3 tools/embed_reset_speed_patch.py --check
+          python3 tools/generate_tb01_core.py --clang clang --check
+      - name: Test TB01 against synthetic controller helpers
+        if: matrix.build_type == 'Debug'
+        env:
+          TMPDIR: ${{ runner.temp }}
+          PYTHONDONTWRITEBYTECODE: "1"
+          PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
+        run: |
+          python3 -m pip install 'unicorn==2.1.4'
+          python3 tools/test_tb01_patch.py
       - name: C++11 ${{ matrix.build_type }} with ASan and UBSan
         run: |
           cmake -S . -B "$RUNNER_TEMP/native" -DDESK_SANITIZERS=ON -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
@@ -178,6 +188,9 @@ jobs:
             direct_target_review_integration,
             preset_settings_integration,
             timer_integration,
+            custom_timer_buzzer_integration,
+            custom_timer_buzzer_api_integration,
+            custom_timer_buzzer_arbitration,
             keep_awake_integration,
             preset_persistence_integration,
             profile_journal_integration,

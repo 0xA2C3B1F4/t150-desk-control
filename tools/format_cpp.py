@@ -17,8 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".h", ".hpp"}
 EXTRA_SOURCES = {
     "tools/test_reset_speed_header.cpp",
+    "tools/test_tb01_core.c",
     "tools/patches/reset_speed.c",
     "tools/patches/uart_parser.c",
+    "tools/patches/tb01.c",
+    "tools/patches/tb01_core.c",
+    "tools/patches/tb01_core.h",
 }
 EXCLUDED = {
     "components/desk_firmware_update/ui.h",

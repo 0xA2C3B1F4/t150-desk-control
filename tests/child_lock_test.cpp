@@ -45,6 +45,27 @@ int main() {
   Frame f;
   {
     ChildLock lock;
+    discover(lock);
+    CHECK(lock.probe(2) && lock.take_frame(f));
+    const Frame old_read = f;
+    lock.yield_read();
+    CHECK(!lock.busy() && lock.supported() && lock.state_known() && lock.reply().locked);
+    CHECK(!lock.take_frame(f));
+    lock.accept(reply(old_read, false, 0, false, false, 2), 3);
+    CHECK(lock.reply().locked);
+    CHECK(lock.set(false, 4) && lock.take_frame(f));
+    lock.yield_read();
+    CHECK(lock.busy() && lock.operation() == 2);
+    lock.accept(reply(old_read, false, 0, false, false, 3), 5);
+    CHECK(lock.busy());
+    lock.accept(reply(f, false, 0, false, false, 4), 6);
+    CHECK(!lock.busy() && lock.supported() && lock.state_known() && !lock.reply().locked);
+    CHECK(lock.probe(7));
+    lock.yield_read();
+    CHECK(!lock.take_frame(f) && lock.state_known());
+  }
+  {
+    ChildLock lock;
     CHECK(!lock.set(true, 0));
     CHECK(!lock.take_frame(f));
     lock.seed(0xFFFF);

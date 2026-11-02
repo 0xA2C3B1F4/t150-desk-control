@@ -36,6 +36,21 @@ layout with those images, or establish R7 coverage.
 | Firmware maintenance            | Installation and full application readback for original, DT02 and CL01; browser cancellation/retry; interrupted-write recovery through the maintenance API  |
 | CL01 panel lock                 | Physical button blocking, remote movement and Stop, lock persistence, browser lock/unlock and confirmed-state display                                       |
 
+### TB01 custom timer and buzzer
+
+The [TB01 image](custom-timer-buzzer.md) was built from the exact RS01 R7 source
+with pinned LLVM 23.1.0. Its full-image SHA-256 is
+`d9154fc156515d9d2d169b73130ee6ab71bd21061f2e9ac5fb2107735ffb4f2a`.
+The adapter checks used ESPHome 2026.10.1.
+
+| Feature               | Checked on hardware                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------------ |
+| Installation          | Full application readback matched the TB01 image                                                 |
+| Home Assistant buzzer | Short and long pulses, pauses, pulse count and physical M interruption confirmed by the operator |
+| Timer actions         | Set, busy/invalid rejection, HA and panel-set timer cancellation, and indicator behavior         |
+| Timer expiry          | Alarm after display standby; display woke with the alarm, confirmed by the operator              |
+| Firmware maintenance  | Rejected custom requests during maintenance; controls recovered after exit                       |
+
 ## Controller firmware fixes
 
 The sleep fix is included in DT02, CL01 and RS01 R7. The original firmware's
@@ -233,6 +248,27 @@ frames with the saved original firmware:
 ```sh
 python3 tools/test_uart_parser_boundary.py --image /path/to/new-full-rs01.bin \
   --stock-image /path/to/saved-full-original.bin
+```
+
+### TB01 reproduction
+
+TB01 uses generated assembly for its C11 core and controller hooks. Check the
+committed assembly with LLVM 23.1.0, then run the synthetic instruction test
+with Unicorn 2.1.4 installed:
+
+```sh
+python3 tools/generate_tb01_core.py --clang /path/to/llvm/bin/clang --check
+python3 tools/test_tb01_patch.py --llvm-bin /path/to/llvm/bin
+```
+
+These public tests need no manufacturer image. Native tests cover timer and
+buzzer state transitions and protocol transactions. The instruction test uses
+synthetic controller helpers and modeled peripherals. ESPHome host tests cover
+UART discovery, command results and the API actions:
+
+```sh
+python tests/esphome/run_all.py --work-dir "${TMPDIR:?}/t150-tb01-tests" \
+  --only custom_timer_buzzer_integration custom_timer_buzzer_api_integration
 ```
 
 ## ESPHome 2026.10.1
