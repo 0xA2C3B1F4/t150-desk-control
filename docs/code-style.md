@@ -107,6 +107,27 @@ Formatting must preserve generated firmware bytes and accepted image hashes.
 Follow the [patch reproduction checks](validation.md#patch-reproduction) when
 changing patch sources.
 
+## Web
+
+Use Node 26.13.0 and the Prettier version locked in `package-lock.json`. The helper
+installs its dependencies and cache under `TMPDIR`, then formats the tracked
+maintenance-page source and its JavaScript test:
+
+```sh
+python tools/format_assets.py --check --group web
+python tools/format_assets.py --write --group web
+```
+
+Use `--node /path/to/node` to select the pinned runtime. CI installs its verified
+Node archive for formatting; runtime tests keep their existing Node environment.
+The shared Prettier settings use two spaces, a 100-character target, semicolons
+and double quotes. HTML whitespace is treated as significant.
+
+After changing the page, regenerate `ui.h` with `tools/embed_firmware_ui.py` and
+run the page state and firmware-maintenance tests. Check embedded-page size and
+firmware build size. Keep Python-embedded payloads and search strings unchanged;
+extracting those sources requires a separate change.
+
 ## Generated and embedded code
 
 Keep firmware payloads, protocol values and exact upstream search strings

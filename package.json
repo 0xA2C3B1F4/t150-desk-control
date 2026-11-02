@@ -1,0 +1,10 @@
+{
+  "name": "t150-code-style",
+  "private": true,
+  "engines": {
+    "node": "26.13.0"
+  },
+  "devDependencies": {
+    "prettier": "3.9.10"
+  }
+}
