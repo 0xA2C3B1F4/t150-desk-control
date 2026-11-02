@@ -171,21 +171,43 @@ listed in the [maintenance reference](protocol.md#firmware-maintenance).
 
 ### RS01 reproduction
 
-RS01 builds from the exact CL01 application or full image. From the checkout
-root, with LLVM tools available and outputs outside the repository:
+Use LLVM 23.1.0 and run from the checkout root. Set `TMPDIR` to an existing
+writable temporary directory for patch builds.
+
+The builder assembles the committed `reset_speed_core.S` and checks its C-source
+hash. After changing `reset_speed.c`, regenerate the assembly:
+
+```sh
+python3 tools/generate_reset_speed_core.py --clang /path/to/llvm/bin/clang
+```
+
+Check the generated assembly and embedded patch without a manufacturer image:
+
+```sh
+python3 tools/generate_reset_speed_core.py --clang /path/to/llvm/bin/clang --check
+python3 tools/embed_reset_speed_patch.py --check --llvm-bin /path/to/llvm/bin
+```
+
+Formatting may change the C-source SHA-256 comment. Regenerating with another
+Clang 23.1.0 distribution may also change the `.ident` compiler string.
+Instructions, patch bytes, symbol addresses and accepted image hashes must stay
+unchanged. Stop if they differ; do not change expected bytes or hashes to make a
+formatting change pass. CI checks the generated assembly and embedded bytes.
+The assembly comparison ignores only the `.ident` string. The linker discards
+its `.comment` section.
+
+To build an image, supply the exact CL01 application or full image and place
+outputs outside the repository:
 
 ```sh
 python3 tools/build_reset_speed_patch.py /path/to/saved-cl01.bin \
   /path/to/new-rs01.bin --manifest /path/to/new-rs01.json \
   --llvm-bin /path/to/llvm/bin
-python3 tools/embed_reset_speed_patch.py --check --llvm-bin /path/to/llvm/bin
 ```
 
-The builder assembles the committed `reset_speed_core.S` and checks its C source
-hash. Changing `reset_speed.c` requires regenerating that assembly with clang
-23.1.0 via `tools/generate_reset_speed_core.py --clang /path/to/clang`.
 The builder compiles the parser with the same LLVM toolchain and requires
 the resulting image to match its expected SHA-256.
+
 The optional Unicorn instruction test takes a saved full CL01 image:
 
 ```sh

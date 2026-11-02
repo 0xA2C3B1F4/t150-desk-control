@@ -81,7 +81,7 @@ jobs:
         run: |
           python3 tools/verify_dt02_assembly.py
           python3 tools/embed_child_lock_patch.py --check
-          python3 tools/generate_reset_speed_core.py --check
+          python3 tools/generate_reset_speed_core.py --clang clang --check
           python3 tools/embed_reset_speed_patch.py --check
       - name: C++11 ${{ matrix.build_type }} with ASan and UBSan
         run: |

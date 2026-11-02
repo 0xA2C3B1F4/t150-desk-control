@@ -69,8 +69,10 @@ directory just to avoid writing useful explanations.
 
 ## C and C++
 
-Use clang-format 23.1.0. The shared helper checks its version and selects the
-tracked component and test sources, including `tools/test_reset_speed_header.cpp`:
+Use clang-format 23.1.0. The shared helper selects tracked component and test
+sources, `tools/test_reset_speed_header.cpp`, and the two patch sources
+`tools/patches/reset_speed.c` and `tools/patches/uart_parser.c`. It checks the
+formatter version before running:
 
 ```sh
 python tools/format_cpp.py --check
@@ -96,10 +98,14 @@ comments instead of restating statements.
 
 The helper excludes the four protected firmware headers `ui.h`,
 `child_lock_patch.h`, `reset_speed_patch.h` and `dt02_patch.h`, the exact protocol
-include wrappers, and hash-bound sources under `tools/patches`. Do not format
+include wrappers, and assembly sources under `tools/patches`. Do not format
 these files by hand or edit generated output. For C++ changes, run the native
 Debug and Release tests with sanitizers and the component tests affected by the
 change.
+
+Formatting must preserve generated firmware bytes and accepted image hashes.
+Follow the [patch reproduction checks](validation.md#patch-reproduction) when
+changing patch sources.
 
 ## Generated and embedded code
 
@@ -111,8 +117,8 @@ separate review and the relevant generator or component tests.
 Edit generators or source assets instead of generated headers. Preserve the
 exact include wrappers under `lib/desk_protocol/include/desk_protocol`.
 Formatter checks exclude ignored dependencies, caches and build outputs.
-`.editorconfig` provides editor defaults without normalizing assembly, binary
-fixtures or generated and hash-bound files.
+`.editorconfig` provides editor defaults. Assembly, binary fixtures and the
+protected firmware headers keep their existing whitespace.
 
 Keep unrelated formatting and behavior changes out of the same PR. When a
 style rollout includes lint corrections, review its pure formatting diff and
