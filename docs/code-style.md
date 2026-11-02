@@ -109,9 +109,10 @@ changing patch sources.
 
 ## Web
 
-Use Node 26.13.0 and the Prettier version locked in `tools/style/package-
-lock.json`. The helper installs its dependencies and cache under `TMPDIR`, then
-formats the tracked maintenance-page source and its JavaScript test:
+Use Node 26.13.0 and the Prettier version locked in
+`tools/style/package-lock.json`. The helper installs dependencies and its cache
+under `TMPDIR`, then formats the tracked maintenance-page source and its
+JavaScript test:
 
 ```sh
 python tools/format_assets.py --check --group web
@@ -142,6 +143,21 @@ The npm lockfile and generated build output are excluded. Preserve YAML tags,
 substitutions and lambda text. Validate ESPHome configurations and compile the
 affected examples after formatting. Check release packaging when examples or
 manifests change; formatting a catalog must not change its firmware hashes.
+
+## Markdown
+
+Use the same helper for tracked documentation:
+
+```sh
+python tools/format_assets.py --check --group markdown
+python tools/format_assets.py --write --group markdown
+```
+
+The Markdown settings preserve prose wrapping where possible and leave code
+blocks unchanged. Review tables, lists, links and rendered meaning. Keep the
+existing concise writing style; the formatter does not check claims or wording.
+Documentation-only PRs check Markdown in the lightweight CI path. Full runs check
+all asset groups in the style job.
 
 ## Generated and embedded code
 

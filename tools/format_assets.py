@@ -17,6 +17,7 @@ GROUPS = {
         "tests/esphome/firmware_ui_test.cjs",
     ),
     "data": ("*.yaml", "*.yml", "*.json"),
+    "markdown": ("*.md",),
 }
 
 EXCLUDED_PARTS = {

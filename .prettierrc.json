@@ -5,5 +5,14 @@
   "semi": true,
   "singleQuote": false,
   "htmlWhitespaceSensitivity": "strict",
-  "endOfLine": "lf"
+  "endOfLine": "lf",
+  "overrides": [
+    {
+      "files": "*.md",
+      "options": {
+        "proseWrap": "preserve",
+        "embeddedLanguageFormatting": "off"
+      }
+    }
+  ]
 }
