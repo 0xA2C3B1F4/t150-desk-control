@@ -216,8 +216,8 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
         when the current step asks for it.</li
       >
       <li
-        >Download the backup and confirm that it is saved on your computer. Prepare DT02, CL01 or
-        RS01, or select a saved application file.</li
+        >Download the backup and confirm that it is saved on your computer. Prepare direct height
+        control, panel lock or reset and speed controls, or select a saved firmware file.</li
       >
       <li
         >Confirm and arm installation. Restart the controller when instructed, then leave power
