@@ -2,6 +2,7 @@
 """Format the tracked asset sources with pinned Node and Prettier."""
 
 import argparse
+from fnmatch import fnmatchcase
 import json
 import os
 from pathlib import Path
@@ -15,18 +16,38 @@ GROUPS = {
         "components/desk_firmware_update/ui.html",
         "tests/esphome/firmware_ui_test.cjs",
     ),
+    "data": ("*.yaml", "*.yml", "*.json"),
 }
+
+EXCLUDED_PARTS = {
+    "build",
+    "node_modules",
+    ".esphome",
+    ".pio",
+    ".pioenvs",
+    ".piolibdeps",
+    "third_party",
+    "vendor",
+}
+EXCLUDED_FILES = {"package-lock.json", "tools/style/package-lock.json"}
 
 
 def selected_files(root, groups):
-    """Intersect approved source paths with Git's tracked files."""
+    """Select tracked sources while excluding generated and third-party data."""
     tracked = set(
         subprocess.check_output(
             ["git", "-C", str(root), "ls-files", "-z"], text=True
         ).split("\0")
     )
     files = sorted(
-        {name for group in groups for name in GROUPS[group] if name in tracked}
+        name
+        for name in tracked
+        if name
+        and name not in EXCLUDED_FILES
+        and not EXCLUDED_PARTS.intersection(Path(name).parts)
+        and any(
+            fnmatchcase(name, pattern) for group in groups for pattern in GROUPS[group]
+        )
     )
     for name in files:
         path = root / name

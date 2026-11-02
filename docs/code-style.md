@@ -128,6 +128,21 @@ run the page state and firmware-maintenance tests. Check embedded-page size and
 firmware build size. Keep Python-embedded payloads and search strings unchanged;
 extracting those sources requires a separate change.
 
+## YAML and JSON
+
+Use the same pinned Node and Prettier setup for tracked YAML and hand-maintained
+JSON, including workflows, examples, schemas and manifests:
+
+```sh
+python tools/format_assets.py --check --group data
+python tools/format_assets.py --write --group data
+```
+
+The npm lockfile and generated build output are excluded. Preserve YAML tags,
+substitutions and lambda text. Validate ESPHome configurations and compile the
+affected examples after formatting. Check release packaging when examples or
+manifests change; formatting a catalog must not change its firmware hashes.
+
 ## Generated and embedded code
 
 Keep firmware payloads, protocol values and exact upstream search strings

@@ -18,10 +18,7 @@
       "application_size": 55296,
       "application_offset": 10240,
       "flash_size": 65536,
-      "features": [
-        "direct-height",
-        "sleep-fix"
-      ],
+      "features": ["direct-height", "sleep-fix"],
       "validation": "docs/validation.md"
     },
     {
@@ -31,11 +28,7 @@
       "application_size": 55296,
       "application_offset": 10240,
       "flash_size": 65536,
-      "features": [
-        "direct-height",
-        "sleep-fix",
-        "panel-lock"
-      ],
+      "features": ["direct-height", "sleep-fix", "panel-lock"],
       "validation": "docs/validation.md"
     },
     {
@@ -57,84 +50,27 @@
     }
   ],
   "prepare": {
-    "dt02": [
-      "stock"
-    ],
-    "cl01": [
-      "stock",
-      "dt02"
-    ],
-    "rs01-r7": [
-      "stock",
-      "dt02",
-      "cl01"
-    ]
+    "dt02": ["stock"],
+    "cl01": ["stock", "dt02"],
+    "rs01-r7": ["stock", "dt02", "cl01"]
   },
   "install": [
-    [
-      "stock",
-      "stock"
-    ],
-    [
-      "stock",
-      "dt02"
-    ],
-    [
-      "stock",
-      "cl01"
-    ],
-    [
-      "stock",
-      "rs01-r7"
-    ],
-    [
-      "dt02",
-      "stock"
-    ],
-    [
-      "dt02",
-      "dt02"
-    ],
-    [
-      "dt02",
-      "cl01"
-    ],
-    [
-      "dt02",
-      "rs01-r7"
-    ],
-    [
-      "cl01",
-      "stock"
-    ],
-    [
-      "cl01",
-      "dt02"
-    ],
-    [
-      "cl01",
-      "cl01"
-    ],
-    [
-      "cl01",
-      "rs01-r7"
-    ],
-    [
-      "rs01-r7",
-      "stock"
-    ],
-    [
-      "rs01-r7",
-      "dt02"
-    ],
-    [
-      "rs01-r7",
-      "cl01"
-    ],
-    [
-      "rs01-r7",
-      "rs01-r7"
-    ]
+    ["stock", "stock"],
+    ["stock", "dt02"],
+    ["stock", "cl01"],
+    ["stock", "rs01-r7"],
+    ["dt02", "stock"],
+    ["dt02", "dt02"],
+    ["dt02", "cl01"],
+    ["dt02", "rs01-r7"],
+    ["cl01", "stock"],
+    ["cl01", "dt02"],
+    ["cl01", "cl01"],
+    ["cl01", "rs01-r7"],
+    ["rs01-r7", "stock"],
+    ["rs01-r7", "dt02"],
+    ["rs01-r7", "cl01"],
+    ["rs01-r7", "rs01-r7"]
   ],
   "recovery": {
     "target": "stock",
