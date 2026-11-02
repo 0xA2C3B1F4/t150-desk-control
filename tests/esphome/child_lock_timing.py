@@ -34,7 +34,7 @@ def instrument(work):
     assert source.count(old) == 1
     source = source.replace(old, new)
     old = """if (this->height_seen_ && static_cast<uint32_t>(now - this->last_height_received_) > 750) {
-      this->invalidate_child_lock_("CL01 UART unavailable; state unknown");"""
+      this->invalidate_child_lock_("No recent controller reply; panel-lock state unknown");"""
     new = """if (this->height_seen_ && static_cast<uint32_t>(now - this->last_height_received_) > 750) {
       if (!timing_rx_reported) {
         timing_rx_reported = true;
@@ -42,16 +42,16 @@ def instrument(work):
                  now, this->last_height_received_, now - this->last_height_received_, timing_gap,
                  unsigned(this->available()), this->child_lock_.state_known());
       }
-      this->invalidate_child_lock_("CL01 UART unavailable; state unknown");"""
+      this->invalidate_child_lock_("No recent controller reply; panel-lock state unknown");"""
     assert source.count(old) == 1
     source = source.replace(old, new)
-    old = 'if (!fresh) this->invalidate_child_lock_("CL01 UART unavailable; state unknown");'
+    old = 'if (!fresh) this->invalidate_child_lock_("No recent controller reply; panel-lock state unknown");'
     new = """if (!fresh) {
     if (this->child_lock_.state_known())
       ESP_LOGI("uart_timing", "invalidate site=child_lock now=%u height_at=%u age=%u rx=%u seen=%d monitor_fresh=%d",
                now, this->last_height_received_, now - this->last_height_received_, unsigned(this->available()),
                this->height_seen_, this->monitor_.fresh(now));
-    this->invalidate_child_lock_("CL01 UART unavailable; state unknown");
+    this->invalidate_child_lock_("No recent controller reply; panel-lock state unknown");
   }"""
     assert source.count(old) == 1
     source = source.replace(old, new)

@@ -147,7 +147,7 @@ desk_uart:
   target_height_mode: preset
   keep_awake: auto
   target_height_backend:
-    name: Target backend
+    name: Height control method
     web_server:
       sorting_group_id: desk_group_diagnostics
       sorting_weight: 25

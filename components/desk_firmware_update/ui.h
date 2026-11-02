@@ -25,12 +25,12 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
 <button disabled id="backupDownload">Download original backup</button>
 <label><input type="checkbox" id="saved"> I have saved the backup file on my computer and can select it again.</label>
 <div id="prepareControls" hidden>
-<button disabled id="patch">Prepare DT02 patch</button>
-<button disabled id="patchChildLock">Prepare panel lock (CL01)</button>
-<button disabled id="patchResetSpeed">Prepare reset and speed controls (RS01)</button>
-<p class="note">RS01 R7 includes CL01, guarded reset controls, a Normal/Slow speed choice and the UART receive fix. Use it with the ESPHome adapter from the same version. Reset requires an unlocked panel. Normal movements retain the panel-lock behavior below.</p>
-<p class="note">CL01 includes DT02. With no valid saved lock record, it starts locked. While locked, all physical buttons, including local stopping gestures, are blocked. Remote unlock is required.</p>
-<label>Or select a saved original, DT02, CL01 or RS01 application file:
+<button disabled id="patch">Prepare direct height control</button>
+<button disabled id="patchChildLock">Prepare panel lock</button>
+<button disabled id="patchResetSpeed">Prepare reset and speed controls</button>
+<p class="note">The reset and speed option includes panel lock, direct height control, reset calibration, Normal/Slow movement speeds and a fix for receiving controller messages. Use the ESPHome adapter from the same release. Unlock the panel before starting reset calibration. The panel-lock rules below also apply to regular desk movement.</p>
+<p class="note">The panel-lock option also includes direct height control. Without a valid saved panel-lock setting, the panel starts locked. All physical buttons are blocked while locked, including buttons used to stop movement. Unlock the panel remotely to enable the buttons.</p>
+<label>Or select a saved original firmware file or one with direct height control, panel lock, or reset and speed controls:
 <input type="file" id="file" accept=".bin,application/octet-stream"></label>
 <button disabled id="stage">Prepare selected file</button>
 </div>
@@ -65,7 +65,7 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
 'use strict';
 const $=id=>document.getElementById(id);
 const STOCK='bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf',DT02='e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff',CL01='81933d93b8bc28ef0eb8b29bf7ae1c7b9104f0a8e03c1c2f8096d509de0f75d3',RS01='ad1f321c570de25abef0f106175a5722d709b92e5db6d3da792bed9cc55fe78b';
-const lockNotice='Without a valid saved lock record CL01 starts locked. All physical buttons, including local stopping gestures, are blocked while locked. Use remote unlock to enable them.';
+const lockNotice='Without a valid saved panel-lock setting, the panel starts locked. All physical buttons are blocked while locked, including buttons used to stop movement. Unlock the panel remotely to enable the buttons.';
 let status=null,locked=false,original=null,originalHash=null,selected=null,cancelUpload=false,guidanceKey=null,normalBootNeeded=false,sessionOwned=false,connectionError='',clientError='',pendingAction='',lastPhase='',finishedAt=0;
 // Each document owns a distinct session, including duplicated or reloaded tabs.
 const ownerBytes=new Uint8Array(16);crypto.getRandomValues(ownerBytes);
@@ -94,7 +94,7 @@ function render(){
  $('state').textContent=status.state.replaceAll('_',' ');
  $('hash').textContent=status.sha256||'Unavailable';
  $('progress').max=status.progress_max||55296;$('progress').value=status.progress;
- $('heap').textContent=`Free RAM: ${status.free_heap} bytes; largest block: ${status.largest_block} bytes.`;
+ $('heap').textContent=`Free memory: ${status.free_heap} bytes; largest block: ${status.largest_block} bytes.`;
  $('freshness').textContent=['read_complete','staged'].includes(status.state)&&status.preflight_seconds ? `Prepare and arm within ${status.preflight_seconds} seconds, or read again.` : '';
  text('message',status.error||clientError);
  const phase=status.state, available=sessionOwned&&!status.active&&!status.pending;
@@ -156,7 +156,7 @@ function renderGuidance(){
   attention=true;
  }else if(status.state==='verified'){
   title='All application bytes verified';
-  detail='Select Finish maintenance to release UART and return to normal desk operation. Reconnect the motor only with controller power off.'+([CL01,RS01].includes(status.sha256)?' '+lockNotice:'');
+  detail='Select Finish maintenance to resume normal desk communication and operation. Reconnect the motor only with controller power off.'+([CL01,RS01].includes(status.sha256)?' '+lockNotice:'');
   attention=true;
  }else if(expired){
   title='Preflight expired. Read the controller again';
@@ -165,8 +165,8 @@ function renderGuidance(){
  }else if(status.state==='read_complete'){
   const alreadyPatched=status.sha256===DT02,alreadyLocked=status.sha256===CL01,alreadyReset=status.sha256===RS01;
   const known=alreadyReset||alreadyPatched||alreadyLocked||status.sha256===STOCK;
-  title=alreadyReset?'RS01 reset and speed controls are already installed':alreadyLocked?'CL01 panel lock is already installed':alreadyPatched?'DT02 is already installed':'Read complete. Save the controller backup';
-  detail=alreadyReset?'The controller read matches RS01. Save this backup. Select a saved original, DT02 or CL01 file to remove RS01. '+lockNotice:alreadyLocked?'The controller read matches CL01. Save this backup. To remove CL01, select your saved original or DT02 application file. '+lockNotice:alreadyPatched?'The controller read matches DT02. Save this backup before preparing CL01 or selecting a saved image. Leave controller power on.':'Download the original backup and save it on your computer before preparing an image. Leave controller power on.';
+  title=alreadyReset?'Reset and speed controls are already installed':alreadyLocked?'Panel lock is already installed':alreadyPatched?'Direct height control is already installed':'Read complete. Save the controller backup';
+  detail=alreadyReset?'Reset calibration, speed selection, panel lock and direct height control are installed. Save this backup. To remove reset and speed controls, select a saved original firmware file or one with direct height control or panel lock. '+lockNotice:alreadyLocked?'Panel lock and direct height control are installed. Save this backup. To remove panel lock, select your saved original firmware or a file with direct height control only. '+lockNotice:alreadyPatched?'Direct height control is installed. Save this backup before preparing panel lock or selecting another firmware file. Leave controller power on.':'Download the original backup and save it on your computer before preparing an image. Leave controller power on.';
   if(!known){
    title=status.recovery_required?'Recovery read complete. Save this read':'Unknown firmware. Save the backup';
    detail=status.recovery_required?'Save this read, then select your saved original application file and prepare it for restoration. Desk controls remain paused.':

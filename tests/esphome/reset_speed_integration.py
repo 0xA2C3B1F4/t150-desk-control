@@ -73,7 +73,7 @@ PAUSED_BLOCKED = {
     "paused_unknown": 3,
 }
 PAUSED_MESSAGES = {
-    6: "Reset paused; controller guard blocks continuation",
+    6: "Reset paused; controller is blocking movement",
     4: "Reset paused; release physical keys to continue",
     5: "Reset paused; panel lock blocks continuation",
     3: "Reset paused; continuation unavailable; inspect the desk",
@@ -713,7 +713,7 @@ desk_uart:
                 native = [row["body"] for row in seen if row["body"].startswith("17")]
                 assert "request=1" in text and ops.count(1) == 1 and 2 not in ops
                 assert (
-                    "control_public=DT02 controller inhibited; select target to recheck"
+                    "control_public=Controller is blocking movement; select the target again to recheck"
                     in text
                 )
                 assert direct[0]["response_guard"] == 1 and all(
@@ -771,16 +771,17 @@ desk_uart:
                         assert native == [], native
                     if case in DT02_FAILURES:
                         expected = (
-                            "DT02 GET rejected"
+                            "Controller rejected the height control status request"
                             if case == "dt02_refresh_rejected"
-                            else "DT02 capability response missing"
+                            else "Controller did not reply to the height control support check"
                         )
                         assert f"control_public={expected}" in text and expected in text
                         if case != "dt02_refresh_timeout_stop":
                             assert f"dt02_final_status={expected}" in text
                         else:
                             assert (
-                                "dt02_final_status=DT02 capability unverified" in text
+                                "dt02_final_status=Direct height control support not confirmed"
+                                in text
                             )
                         if case != "dt02_refresh_rejected":
                             assert (
@@ -810,7 +811,7 @@ desk_uart:
                     guard = int(case == "dt02_refresh_guarded")
                     assert f"dt02_final_guard={guard} dt02_probe_done=1" in text
                     expected = (
-                        "DT02 controller inhibited; select target to recheck"
+                        "Controller is blocking movement; select the target again to recheck"
                         if guard
                         else "Ready"
                     )
@@ -838,7 +839,7 @@ desk_uart:
                         )
                         assert native == ["17010000"], native
                     elif case == "dt02_failed":
-                        assert "RS01 request rejected; no retry" in text
+                        assert "Reset or speed request rejected; not retried" in text
                         assert native == [], native
                     else:
                         assert "reset state unknown" in text
@@ -861,11 +862,12 @@ desk_uart:
                 if case == "absent":
                     assert (
                         "status=Ready" in text
-                        and "control_public=RS01 status unavailable" not in text
+                        and "control_public=Reset and speed status unavailable"
+                        not in text
                     )
                     assert "reset paused" not in text
                 if case == "foreign":
-                    assert "Reset descending; ownership unverified" in text
+                    assert "Reset descending; ESPHome control not confirmed" in text
             elif case.startswith("speed"):
                 assert ops.count(5) == 1 and all(op in (0, 5) for op in ops)
                 if case == "speed":
@@ -873,7 +875,7 @@ desk_uart:
                 else:
                     assert "speed_known=0 speed=" in text
                     assert (
-                        "control_public=RS01 speed acknowledgement missing; state unknown, no retry"
+                        "control_public=Speed change not confirmed; speed unknown, request not retried"
                         in text
                     )
             else:
@@ -924,7 +926,7 @@ desk_uart:
                         and 2 not in ops
                         and 4 not in ops
                     )
-                    assert "RS01 request rejected" not in text and all(
+                    assert "Reset or speed request rejected" not in text and all(
                         row["body"] != "17010000" for row in seen
                     )
                     assert ops.count(1) == (2 if case == "completion_error" else 1)

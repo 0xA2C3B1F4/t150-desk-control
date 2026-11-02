@@ -182,7 +182,7 @@ desk_uart:
               fired = true;
               ESP_LOGI("child_lock_test", "maintenance_during_stop=%d", id(desk)->begin_firmware_export(true));
             }}
-            if (!fired && std::string(getenv("DESK_CHILD_LOCK_CASE")) == "shutdown_handoff" && x.find("ESP shutdown") != std::string::npos) {{
+            if (!fired && std::string(getenv("DESK_CHILD_LOCK_CASE")) == "shutdown_handoff" && x.find("ESPHome shutting down") != std::string::npos) {{
               fired = true;
               ESP_LOGI("child_lock_test", "maintenance_during_shutdown=%d", id(desk)->begin_firmware_export(true));
             }}
@@ -636,7 +636,7 @@ desk_uart:
                         if scenario == "initial_get_lost"
                         else "recovered_known=1"
                     ) in out
-                    assert "GET unavailable" in out
+                    assert "Panel-lock status unavailable" in out
                 elif scenario == "auto_stock":
                     assert sets == 0 and get_count == 0 and direct_gets == 2
                     assert sum(e["body_hex"].startswith("11") for e in events) == 7, (
@@ -677,13 +677,11 @@ desk_uart:
                         in out
                     )
                 if scenario == "busy":
-                    assert (
-                        "known=1 locked=1 available=1 status=CL01 request busy" in out
-                    )
+                    assert "known=1 locked=1 available=1 status=Panel lock busy" in out
                 if scenario in ("storage_fault", "storage_repair"):
                     assert (
                         "known=0" in out
-                        and "storage fault; runtime locked, persistence uncertain"
+                        and "Panel-lock saving failed; locked now, lock state after power loss uncertain"
                         in out
                     )
                 if scenario in ("storage_repair", "boot_fault"):
@@ -695,11 +693,11 @@ desk_uart:
                     assert "known=0" in out and "available=0" in out
                     assert get_count == 1, (scenario, events)
                     assert (
-                        "final_result=CL01 " in out
+                        "final_result=Panel-lock " in out
                         and "final_result=Child lock requested" not in out
                     )
                 if scenario == "lost_ack_recover":
-                    assert "final_result=CL01 SET acknowledgement missing" in out
+                    assert "final_result=Panel-lock change not confirmed" in out
                     assert (
                         "explicit_retry=1" in out
                         and "recovered_known=1 recovered_locked=0" in out
@@ -739,11 +737,14 @@ desk_uart:
                     assert "after_request_result=Braking;" in out, out
                 if scenario in ("invalid_then_stop", "valid_then_stop"):
                     assert "height_callback_stop=1" in out and brakes == 1
-                    assert "final_result=CL01 reply invalid" not in out
+                    assert "final_result=Panel-lock reply invalid" not in out
                     callback = out.index("height_callback_stop=1")
-                    assert "Command rejected: CL01 reply invalid" not in out[callback:]
                     assert (
-                        "Command accepted: CL01 unlock acknowledged"
+                        "Command rejected: Panel-lock reply invalid"
+                        not in out[callback:]
+                    )
+                    assert (
+                        "Command accepted: Panel unlocked; controller confirmed the lock setting was saved"
                         not in out[callback:]
                     )
                 if scenario == "maintenance":

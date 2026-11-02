@@ -303,7 +303,7 @@ void FirmwareUpdate::execute_(const std::string& action) {
       owned_ = desk_->begin_firmware_export(true);
     error_ = nullptr;
     if (!owned_)
-      fail_("Cannot acquire UART ownership");
+      fail_("Cannot pause desk communication for firmware maintenance");
     return;
   }
   if (action == "read") {
@@ -349,17 +349,18 @@ void FirmwareUpdate::execute_(const std::string& action) {
     if (phase_ != Phase::Ready || !backup_ || !preflight_ || !tail_erased_ ||
         uint32_t(millis() - preflight_at_) > 300000 ||
         (std::strcmp(hash_, STOCK_SHA) && std::strcmp(hash_, DT02_SHA))) {
-      fail_("CL01 requires the exact supported original or DT02 and a saved backup");
+      fail_(
+          "Panel lock requires a supported original or direct height control firmware and a saved backup");
       return;
     }
     if ((!std::strcmp(hash_, STOCK_SHA) && !apply_dt02(buffer_.get(), size_)) ||
         !apply_child_lock(buffer_.get(), size_)) {
-      fail_("CL01 patch precondition failed");
+      fail_("Cannot prepare panel lock; firmware does not match the required starting version");
       return;
     }
     digest_();
     if (std::strcmp(hash_, CL01_SHA)) {
-      fail_("Generated CL01 hash mismatch");
+      fail_("Prepared panel-lock firmware failed its integrity check");
       return;
     }
     phase_ = Phase::Staged;
@@ -370,18 +371,20 @@ void FirmwareUpdate::execute_(const std::string& action) {
         uint32_t(millis() - preflight_at_) > 300000 ||
         (std::strcmp(hash_, STOCK_SHA) && std::strcmp(hash_, DT02_SHA) &&
          std::strcmp(hash_, CL01_SHA))) {
-      fail_("RS01 requires a supported original, DT02 or CL01 and a saved backup");
+      fail_(
+          "Reset and speed controls require supported original, direct height control or panel-lock firmware and a saved backup");
       return;
     }
     if ((!std::strcmp(hash_, STOCK_SHA) && !apply_dt02(buffer_.get(), size_)) ||
         (std::strcmp(hash_, CL01_SHA) && !apply_child_lock(buffer_.get(), size_)) ||
         !apply_reset_speed(buffer_.get(), size_)) {
-      fail_("RS01 patch precondition failed");
+      fail_(
+          "Cannot prepare reset and speed controls; firmware does not match the required starting version");
       return;
     }
     digest_();
     if (std::strcmp(hash_, RS01_SHA)) {
-      fail_("Generated RS01 hash mismatch");
+      fail_("Prepared reset and speed firmware failed its integrity check");
       return;
     }
     phase_ = Phase::Staged;
@@ -736,7 +739,8 @@ void FirmwareUpdate::handleRequest(AsyncWebServerRequest* request) {
   if (action == "claim") {
     if (active_() || (!owner_.empty() && owner_ != owner && request->arg("takeover") != "yes") ||
         request->arg("motor_isolated") != "yes") {
-      send(409, "text/plain", "Confirm motor isolation and session ownership");
+      send(409, "text/plain",
+           "Confirm that the motor is disconnected and this page controls maintenance");
       return;
     }
     // Claim is queued indirectly: UART ownership is acquired by the loop below.

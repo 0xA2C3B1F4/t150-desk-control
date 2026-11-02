@@ -395,8 +395,8 @@ desk_uart:
             if scenario in ("silent", "unknown"):
                 assert "request=0" in out and not writes and not sets
                 assert (
-                    "Target backend: Preset-based" not in out
-                    and "Target backend: Direct" not in out
+                    "Height control method: Height control using preset 3" not in out
+                    and "Height control method: Direct" not in out
                 )
                 if scenario == "unknown":
                     assert not any(e["body_hex"].startswith("d1") for e in events)
@@ -410,8 +410,8 @@ desk_uart:
                 )
             if scenario in ("reconnect", "maintenance", "disconnect_active"):
                 assert (
-                    "Target backend: Direct target (DT02)" in out
-                    and "Target backend: Preset-based" in out
+                    "Height control method: Direct height control" in out
+                    and "Height control method: Height control using preset 3" in out
                 )
                 assert (
                     not writes
@@ -453,7 +453,8 @@ desk_uart:
                 ):
                     assert marker in out, marker
                 assert (
-                    out.count("Target backend: Preset-based") >= 2
+                    out.count("Height control method: Height control using preset 3")
+                    >= 2
                     and probe_count >= 5
                     and not writes
                     and not sets
@@ -491,10 +492,13 @@ desk_uart:
                     e["seconds"] > preset_gap["ends_at"] and e["body_hex"] == "151f0000"
                     for e in events
                 )
-                assert out.count("Target backend: Preset-based") >= 2
-                assert out.rindex("Target backend: Preset-based") > out.index(
-                    "Original preset RAM checked"
+                assert (
+                    out.count("Height control method: Height control using preset 3")
+                    >= 2
                 )
+                assert out.rindex(
+                    "Height control method: Height control using preset 3"
+                ) > out.index("Original preset matches")
             result = dict(
                 case=scenario,
                 passed=True,

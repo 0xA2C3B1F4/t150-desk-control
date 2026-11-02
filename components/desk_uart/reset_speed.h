@@ -124,8 +124,10 @@ class ResetSpeed {
     if (!reset_speed_reply(f, r) ||
         (have_sequence_ && (static_cast<uint16_t>(r.sequence - sequence_) == 0 ||
                             static_cast<uint16_t>(r.sequence - sequence_) >= 0x8000))) {
-      fail_(operation_ == Get ? "RS01 status reply invalid or stale; capability unverified"
-                              : "RS01 reply invalid or stale; reset ownership lost");
+      fail_(operation_ == Get ? "Reset and speed reply invalid or too old; support not confirmed"
+            : operation_ == Speed
+                ? "Speed reply invalid or too old; speed unknown, request not retried"
+                : "Reset reply invalid or too old; ESPHome control no longer confirmed");
       return;
     }
     const bool motion_op = operation_ == Start || operation_ == Resume || operation_ == Renew;
@@ -139,7 +141,10 @@ class ResetSpeed {
         ((motion_op && !completed && (!r.active() || !r.lease_active() || r.child_lock)) ||
          (operation_ == Cancel && (r.active() || !r.outputs_off())) ||
          (operation_ == Speed && r.speed != argument_))) {
-      fail_("RS01 acknowledgement inconsistent; reset ownership lost");
+      fail_(
+          operation_ == Speed
+              ? "Speed confirmation does not match the request; speed unknown, request not retried"
+              : "Reset confirmation does not match the request; ESPHome control no longer confirmed");
       return;
     }
     if (operation_ == Renew && owned_ && r.result && !owned_completion)
@@ -156,12 +161,13 @@ class ResetSpeed {
     if (owned_)
       renewed_at_ = now;
     uncertain_ = r.active();
-    error_ = r.result && !owned_completion ? "RS01 request rejected; no retry" : nullptr;
+    error_ =
+        r.result && !owned_completion ? "Reset or speed request rejected; not retried" : nullptr;
   }
   void tick(uint32_t now, bool link_fresh) {
     if (!link_fresh) {
       if (known_ || busy_ || owned_)
-        disconnect("RS01 UART unavailable; state unknown");
+        disconnect("No recent controller reply; reset and speed state unknown");
       return;
     }
     if (busy_ && static_cast<uint32_t>(now - sent_at_) >= 800) {
@@ -169,7 +175,7 @@ class ResetSpeed {
       return;
     }
     if (owned_ && !fresh(now)) {
-      fail_("RS01 status stale; reset state unknown");
+      fail_("Reset status is too old; current reset state unknown");
       return;
     }
     if (owned_ && !busy_ && static_cast<uint32_t>(now - renewed_at_) >= 300)
@@ -230,10 +236,10 @@ class ResetSpeed {
 
  private:
   void timeout_(bool late) {
-    fail_(operation_ == Get     ? "RS01 status unavailable; capability unverified"
-          : operation_ == Speed ? "RS01 speed acknowledgement missing; state unknown, no retry"
-          : late                ? "RS01 acknowledgement late; reset state unknown, no retry"
-                                : "RS01 acknowledgement missing; reset state unknown, no retry");
+    fail_(operation_ == Get     ? "Reset and speed status unavailable; support not confirmed"
+          : operation_ == Speed ? "Speed change not confirmed; speed unknown, request not retried"
+          : late ? "Reset confirmation arrived too late; reset state unknown, request not retried"
+                 : "Reset confirmation missing; reset state unknown, request not retried");
   }
   void request_(uint8_t operation, uint8_t argument, uint32_t now) {
     frame_ = Frame{};

@@ -284,7 +284,9 @@ under `desk_uart`:
 
 After fresh settled telemetry, the component checks the supported identity and
 height profile, then queries DT02. The optional `target_height_backend` shows
-`Direct target (DT02)`, `Preset-based` or `Unknown`. CL01 includes DT02 support.
+`Direct height control`, `Height control using preset 3` or `Unknown`. CL01
+includes DT02 support. Examples name this sensor `Height control method`.
+Update any dashboards or automations that depend on its previous name or values.
 See the [detection reference](protocol.md#automatic-target-detection) for exact
 identity matching; other stock revisions require explicit `preset` mode.
 

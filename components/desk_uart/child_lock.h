@@ -70,7 +70,7 @@ class ChildLock {
     if (!child_lock_reply(frame, r) ||
         (have_sequence_ && (static_cast<uint16_t>(r.sequence - sequence_) == 0 ||
                             static_cast<uint16_t>(r.sequence - sequence_) >= 0x8000))) {
-      disconnect("CL01 reply invalid or stale; state unknown");
+      disconnect("Panel-lock reply invalid or too old; lock state unknown");
       return;
     }
     reply_ = r;
@@ -80,19 +80,20 @@ class ChildLock {
     completed_ = true;
     supported_ = r.status != 1;
     state_known_ = supported_ && !r.storage_fault;
-    error_ = r.status == 1     ? "CL01 request rejected; state unknown"
-             : r.status == 2   ? "CL01 request busy; no change or retry"
-             : r.storage_fault ? "CL01 storage fault; runtime locked, persistence uncertain"
-                               : nullptr;
+    error_ = r.status == 1   ? "Panel-lock request rejected; lock state unknown"
+             : r.status == 2 ? "Panel lock busy; no change made, request not retried"
+             : r.storage_fault
+                 ? "Panel-lock saving failed; locked now, lock state after power loss uncertain"
+                 : nullptr;
   }
   void tick(uint32_t now, bool fresh) {
     if (!fresh) {
       if (supported_ || busy_ || state_known_)
-        disconnect("CL01 UART unavailable; state unknown");
+        disconnect("No recent controller reply; panel-lock state unknown");
     } else if (busy_ && static_cast<uint32_t>(now - sent_at_) >= 800)
       timeout_();
   }
-  void disconnect(const char* reason = "CL01 unavailable; state unknown",
+  void disconnect(const char* reason = "Panel lock unavailable; lock state unknown",
                   bool report_failure = true) {
     if (!report_failure)
       failure_ = nullptr;
@@ -142,9 +143,10 @@ class ChildLock {
     error_ = nullptr;
   }
   void timeout_() {
-    disconnect(operation_
-                   ? "CL01 SET acknowledgement missing; state and persistence unknown, no retry"
-                   : "CL01 GET unavailable; state unknown");
+    disconnect(
+        operation_
+            ? "Panel-lock change not confirmed; current and saved lock states unknown, request not retried"
+            : "Panel-lock status unavailable; lock state unknown");
   }
   Frame frame_{};
   ChildLockReply reply_{};

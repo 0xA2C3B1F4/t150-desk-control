@@ -37,7 +37,7 @@ async function page(){
  assert.match(e.guidanceTitle.textContent,/keep controller power ON/);assert.equal(e.message.textContent,'');
  await p.state({state:'staged',recovery_required:true});assert.equal(e.verify.hidden,false);assert.equal(e.verify.disabled,false);
  await p.state({state:'read_complete',sha256:'e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff'});
- assert.equal(e.guidanceTitle.textContent,'DT02 is already installed');assert.equal(e.patch.disabled,true);
+ assert.equal(e.guidanceTitle.textContent,'Direct height control is already installed');assert.equal(e.patch.disabled,true);
  assert.equal(e.patchChildLock.disabled,false);
  await p.state({state:'read_complete',sha256:p.run('STOCK'),source_sha256:p.run('STOCK')});
  assert.equal(e.patchChildLock.disabled,false);assert.equal(e.patch.disabled,false);
@@ -45,10 +45,10 @@ async function page(){
  p.run('original=new Uint8Array(55296);originalHash=STOCK');e.saved.checked=true;
  await e.patchChildLock.onclick();assert.deepEqual(p.io.actions,['backup','patch_child_lock']);
  await p.state({state:'read_complete',sha256:p.run('CL01')});
- assert.equal(e.guidanceTitle.textContent,'CL01 panel lock is already installed');assert.equal(e.patchChildLock.disabled,true);assert.equal(e.patch.disabled,true);
- assert.match(e.guidanceDetail.textContent,/remove CL01/);assert.match(e.guidanceDetail.textContent,/remote unlock/i);
- await p.state({state:'staged',sha256:p.run('CL01')});assert.doesNotMatch(e.guidanceTitle.textContent,/already installed/);assert.match(e.guidanceDetail.textContent,/starts locked/);assert.match(e.guidanceDetail.textContent,/local stopping gestures/);
- await p.state({state:'verified',sha256:p.run('CL01')});assert.match(e.guidanceDetail.textContent,/remote unlock/i);
+ assert.equal(e.guidanceTitle.textContent,'Panel lock is already installed');assert.equal(e.patchChildLock.disabled,true);assert.equal(e.patch.disabled,true);
+ assert.match(e.guidanceDetail.textContent,/remove panel lock/);assert.match(e.guidanceDetail.textContent,/unlock the panel remotely/i);
+ await p.state({state:'staged',sha256:p.run('CL01')});assert.doesNotMatch(e.guidanceTitle.textContent,/already installed/);assert.match(e.guidanceDetail.textContent,/starts locked/);assert.match(e.guidanceDetail.textContent,/buttons used to stop movement/);
+ await p.state({state:'verified',sha256:p.run('CL01')});assert.match(e.guidanceDetail.textContent,/unlock the panel remotely/i);
  // RS01 can be prepared only from an exact supported source with a saved backup.
  for(const identity of ['STOCK','DT02','CL01']) {
   await p.state({state:'read_complete',sha256:p.run(identity),source_sha256:p.run(identity)});
@@ -57,10 +57,10 @@ async function page(){
  p.run('original=new Uint8Array(55296);originalHash=CL01');e.saved.checked=true;p.io.actions=[];
  await e.patchResetSpeed.onclick();assert.deepEqual(p.io.actions,['backup','patch_reset_speed']);
  await p.state({state:'read_complete',sha256:p.run('RS01')});
- assert.match(e.guidanceTitle.textContent,/RS01.*already installed/);assert.equal(e.patchResetSpeed.disabled,true);
+ assert.match(e.guidanceTitle.textContent,/Reset and speed controls.*already installed/);assert.equal(e.patchResetSpeed.disabled,true);
  assert.equal(e.patchChildLock.disabled,true);assert.equal(e.patch.disabled,true);
- await p.state({state:'staged',sha256:p.run('RS01')});assert.match(e.guidanceDetail.textContent,/remote unlock/i);
- await p.state({state:'verified',sha256:p.run('RS01')});assert.match(e.guidanceDetail.textContent,/remote unlock/i);
+ await p.state({state:'staged',sha256:p.run('RS01')});assert.match(e.guidanceDetail.textContent,/unlock the panel remotely/i);
+ await p.state({state:'verified',sha256:p.run('RS01')});assert.match(e.guidanceDetail.textContent,/unlock the panel remotely/i);
  for(const s of [{state:'read_complete',sha256:'unknown'},
   {state:'read_complete',sha256:p.run('CL01'),preflight_seconds:0},
   {state:'reading',sha256:p.run('CL01'),active:true}]) {

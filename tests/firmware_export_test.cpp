@@ -366,7 +366,7 @@ int main(int argc, char** argv) {
     CHECK(r.allocations == 1 && r.requested == 65536);
     CHECK(!r.receiver.active() && !r.receiver.data_complete());
     CHECK(r.transmitted.size() == 10 && r.receiver.size() == 0);
-    CHECK(std::strstr(r.receiver.error(), "RAM"));
+    CHECK(std::strstr(r.receiver.error(), "memory"));
     ++passed;
   }
   {

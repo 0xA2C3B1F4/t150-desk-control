@@ -571,7 +571,7 @@ desk_uart:
                     writes,
                 )
                 assert text.count("journal committed") == 1, "Repeated flash writes"
-                if controls[0].startswith("No fresh UART"):
+                if controls[0].startswith("No recent height reading"):
                     controls = controls[1:]
                 assert controls == [
                     "Waiting for height to settle",
@@ -688,7 +688,11 @@ desk_uart:
                     )
                 if name in ("recover_clean", "recover_disabled_clean"):
                     assert "checked and cleared" not in text
-                    assert "EEPROM" in text, (
+                    assert any(
+                        "value saved across power loss not confirmed" in line
+                        for line in text.splitlines()
+                        if "RESULT=" in line
+                    ), (
                         name,
                         "RAM-only recovery result must be explicit",
                     )
@@ -717,7 +721,7 @@ desk_uart:
                     (
                         "Keep-awake failed" in s
                         or "release uncertain" in s
-                        or "No fresh UART" in s
+                        or "No recent height reading" in s
                         or "refusing overwrite" in s
                         or "mismatch" in s
                     )
