@@ -51,16 +51,19 @@ ASSETS = frozenset(YAMLS) | {
 
 
 def digest(data):
+    """Return the SHA-256 hexadecimal digest used for release asset verification."""
     return hashlib.sha256(data).hexdigest()
 
 
 def json_bytes(data):
+    """Encode deterministic UTF-8 JSON with sorted keys and a final newline."""
     return (
         json.dumps(data, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     ).encode()
 
 
 def git(root, *args):
+    """Run Git at the source root with a clean Git environment and a 30-second limit."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env.update(GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0")
     return subprocess.check_output(
@@ -69,10 +72,16 @@ def git(root, *args):
 
 
 def text(root, *args):
+    """Return decoded Git output with surrounding whitespace removed."""
     return git(root, *args).decode().strip()
 
 
 def validate(root, version, commit):
+    """Return the resolved root of a clean candidate matching its version and SHA.
+
+    Reject substituted files, symlinks and metadata that differ from the
+    committed source used to build release assets.
+    """
     if not re.fullmatch(VERSION, version) or not re.fullmatch(SHA, commit):
         raise ValueError("Expected YYYY.M.N version and full lowercase commit SHA")
     root = Path(root).resolve()
@@ -104,6 +113,7 @@ def validate(root, version, commit):
 
 
 def verify_tag(root, version, commit):
+    """Require the local version tag to be annotated and resolve to the candidate."""
     if not re.fullmatch(VERSION, version) or not re.fullmatch(SHA, commit):
         raise ValueError("Invalid version or commit")
     ref = "refs/tags/v" + version
@@ -114,6 +124,11 @@ def verify_tag(root, version, commit):
 
 
 def infrastructure(root, candidate, workflow):
+    """Verify unchanged release infrastructure between a candidate and descendant.
+
+    Return the infrastructure paths and blob IDs, rejecting missing, added or
+    changed workflow and release-tool files.
+    """
     if not re.fullmatch(SHA, candidate) or not re.fullmatch(SHA, workflow):
         raise ValueError("Infrastructure comparison requires full SHAs")
     git(root, "merge-base", "--is-ancestor", candidate, workflow)
@@ -151,6 +166,11 @@ def infrastructure(root, candidate, workflow):
 
 
 def tagged_yaml(name, original, ref):
+    """Render a flat release YAML asset with the requested GitHub source ref.
+
+    Require known source anchors before replacing them and remove checkout-only
+    comments and package-directory prefixes.
+    """
     source = f"github://{REPOSITORY}@{ref}"
     if name in ("stamp-c3.yaml", "esp32.yaml"):
         pattern = (
@@ -184,6 +204,11 @@ def tagged_yaml(name, original, ref):
 
 
 def package_bytes(root, version, commit):
+    """Return deterministic release assets for a validated candidate.
+
+    Generate tagged YAML, release notes, a manifest and checksums without
+    creating tags or writing the package to disk.
+    """
     root = validate(root, version, commit)
     tag = "v" + version
     data = {
@@ -238,6 +263,7 @@ def package_bytes(root, version, commit):
 
 
 def esphome_pin(root):
+    """Read the exact ESPHome version requirement, rejecting a missing version pin."""
     match = re.search(
         r"^esphome==([^\s]+)$", (Path(root) / "requirements-dev.txt").read_text(), re.M
     )
@@ -247,6 +273,7 @@ def esphome_pin(root):
 
 
 def verify_package(directory, version, commit):
+    """Verify regular release assets, identity and checksums and return the manifest."""
     directory = Path(directory)
     if {p.name for p in directory.iterdir()} != ASSETS:
         raise ValueError("Unexpected or missing release asset")
@@ -274,6 +301,11 @@ def verify_package(directory, version, commit):
 
 
 def main():
+    """Validate release inputs or write a package into a new output directory.
+
+    Dispatch local tag, package and infrastructure checks without publishing
+    a release or creating a tag.
+    """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "command",

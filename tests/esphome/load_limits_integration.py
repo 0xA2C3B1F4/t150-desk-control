@@ -19,6 +19,7 @@ from desk_test_support import (
 
 
 def main():
+    """Verify load-limit readback and Stop preemption of delayed parameter replies."""
     work = parse_args(__doc__).work_dir
     env = test_env(work)
     master, slave = open_pty()

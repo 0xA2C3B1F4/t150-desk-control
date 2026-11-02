@@ -27,6 +27,7 @@ REPOSITORY = "0xA2C3B1F4/t150-desk-control"
 
 
 def main():
+    """Validate and optionally compile an example; GitHub mode checks its clones."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--example", choices=EXAMPLES, default="stamp-c3")
     parser.add_argument(

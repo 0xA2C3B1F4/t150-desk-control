@@ -20,6 +20,7 @@ from desk_test_support import (
 
 
 def main():
+    """Verify delayed DT02 replies preserve discovery and Stop/preset arbitration."""
     work = parse_args(__doc__).work_dir
     env = test_env(work)
     master, slave = open_pty()

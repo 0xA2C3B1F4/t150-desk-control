@@ -1,3 +1,5 @@
+"""Check release packaging and source guards with isolated Git fixtures."""
+
 import json
 import os
 from pathlib import Path
@@ -13,7 +15,10 @@ import release  # noqa: E402 - Load tools after the sys.path bootstrap.
 
 
 class ReleaseTest(unittest.TestCase):
+    """Verify deterministic assets and their binding to an eligible source revision."""
+
     def setUp(self):
+        """Copy release inputs into a temporary Git repository with a fixture commit."""
         self.temp = tempfile.TemporaryDirectory(
             dir=os.environ["TMPDIR"], prefix="desk-release-"
         )
@@ -46,6 +51,7 @@ class ReleaseTest(unittest.TestCase):
         ]
 
     def git(self, *args):
+        """Run Git in the fixture without inherited Git settings or repository hooks."""
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
         env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
         return subprocess.check_output(
@@ -56,6 +62,7 @@ class ReleaseTest(unittest.TestCase):
         ).strip()
 
     def package(self):
+        """Write the fixture release assets into a new temporary package directory."""
         directory = Path(self.temp.name) / "package"
         directory.mkdir()
         for name, data in release.package_bytes(
@@ -65,6 +72,7 @@ class ReleaseTest(unittest.TestCase):
         return directory
 
     def test_deterministic_package_and_refs(self):
+        """Produce repeatable assets with tagged sources and flat package includes."""
         first = release.package_bytes(self.root, self.version, self.sha)
         self.assertEqual(
             first, release.package_bytes(self.root, self.version, self.sha)
@@ -88,6 +96,7 @@ class ReleaseTest(unittest.TestCase):
         self.assertIn("https://github.com/", first["release-notes.md"].decode())
 
     def test_next_version_replaces_previous_stable_source(self):
+        """Replace previous stable component sources with the new release tag."""
         old_version = self.version
         year, month, sequence = old_version.split(".")
         self.version = f"{year}.{month}.{int(sequence) + 1}"
@@ -118,6 +127,7 @@ class ReleaseTest(unittest.TestCase):
             self.assertNotIn("@v" + old_version, package[name].decode())
 
     def test_source_guards(self):
+        """Reject candidates with invalid metadata, identity or dirty source."""
         for version, sha in [
             ("2026.01.0", self.sha),
             ("2026.13.0", self.sha),
@@ -135,6 +145,7 @@ class ReleaseTest(unittest.TestCase):
             release.validate(self.root, self.version, self.sha)
 
     def test_esphome_resolves_the_annotated_tag(self):
+        """Resolve an annotated tag through ESPHome's actual Git helper."""
         from unittest.mock import patch
 
         from esphome import git as esphome_git
@@ -153,6 +164,7 @@ class ReleaseTest(unittest.TestCase):
         self.assertEqual(release.text(checkout, "rev-parse", "HEAD"), self.sha)
 
     def test_tag_peeling_and_wrong_commit(self):
+        """Require an annotated release tag that resolves to the requested commit."""
         with self.assertRaises(subprocess.SubprocessError):
             release.verify_tag(self.root, self.version, self.sha)
         self.git("tag", "v" + self.version)
@@ -168,6 +180,7 @@ class ReleaseTest(unittest.TestCase):
             release.verify_tag(self.root, self.version, "0" * 40)
 
     def test_asset_allowlist_and_tampering(self):
+        """Reject extra release assets and changes to packaged content."""
         directory = self.package()
         (directory / "secret.bin").write_bytes(b"not allowed")
         with self.assertRaises(ValueError):
@@ -178,6 +191,7 @@ class ReleaseTest(unittest.TestCase):
             release.verify_package(directory, self.version, self.sha)
 
     def test_infrastructure_only_allows_unrelated_main_changes(self):
+        """Allow unrelated main changes while rejecting release-infrastructure drift."""
         release.infrastructure(self.root, self.sha, self.sha)
         (self.root / "unrelated.txt").write_text("docs")
         self.git("add", ".")

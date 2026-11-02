@@ -11,6 +11,7 @@ from desk_test_support import ROOT, build_host, frames, open_pty, parse_args, te
 
 
 def main():
+    """Verify copied metadata preserves project fields without extra UART traffic."""
     args = parse_args(description=__doc__)
     work = args.work_dir
     components = work / "copy/components"

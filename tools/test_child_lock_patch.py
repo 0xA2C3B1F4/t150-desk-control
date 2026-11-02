@@ -103,11 +103,13 @@ OVERRIDES = (0x7AE, 0x7AF, 0x7B1, 0x7B2, 0x7B3, 0x7B0, 0x7B4, None)
 
 
 def require(condition, message):
+    """Raise AssertionError with the supplied diagnostic when a check fails."""
     if not condition:
         raise AssertionError(message)
 
 
 def frame(body):
+    """Encode a synthetic T150 body with delimiters, reserved-byte escapes and XOR."""
     checksum = 0
     for byte in body:
         checksum ^= byte
@@ -121,6 +123,7 @@ def frame(body):
 
 
 def decode(wire):
+    """Validate a canonical T150 reply and return its body without the XOR byte."""
     require(wire[:1] == b"\xfa" and wire[-1:] == b"\xfd", "reply delimiters")
     raw, escaped = bytearray(), False
     for byte in wire[1:-1]:
@@ -141,11 +144,20 @@ def decode(wire):
 
 
 class PowerCutError(Exception):
+    """Interrupt emulation at an injected EEPROM power-cut boundary."""
+
     pass
 
 
 class Machine:
+    """Execute a saved Cortex-M0 image with modeled RAM, GPIO and EEPROM transport."""
+
     def __init__(self, image, *, eeprom=None, primask=0):
+        """Map image memory and GPIO, seed stock state and install execution hooks.
+
+        Copy supplied EEPROM bytes into the fault model; saved transport routines
+        are replaced only when attach_eeprom is called.
+        """
         self.uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB)
         self.uc.ctl_set_cpu_model(UC_CPU_ARM_CORTEX_M0)
         self.uc.mem_map(FLASH, 0x10000)
@@ -217,12 +229,19 @@ class Machine:
         self.writes.append((address, size, value, uc.reg_read(UC_ARM_REG_PC)))
 
     def put(self, offset, value, width=1):
+        """Write a little-endian integer at an offset within emulated RAM."""
         self.uc.mem_write(RAM + offset, value.to_bytes(width, "little"))
 
     def get(self, offset, width=1):
+        """Read a little-endian integer from an offset within emulated RAM."""
         return int.from_bytes(self.uc.mem_read(RAM + offset, width), "little")
 
     def call(self, address, *arguments, stops=None):
+        """Execute Thumb code with register arguments and enforce stop and stack bounds.
+
+        A normal return must restore SP. Explicit stops may pause inside a routine.
+        Return the resulting R0 value or fail if the instruction bound is reached.
+        """
         before_sp = self.uc.reg_read(UC_ARM_REG_SP)
         for register, value in zip(REGS, arguments):
             self.uc.reg_write(register, value)
@@ -242,6 +261,11 @@ class Machine:
         return self.uc.reg_read(UC_ARM_REG_R0)
 
     def request(self, body, *, wire=None):
+        """Feed a synthetic frame through the saved RX parser and UART dispatcher.
+
+        An explicit wire allows malformed-input tests to bypass framing. Check
+        dispatcher register preservation and the incoming interrupt mask.
+        """
         wire = frame(body) if wire is None else bytes(wire)
         require(len(wire) < 256, "test frame exceeds RX ring")
         self.uc.mem_write(RAM + RX_RING, wire)
@@ -266,11 +290,13 @@ class Machine:
         return length
 
     def response(self, start=0):
+        """Read emitted TX-ring bytes since start, including any ring wrap."""
         ring = bytes(self.uc.mem_read(RAM + TX_RING, 256))
         count = (self.get(0xF5) - start) & 255
         return bytes(ring[(start + i) & 255] for i in range(count))
 
     def pins(self, combination):
+        """Set the seven raw key inputs, with one bits representing released keys."""
         self.uc.mem_write(
             0x48000010, (0xE0FF | ((combination & 31) << 8)).to_bytes(4, "little")
         )
@@ -279,6 +305,7 @@ class Machine:
         )
 
     def initialize_scanners(self):
+        """Run stock scanner initialization and verify the eight predicate pointers."""
         self.call(0x08004D40)
         require(
             tuple(self.get(0xA10 + 16 * i, 4) & ~1 for i in range(8)) == PREDICATES,
@@ -286,10 +313,17 @@ class Machine:
         )
 
     def scan(self, index, count=1):
+        """Execute the selected saved button scanner the requested number of times."""
         for _ in range(count):
             self.call(0x08006E14, RAM + 0xA10 + index * 16)
 
     def attach_eeprom(self):
+        """Stub EEPROM transport with masked byte access and configurable write faults.
+
+        Record reads and writes, restrict writes to the CL01 record and support
+        dropped writes, corrupt readbacks and power cuts at write boundaries.
+        """
+
         def read(machine):
             require(
                 machine.uc.reg_read(UC_ARM_REG_PRIMASK) == 1,
@@ -338,10 +372,12 @@ class Machine:
 
 
 def direct_body(operation=1, target=200, nonce=0xFAFD, version=1):
+    """Encode a DT02 request body with its version, operation, nonce and target."""
     return bytes((0xD1, version, operation)) + struct.pack(">HH", nonce, target)
 
 
 def direct_response(machine):
+    """Validate a DT02 reply and extract its target, mode, status and guard mask."""
     body = decode(machine.response())
     require(
         len(body) == 37 and body[:3] == b"\xd2\x01\x03", "direct-target reply format"
@@ -357,15 +393,20 @@ def direct_response(machine):
 
 
 class Suite:
+    """Check CL01 instructions against stock behavior and EEPROM fault fixtures."""
+
     def __init__(self, source, candidate, symbols):
+        """Retain images and symbols and initialize instruction and stack coverage."""
         self.source, self.candidate, self.symbols = source, candidate, symbols
         self.coverage, self.lowest_sp = set(), SP
 
     def entry(self, name):
+        """Resolve a patch symbol from an integer or manifest numeric string."""
         value = self.symbols[name]
         return int(value, 0) if isinstance(value, str) else value
 
     def machine(self, *, locked=True, primask=0):
+        """Create a candidate with EEPROM stubs and load a valid lock record."""
         eeprom = bytearray(b"\xff" * 256)
         eeprom[0x60:0x62] = b"\xa5\x5a" if locked else b"\x5a\xa5"
         machine = Machine(self.candidate, eeprom=eeprom, primask=primask)
@@ -374,15 +415,22 @@ class Suite:
         return machine
 
     def load(self, machine):
+        """Execute the compiled lock-state loader against the machine's EEPROM model."""
         machine.call(self.entry("child_lock_load"))
 
     def collect(self, machine):
+        """Collect executed addresses and the lowest stack pointer for the suite."""
         self.coverage.update(machine.visited)
         self.lowest_sp = min(self.lowest_sp, machine.min_sp)
 
     def lock_request(
         self, machine, operation=0, *, nonce=0xFAFD, body=None, wire=None, start=None
     ):
+        """Execute a CL01 request and return checked reply fields or None when silent.
+
+        Permit custom bodies and wire bytes for rejection tests, require the echoed
+        operation and nonce, and collect coverage when a reply is produced.
+        """
         start = machine.get(0xF5) if start is None else start
         machine.request(
             bytes((0xD3, 1, operation)) + nonce.to_bytes(2, "big")
@@ -410,6 +458,11 @@ class Suite:
         }
 
     def physical_inputs(self):
+        """Verify locked key predicates and scanners suppress every raw key combination.
+
+        Compare unlocked predicates with stock and require baseline coverage of all
+        eight predicates using modeled GPIO inputs.
+        """
         source = Machine(self.source)
         unlocked, locked = self.machine(locked=False), self.machine()
         for machine in (source, unlocked, locked):
@@ -452,6 +505,7 @@ class Suite:
         }
 
     def safety_inputs(self):
+        """Verify non-key GPIO reads match stock across ports, bits and patterns."""
         source, candidate = Machine(self.source), self.machine()
         cases = 0
         for port in (0x48000000, 0x48000400, 0x48000800, 0x48001400):
@@ -479,6 +533,7 @@ class Suite:
         }
 
     def uart_overrides(self):
+        """Verify the lock preserves UART overrides through predicates and scanners."""
         cases = 0
         for selector, offset in (
             (2, 0x7AD),
@@ -523,6 +578,11 @@ class Suite:
         }
 
     def remote_brake(self):
+        """Compare locked remote Stop with stock braking state and replies.
+
+        Exercise the saved parser, dispatcher and brake helper with both interrupt
+        masks; no motor physics or stopping distance is modeled.
+        """
         cases = 0
         for direction in (0, 1):
             for speed in (0, 140, 280):
@@ -569,6 +629,7 @@ class Suite:
         }
 
     def legacy_fallback(self):
+        """Verify legacy UART fallback preserves stock registers, flags and PRIMASK."""
         cases = 0
         for command in range(256):
             if command in (0xD1, 0xD3):
@@ -606,6 +667,11 @@ class Suite:
         return {"legacy_opcodes_register_and_flags_comparisons": cases}
 
     def boot_records(self):
+        """Verify only a valid unlock record boots unlocked and loading never writes.
+
+        Check corrupt records, the physical release gate and caller interrupt-mask
+        preservation through the compiled loader.
+        """
         pairs = {(0x5A, value) for value in range(256)}
         pairs.update((value, 0xA5) for value in range(256))
         pairs.update(((0xA5, 0x5A), (0xFF, 0xFF), (0, 0), (0xA5, 0xA5), (0x5A, 0x5A)))
@@ -643,6 +709,11 @@ class Suite:
         }
 
     def startup_hook(self):
+        """Verify the boot wrapper defaults to locked before stock initialization.
+
+        Stub the stock initialization call, then check persisted state loading,
+        stack restoration and interrupt-mask preservation through the actual hook.
+        """
         cases = 0
         for locked in (False, True):
             for primask in (0, 1):
@@ -683,6 +754,11 @@ class Suite:
         }
 
     def persistence(self):
+        """Verify committed transitions, boundary power cuts and dropped EEPROM writes.
+
+        Require interrupted records to fail locked except when the previous record
+        remains untouched, and preserve bytes outside the two-byte lock record.
+        """
         cases = 0
         maximum_writes = 0
         for initial_locked, operation, final_locked in (
@@ -768,6 +844,11 @@ class Suite:
         }
 
     def transient_read_faults(self):
+        """Verify runtime readback faults fail locked and reboot follows saved bytes.
+
+        A final readback failure may leave a valid unlock record in EEPROM; report
+        that outcome separately from the locked runtime response.
+        """
         cases = 0
         for read_index in (2, 3):
             machine = Machine(self.candidate)
@@ -837,6 +918,11 @@ class Suite:
         }
 
     def torn_byte_writes(self):
+        """Check every possible torn byte at each write in both lock directions.
+
+        Reboot from the bytes that landed, allowing unlock only for a retained
+        previous record or a completed final unlock commit.
+        """
         cases, retained_previous_unlock, landed_final_unlock = 0, 0, 0
         for initial_locked, operation in ((False, 1), (True, 2)):
             control = self.machine(locked=initial_locked)
@@ -895,6 +981,11 @@ class Suite:
         }
 
     def transitions(self):
+        """Verify unlock gates keys until release and busy transitions preserve state.
+
+        Require stale scanner events to clear without changing predicate pointers
+        and reject transitions while any modeled busy or pending-input guard is set.
+        """
         cases = 0
         for combination in range(127):
             machine = self.machine()
@@ -975,6 +1066,11 @@ class Suite:
         }
 
     def scanner_reset_helper(self):
+        """Verify the compiled reset clears scanner events without changing pointers.
+
+        Call the helper directly and require pending actions to clear without
+        EEPROM writes.
+        """
         machine = self.machine()
         machine.initialize_scanners()
         pointers = bytes(machine.uc.mem_read(RAM + 0xA10, 128))
@@ -1004,6 +1100,11 @@ class Suite:
         }
 
     def stale_handler_deadlines(self):
+        """Verify stale handler deadlines cannot trigger motion after an accepted lock.
+
+        Execute stock handlers with modeled held keys and require no target change,
+        new EEPROM writes or visits to braking and motion-setup helpers.
+        """
         handlers = (
             0x08004B70,
             0x080054D4,
@@ -1054,6 +1155,11 @@ class Suite:
         }
 
     def busy_snapshot_interrupt_probe(self):
+        """Verify lock transitions keep the snapshot-to-apply boundary interrupt-masked.
+
+        Inject protection stores after mask restoration and require them to survive.
+        A forced-unmasked negative control must fail; NVIC scheduling is not modeled.
+        """
         boundary = self.entry("child_lock_busy_snapshot_done")
         cases = 0
         for operation in (1, 2):
@@ -1123,6 +1229,11 @@ class Suite:
         }
 
     def direct_target(self):
+        """Verify locked DT02 requests preserve guards and reject malformed frames.
+
+        Check accepted targets through stock motion setup while preserving the
+        physical lock and its EEPROM record.
+        """
         cases = {
             "accepted_with_physical_keys_held": 0,
             "guards": 0,
@@ -1259,6 +1370,11 @@ class Suite:
         return cases
 
     def lock_protocol(self):
+        """Verify CL01 queries, transitions, rejection paths and TX-capacity admission.
+
+        Cover masked callers and TX-ring wrap. Require caller PRIMASK preservation;
+        GET, malformed and idempotent requests must not write EEPROM.
+        """
         cases = {"read_only_queries": 0, "malformed": 0, "masked_callers": 0}
         for locked in (False, True):
             machine = self.machine(locked=locked)
@@ -1352,6 +1468,11 @@ class Suite:
 
 
 def main():
+    """Validate the saved image pair and manifest, then run the offline CL01 suite.
+
+    Require Unicorn 2.1.4 and unchanged bytes outside reviewed patch regions.
+    Print the report and optionally save it, retaining explicit hardware limits.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("candidate", type=Path)

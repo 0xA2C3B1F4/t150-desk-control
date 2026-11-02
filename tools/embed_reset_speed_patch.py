@@ -16,6 +16,11 @@ from build_reset_speed_patch import (
 
 
 def render(llvm_bin=None):
+    """Compile replacement RS01 sections and return the C++ header text.
+
+    Include payload metadata and cumulative reconstruction helpers without
+    reading a saved controller image.
+    """
     sections, _ = compile_patch(llvm_bin)
     lines = [
         "#pragma once",
@@ -78,6 +83,7 @@ def render(llvm_bin=None):
 
 
 def main():
+    """Regenerate the RS01 header or fail when --check finds missing or stale output."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--llvm-bin", type=Path)
     p.add_argument("--check", action="store_true")

@@ -33,14 +33,21 @@ SECTIONS = {
 
 
 class ImageError(ValueError):
+    """Report a rejected image, unavailable build tool or patch-integrity failure."""
+
     pass
 
 
 def sha256(data: bytes) -> str:
+    """Return the lowercase SHA-256 hexadecimal digest of the supplied bytes."""
     return hashlib.sha256(data).hexdigest()
 
 
 def identify(data: bytes) -> int:
+    """Return the flash offset of an exact saved DT02 full or application image.
+
+    Raise ImageError when either the image size or its digest is unsupported.
+    """
     if len(data) == FULL_SIZE and sha256(data) == SOURCE_FULL_SHA256:
         return 0
     if len(data) == APP_SIZE and sha256(data) == SOURCE_APP_SHA256:
@@ -66,6 +73,10 @@ def read_saved_image(path: Path) -> bytes:
 
 
 def find_tool(name: str, llvm_bin: Path | None = None) -> str:
+    """Find an LLVM executable in the supplied directory or on PATH.
+
+    Raise ImageError when neither location provides the requested tool.
+    """
     candidate = llvm_bin / name if llvm_bin else None
     if candidate and candidate.is_file():
         return str(candidate)
@@ -78,6 +89,11 @@ def find_tool(name: str, llvm_bin: Path | None = None) -> str:
 def compile_patch(
     llvm_bin: Path | None = None,
 ) -> tuple[dict[str, bytes], dict[str, int]]:
+    """Assemble CL01 sections in TMPDIR and return their bytes and symbols.
+
+    External LLVM tools compile and link the patch. Temporary files are removed
+    when the build finishes or raises an exception.
+    """
     task_tmp = os.environ.get("TMPDIR")
     if not task_tmp or not Path(task_tmp).is_dir() or not os.access(task_tmp, os.W_OK):
         raise ImageError("TMPDIR must name an existing writable temporary directory")
@@ -156,6 +172,11 @@ def compile_patch(
 
 
 def build(data: bytes, llvm_bin: Path | None = None) -> tuple[bytes, dict]:
+    """Apply CL01 to an exact DT02 image and return the verified bytes and manifest.
+
+    Reject changed hooks, a non-erased CL01 code reservation, writes outside
+    declared spans and any output whose digest differs from the reviewed image.
+    """
     image_origin = identify(data)
     sections, symbols = compile_patch(llvm_bin)
     # A second, localized check makes the code/data reservation reviewable.
@@ -238,6 +259,11 @@ def build(data: bytes, llvm_bin: Path | None = None) -> tuple[bytes, dict]:
 
 
 def main() -> None:
+    """Build CL01 into new image and manifest files, refusing existing outputs.
+
+    Remove the new image if writing its manifest fails. Build and input errors
+    are reported through the CLI parser.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)

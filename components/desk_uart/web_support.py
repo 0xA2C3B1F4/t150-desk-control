@@ -10,6 +10,7 @@ from esphome.helpers import write_file_if_changed
 
 
 def patch_features(full_config):
+    """Return the enabled control, maintenance and OTA source-patch flags, in order."""
     web = full_config.get("web_server", {})
     controls = any(
         "child_lock" in desk or "motion_speed" in desk
@@ -24,6 +25,7 @@ def patch_features(full_config):
 
 
 def validate_build_toolchain(config):
+    """Reject patched ESP32 configurations that do not use native ESP-IDF."""
     if (
         CORE.is_esp32
         and any(patch_features(fv.full_config.get()))
@@ -36,6 +38,11 @@ def validate_build_toolchain(config):
 
 
 def configure_web_controls(config):
+    """Register source-patch inputs, link guards and a build manifest once.
+
+    Skip builds that need no desk patches. Require native ESP-IDF and gzip
+    for confirmed web controls; copy pristine inputs for the CMake patch step.
+    """
     if CORE.data.get("t150_build_patches"):
         return
     web = CORE.config.get("web_server", {})

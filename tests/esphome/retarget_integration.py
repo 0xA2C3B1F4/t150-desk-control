@@ -19,6 +19,7 @@ from desk_test_support import (
 
 
 def main():
+    """Verify retargeting brakes and restores borrowed presets before another move."""
     w = parse_args(__doc__).work_dir
     env = test_env(w)
     master, slave = open_pty()

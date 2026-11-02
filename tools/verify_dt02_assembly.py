@@ -22,6 +22,7 @@ if not os.environ.get("TMPDIR"):
 
 
 def tool(name):
+    """Resolve an LLVM executable from --llvm-bin or PATH, reporting CLI errors."""
     candidate = (
         args.llvm_bin / name if args.llvm_bin else Path(shutil.which(name) or name)
     )

@@ -22,6 +22,7 @@ SCALAR_OFFSETS = (0x17B4, 0x17B8, 0x17BC, 0x5FD4, 0x5FD8)
 
 
 def main():
+    """Verify profile hashes against hashlib with optional pinned-image input."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--firmware",

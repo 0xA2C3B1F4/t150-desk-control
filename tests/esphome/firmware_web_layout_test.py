@@ -18,6 +18,7 @@ spec.loader.exec_module(layout)
 
 
 def header(html):
+    """Build a deterministic gzip header fixture with an alternate branch."""
     data = gzip.compress(html.encode(), mtime=0)
     return (
         "#ifdef USE_WEBSERVER_GZIP\nconstexpr uint8_t INDEX_GZ[] PROGMEM = {"
@@ -27,6 +28,7 @@ def header(html):
 
 
 def decode(source):
+    """Return HTML decoded from the gzip byte array in a web-header fixture."""
     array = re.search(r"PROGMEM = \{([^}]+)", source)[1]
     return gzip.decompress(
         bytes(int(x, 16) for x in re.findall(r"0x([0-9a-f]{2})", array))
@@ -34,7 +36,13 @@ def decode(source):
 
 
 class LayoutTest(unittest.TestCase):
+    """Check maintenance navigation and failure handling.
+
+    Patch failures must leave original files unchanged.
+    """
+
     def test_preserves_app_and_is_idempotent(self):
+        """Verify repeated decoration preserves the app and compression branches."""
         html = "<html><body><script>/* stock app */</script><esp-app></esp-app></body></html>"
         patched = layout.decorate_header(header(html))
         self.assertEqual(layout.decorate_header(patched), patched)
@@ -45,6 +53,7 @@ class LayoutTest(unittest.TestCase):
         )  # < 1.3 KiB compressed payload
 
     def test_navigation_only_and_footer_fallback(self):
+        """Verify navigation avoids data requests and falls back to the body footer."""
         for forbidden in [
             "fetch",
             "XMLHttpRequest",
@@ -64,6 +73,7 @@ class LayoutTest(unittest.TestCase):
             )
 
     def test_rejects_unknown_anchors_and_array(self):
+        """Reject missing or repeated app anchors and unrecognized header arrays."""
         for text in [
             header("<body></body>"),
             header("<body><esp-app><esp-app></body>"),
@@ -73,6 +83,7 @@ class LayoutTest(unittest.TestCase):
                 layout.decorate_header(text)
 
     def test_corrupt_index_leaves_file_unchanged(self):
+        """Verify a corrupt gzip header warns and preserves the original file."""
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "index.h"
             p.write_text(
@@ -84,6 +95,7 @@ class LayoutTest(unittest.TestCase):
             self.assertEqual(p.read_bytes(), original)
 
     def test_bad_deflate_falls_back(self):
+        """Verify a decompression error warns and preserves the original file."""
         import zlib
 
         with patch.object(
@@ -98,6 +110,7 @@ class LayoutTest(unittest.TestCase):
                 self.assertEqual(p.read_bytes(), original)
 
     def test_failed_replace_preserves_original(self):
+        """Verify failed replacement preserves the original and cleans up."""
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "index.h"
             p.write_text(header("<body><esp-app></esp-app></body>"))
@@ -109,12 +122,14 @@ class LayoutTest(unittest.TestCase):
             self.assertEqual(list(Path(tmp).iterdir()), [p])
 
     def test_initial_controls_and_distinct_document_owner(self):
+        """Verify controls start disabled and do not use sessionStorage."""
         html = (ROOT / "components/desk_firmware_update/ui.html").read_text()
         for button in re.findall(r"<button[^>]*>", html):
             self.assertIn(" disabled ", button)
         self.assertNotIn("sessionStorage", html)
 
     def test_installed_esphome_index(self):
+        """Verify the installed ESPHome HTML gains only the maintenance payload."""
         from esphome.components import web_server
 
         source = Path(web_server.__file__).with_name("server_index_v3.h").read_text()

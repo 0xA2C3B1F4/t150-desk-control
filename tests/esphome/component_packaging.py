@@ -16,10 +16,12 @@ ADAPTER_HEADERS = {"desk_uart.h", "journal_storage.h"}
 
 
 def run(command, log, **kwargs):
+    """Run a checked subprocess with combined output captured in the packaging log."""
     subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, **kwargs)
 
 
 def main():
+    """Verify header exports and build standalone, CMake and PlatformIO consumers."""
     work = parse_args(__doc__).work_dir
     env = test_env(work)
     env["PLATFORMIO_SETTING_ENABLE_TELEMETRY"] = "No"

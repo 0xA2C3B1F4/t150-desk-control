@@ -36,6 +36,8 @@ from test_child_lock_patch import (
 
 
 class ResetMachine(Machine):
+    """Extend the offline machine with RS01 state and modeled timer registers."""
+
     lowest_sp = SP
 
     def _code(self, uc, address, size, data):
@@ -43,6 +45,7 @@ class ResetMachine(Machine):
         type(self).lowest_sp = min(type(self).lowest_sp, self.min_sp)
 
     def __init__(self, image, symbols, **kwargs):
+        """Map timer registers, install stock-helper stubs and initialize RS01 state."""
         super().__init__(image, **kwargs)
         self.symbols = symbols
         self.uc.mem_map(0x40000000, 0x2000)
@@ -73,6 +76,11 @@ class ResetMachine(Machine):
         super()._write(uc, access, address, size, value, data)
 
     def send(self, op=0, nonce=1, token=None, arg=0):
+        """Dispatch an RS01 request and return its validated diagnostic reply or None.
+
+        Use the current lease token by default. Consume emitted TX bytes, then check
+        reply length, correlation and admission flags.
+        """
         if token is None:
             token = self.get(0xFD0, 4)
         start = self.get(0xF5)
@@ -102,34 +110,42 @@ class ResetMachine(Machine):
         return reply
 
     def get_reply(self, nonce=1):
+        """Query RS01 capabilities with a zero lease token and the supplied nonce."""
         return self.send(0, nonce, 0)
 
     def state(self):
+        """Read the emulated RS01 ownership-state byte from its reserved RAM slot."""
         return self.get(0xFE0)
 
     def clock(self, tick):
+        """Set the emulated stock tick counter, wrapping to 32 bits."""
         self.put(0x75C, tick & 0xFFFFFFFF, 4)
 
     def systick(self):
+        """Execute the image's hooked SysTick handler through its vector entry."""
         self.call(int.from_bytes(self.uc.mem_read(FLASH + 0x283C, 4), "little") & ~1)
 
     def step(self, stub=None):
+        """Run the hooked stock motion step with an optional temporary helper stub."""
         if stub is not None:
             self.stubs[0x08005A58] = stub
         self.call(FLASH + 0x8688, stops={FLASH + 0x868C})
         self.stubs.pop(0x08005A58, None)
 
     def pwm(self, n, direction=1):
+        """Call the image's PWM writer with a simulated speed and direction."""
         self.put(0x75A, n, 2)
         self.call(FLASH + 0x70D8, direction, n)
 
     def output(self):
+        """Read both modeled TIM3 compare registers without modeling motor movement."""
         return tuple(
             int.from_bytes(self.uc.mem_read(a, 4), "little")
             for a in (0x4000043C, 0x40000440)
         )
 
     def interrupt_step(self, point):
+        """Inject lease expiry at a chosen instruction in the stock motion step."""
         self.interrupt_call(FLASH + 0x8688, point, FLASH + 0x868C)
 
     def interrupt_call(self, entry, point, end):
@@ -157,6 +173,7 @@ class ResetMachine(Machine):
         require(self.stopped_at == end, "interrupted stock call returns")
 
     def start(self):
+        """Obtain a fresh challenge and require an accepted reset START reply."""
         self.get_reply()
         r = self.send(1, 2)
         require(r[4] == 0 and r[5] == 1 and r[8] & 8, "eligible START")
@@ -164,6 +181,12 @@ class ResetMachine(Machine):
 
 
 def run(image, symbols):
+    """Execute RS01 admission, lease, parser and actuator-write regressions offline.
+
+    Return completed case names and stack usage. Peripheral sampling, EEPROM
+    transport and selected stock transitions use fixtures, so these checks do
+    not establish physical behavior.
+    """
     cases = []
 
     def done(name):
@@ -1057,6 +1080,10 @@ def run(image, symbols):
 
 
 def main():
+    """Build RS01 from a saved CL01 image, then run and print the offline checks.
+
+    Also write the report to --report when requested.
+    """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("source", type=Path)
     p.add_argument("--llvm-bin", type=Path)

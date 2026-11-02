@@ -14,6 +14,7 @@ import release
 
 
 def main():
+    """Compile release YAMLs and verify fetched sources match the candidate."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ref")
     parser.add_argument("--expected-commit")

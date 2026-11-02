@@ -11,6 +11,7 @@ STATUSES = {0: "ok", 1: "bad_request", 2: "busy", 3: "storage_fault"}
 
 
 def frame(body: bytes) -> bytes:
+    """Add T150 delimiters, canonical byte escaping and an XOR checksum to a body."""
     checksum = 0
     for byte in body:
         checksum ^= byte
@@ -24,6 +25,7 @@ def frame(body: bytes) -> bytes:
 
 
 def unframe(wire: bytes) -> bytes:
+    """Decode one canonical T150 frame and reject malformed escaping or checksums."""
     if len(wire) < 4 or wire[0] != 0xFA or wire[-1] != 0xFD:
         raise ValueError("Expected one complete FA..FD frame")
     body = bytearray()
@@ -51,12 +53,14 @@ def unframe(wire: bytes) -> bytes:
 
 
 def request(operation: str, nonce: int) -> bytes:
+    """Encode a CL01 operation and 16-bit nonce without transmitting any bytes."""
     if operation not in OPS or not 0 <= nonce <= 0xFFFF:
         raise ValueError("Expected get/lock/unlock and a 16-bit nonce")
     return frame(bytes((0xD3, 1, OPS[operation])) + nonce.to_bytes(2, "big"))
 
 
 def reply(wire: bytes, expected_nonce: int | None = None) -> dict:
+    """Decode CL01 status fields and optionally require the matching request nonce."""
     body = unframe(wire)
     if (
         len(body) != 15
@@ -84,6 +88,7 @@ def reply(wire: bytes, expected_nonce: int | None = None) -> dict:
 
 
 def main() -> None:
+    """Print a request or decode supplied reply bytes, reporting invalid CLI input."""
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     make = sub.add_parser(

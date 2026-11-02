@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def module(name, path):
+    """Load a source file under an explicit module name without installing it."""
     spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -26,6 +27,7 @@ layout = module(
 
 
 def decode(header):
+    """Return HTML from the gzip INDEX_GZ array in an ESPHome web header."""
     data = re.search(
         r"#ifdef USE_WEBSERVER_GZIP\s+constexpr uint8_t INDEX_GZ\[\] PROGMEM = \{([^}]+)",
         header,
@@ -36,8 +38,11 @@ def decode(header):
 
 
 class WebTest(unittest.TestCase):
+    """Check confirmed control rendering against installed ESPHome web assets."""
+
     @classmethod
     def setUpClass(cls):
+        """Read installed ESPHome web assets for compatibility tests."""
         from esphome.components import web_server
 
         root = Path(web_server.__file__).parent
@@ -45,6 +50,7 @@ class WebTest(unittest.TestCase):
         cls.server = (root / "web_server.cpp").read_text()
 
     def test_installed_assets_and_idempotence(self):
+        """Verify repeated decoration preserves upstream HTML and server content."""
         patched = web.decorate_header(self.header)
         self.assertEqual(web.decorate_header(patched), patched)
         self.assertEqual(
@@ -66,6 +72,7 @@ class WebTest(unittest.TestCase):
         )
 
     def test_full_modules_parse(self):
+        """Verify bundled page scripts parse as JavaScript modules."""
         html = decode(web.decorate_header(self.header))
         scripts = re.findall(r"<script\b[^>]*>(.*?)</script>", html, re.S)
         self.assertTrue(scripts)
@@ -79,6 +86,7 @@ class WebTest(unittest.TestCase):
             )
 
     def test_both_build_hook_orders(self):
+        """Verify controls and maintenance navigation coexist in either hook order."""
         a = layout.decorate_header(web.decorate_header(self.header))
         b = web.decorate_header(layout.decorate_header(self.header))
         for result in (a, b):
@@ -87,6 +95,7 @@ class WebTest(unittest.TestCase):
             self.assertEqual(web.decorate_header(result), result)
 
     def test_unknown_upstream_fails(self):
+        """Reject missing or ambiguous upstream anchors before applying web patches."""
         with self.assertRaises(ValueError):
             web.decorate_header(self.header.replace("INDEX_GZ", "OTHER"))
         with self.assertRaises(ValueError):
@@ -97,6 +106,7 @@ class WebTest(unittest.TestCase):
             web.decorate_server(self.server.replace(web.OLD_SELECT_JSON, "changed"))
 
     def test_confirmed_speed_and_unknown_placeholder(self):
+        """Verify speed menus use confirmed values and keep callbacks on their row."""
         script = r"""
 const assert=require('node:assert/strict');
 const input=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
@@ -132,6 +142,7 @@ console.log('PASS: speed selection confirmation, unknown placeholder, row bindin
         )
 
     def test_actual_render_and_disconnect(self):
+        """Verify lock rows stay bound and only desk controls become unknown."""
         # Execute the exact renderer inserted into the bundled Lit application.
         # Preserve template values so click handlers are exercised, not regexed.
         script = r"""

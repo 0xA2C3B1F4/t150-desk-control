@@ -13,7 +13,6 @@ ignore = [
     "E501",  # Let the formatter wrap code without splitting exact payload strings.
     "E111", "E114", "E117", "W191", "D206", "D300",  # Formatter owns layout.
     "D417",  # Describe parameters when the explanation adds information.
-    "D1",    # Temporary until missing docstrings are added.
 ]
 
 [lint.pydocstyle]

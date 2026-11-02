@@ -50,6 +50,7 @@ class AutoTargetAccess : public esphome::desk_uart::DeskUART {
 
 
 def main():
+    """Verify backend choice, cancellation and preset recovery with a synthetic peer."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--only", nargs="+", help="Run selected scenarios after building"

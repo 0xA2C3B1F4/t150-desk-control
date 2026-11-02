@@ -23,6 +23,7 @@ from desk_test_support import (
 
 
 def telemetry(raw, sequence, *, size=32, kind=5):
+    """Encode channel-2 telemetry with a chosen frame length and message kind."""
     body = bytearray(size)
     body[0] = kind
     body[2] = 0xA5
@@ -34,6 +35,7 @@ def telemetry(raw, sequence, *, size=32, kind=5):
 
 
 def main():
+    """Verify raw-load sequence checks, frame rejection and stale-data handling."""
     work = parse_args(__doc__).work_dir
     env = test_env(work)
     master, slave = open_pty()

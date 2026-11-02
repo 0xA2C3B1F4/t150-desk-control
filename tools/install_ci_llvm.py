@@ -16,6 +16,12 @@ SHA256 = "18da30f77f475688a18f7704d23f9f155ae007ed9922dbed6850a9419d9fec8c"
 
 
 def main():
+    """Download hash-verified LLVM into TMPDIR and append its bin path to GITHUB_PATH.
+
+    Require Linux x86_64 and extract bin/, lib/clang/ and shared-library entries.
+    Require exactly one extracted clang and a version banner containing the
+    expected version string.
+    """
     if platform.system() != "Linux" or platform.machine() != "x86_64":
         raise SystemExit("This installer is for the standard x86_64 Linux CI runner")
     root = Path(os.environ["TMPDIR"]) / "desk-llvm"

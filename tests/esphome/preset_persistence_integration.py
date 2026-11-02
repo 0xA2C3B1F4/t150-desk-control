@@ -30,18 +30,23 @@ from desk_test_support import (
 
 
 class Controller:
+    """Model separate RAM and EEPROM preset banks for restart scenarios."""
+
     def __init__(self):
+        """Seed matching RAM/EEPROM presets and an empty controller event log."""
         self.ram = [111, 222, 456]
         self.eeprom = self.ram.copy()
         self.events = []
 
     def save_local(self, reason):
+        """Copy RAM presets to simulated EEPROM and record both banks."""
         self.eeprom = self.ram.copy()
         self.events.append(
             {"event": reason, "ram": self.ram.copy(), "eeprom": self.eeprom.copy()}
         )
 
     def reboot(self):
+        """Reload simulated controller RAM from EEPROM and record the reboot."""
         self.ram = self.eeprom.copy()
         self.events.append({"event": "controller reboot", "ram": self.ram.copy()})
 
@@ -90,6 +95,7 @@ def set_legacy_magic(preferences, magic):
 
 
 def main():
+    """Verify journals prevent preset reuse across ambiguous restart states."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--scenarios", nargs="+", help="Run only named persistence scenarios"

@@ -51,6 +51,7 @@ TESTS = [
 
 
 def main():
+    """Run selected tests with separate logs and exit nonzero on any failure."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )

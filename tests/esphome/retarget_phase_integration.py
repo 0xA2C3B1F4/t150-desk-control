@@ -35,6 +35,7 @@ PHASES = {
 
 
 def main():
+    """Verify retarget and Stop behavior in each observed preset-move phase."""
     w = parse_args(__doc__).work_dir
     env = test_env(w)
     cfg = w / "host.yaml"

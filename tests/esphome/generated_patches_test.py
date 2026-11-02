@@ -20,7 +20,10 @@ spec.loader.exec_module(patches)
 
 
 class PatchTest(unittest.TestCase):
+    """Check generated patches preserve inputs and reject unsafe outputs."""
+
     def setUp(self):
+        """Copy pinned sources and patch helpers into an isolated build fixture."""
         self.temp = tempfile.TemporaryDirectory(prefix="t150-patch-test-")
         self.addCleanup(self.temp.cleanup)
         self.build = Path(self.temp.name)
@@ -59,11 +62,13 @@ class PatchTest(unittest.TestCase):
         self.configure(True, True, True)
 
     def configure(self, controls, maintenance, ota):
+        """Write enabled control, maintenance and OTA features to the manifest."""
         (self.build / "desk-patches.json").write_text(
             json.dumps(dict(controls=controls, maintenance=maintenance, ota=ota))
         )
 
     def html(self):
+        """Decode the generated gzip index to inspect the applied web features."""
         text = (self.web / "server_index_v3.h").read_text()
         array = re.search(
             r"#ifdef USE_WEBSERVER_GZIP\s+constexpr uint8_t INDEX_GZ\[\] PROGMEM = \{([^}]+)",
@@ -74,6 +79,7 @@ class PatchTest(unittest.TestCase):
         ).decode()
 
     def test_pristine_inputs_idempotence_and_regeneration(self):
+        """Verify patch ordering, idempotence and regeneration from pristine inputs."""
         originals = {p: p.read_bytes() for p in self.build.glob("desk_upstream_*")}
         patches.apply(self.build)
         self.assertIn("desk-confirmed-switch-v1", self.html())
@@ -103,6 +109,7 @@ class PatchTest(unittest.TestCase):
         self.assertEqual(originals, {p: p.read_bytes() for p in originals})
 
     def test_changing_enabled_features_starts_from_pristine_inputs(self):
+        """Verify disabling controls preserves enabled maintenance navigation."""
         patches.apply(self.build)
         self.configure(False, True, False)
         patches.apply(self.build)
@@ -111,6 +118,7 @@ class PatchTest(unittest.TestCase):
         self.assertNotIn("desk_panel_lock", (self.web / "web_server.cpp").read_text())
 
     def test_symlink_output_is_rejected_before_any_write(self):
+        """Verify symlink rejection leaves the target and earlier outputs unchanged."""
         original = (self.build / "desk_upstream_ota.cpp").read_bytes()
         web_before = (self.web / "server_index_v3.h").read_bytes()
         self.ota.unlink()
@@ -121,6 +129,7 @@ class PatchTest(unittest.TestCase):
         self.assertEqual(web_before, (self.web / "server_index_v3.h").read_bytes())
 
     def test_ota_patch_checks_bytes_and_decodes_utf8(self):
+        """Verify OTA patching accepts exact UTF-8 bytes and rejects re-encoding."""
         raw = (self.build / "desk_upstream_ota.cpp").read_bytes()
         self.assertTrue(any(byte > 127 for byte in raw))
         patched = patches.patch_ota(raw)
@@ -129,6 +138,7 @@ class PatchTest(unittest.TestCase):
             patches.patch_ota(raw.decode("cp1252").encode("utf-8"))
 
     def test_unknown_ota_source_fails_before_any_output_write(self):
+        """Verify unreviewed OTA input is rejected before any output changes."""
         files = [self.web / "server_index_v3.h", self.web / "web_server.cpp", self.ota]
         before = {p: p.read_bytes() for p in files}
         source = self.build / "desk_upstream_ota.cpp"

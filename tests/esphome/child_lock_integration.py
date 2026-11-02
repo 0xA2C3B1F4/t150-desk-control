@@ -65,6 +65,7 @@ CASES = [
 
 
 def main():
+    """Verify CL01 discovery, single-attempt writes and Stop priority over a PTY."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--only", nargs="+", choices=CASES)
     parser.add_argument(

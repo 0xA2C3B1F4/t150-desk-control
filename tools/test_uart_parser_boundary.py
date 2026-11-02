@@ -90,11 +90,13 @@ STOCK_SHA256 = "1fb939d729ffdff10127591feebdee3b3e4f61ae3348a4574cde9bc042c5e306
 
 
 def check(condition, case, detail):
+    """Raise a case-specific assertion that includes the failing condition detail."""
     if not condition:
         raise AssertionError(f"{case}: {detail}")
 
 
 def resync(wire):
+    """Prepend the extra FA byte that lets a new frame escape a pending FE state."""
     return b"\xfa" + bytes(wire)
 
 
@@ -107,6 +109,7 @@ def pending_escape(wire):
 
 
 def split_replies(wire):
+    """Decode consecutive T150 replies and reject leading or unterminated bytes."""
     replies, start, escaped = [], None, False
     for index, byte in enumerate(wire):
         if start is None:
@@ -131,14 +134,17 @@ class ParserModel:
     """
 
     def __init__(self, strict17=True):
+        """Initialize parser state with optional strict lengths for opcode 0x17."""
         self.strict17 = strict17
         self.mode, self.count, self.check = 0, 0, 0
         self.out = bytearray(128)
 
     def state(self):
+        """Pack parser mode, byte count, XOR and magic into the firmware state word."""
         return self.mode | self.count << 8 | self.check << 16 | 0xA6 << 24
 
     def feed(self, value):
+        """Consume one byte and return a completed frame, protocol error or None."""
         if self.mode == 0:
             if value == 0xFA:
                 self.mode, self.count, self.check = 1, 0, 0
@@ -727,7 +733,14 @@ def model_differential(image, strict17=True, streams=400, seed=0x5EED):
 
 
 class Fixture:
+    """Expose controlled RX-ring prefixes to the saved UART service in emulation."""
+
     def __init__(self, image, wire, *, start=0):
+        """Seed unpublished RX bytes and request-buffer sentinels in a fresh machine.
+
+        Stub unrelated main-loop helpers and leave the producer at the initial
+        reader position until expose publishes bytes.
+        """
         self.machine = Machine(image)
         self.machine.stubs.update(
             {address: lambda _machine: None for address in HELPERS}
@@ -744,14 +757,17 @@ class Fixture:
         self.machine.put(0x494, 0x55)
 
     def write(self, start, data):
+        """Place bytes in the modeled RX ring with 8-bit index wrap."""
         for index, byte in enumerate(data):
             self.machine.put(RX_RING + ((start + index) & 255), byte)
 
     def expose(self, count):
+        """Publish a prefix of the fixture wire by advancing the modeled producer."""
         check(0 <= count <= len(self.wire), "fixture", "invalid producer progress")
         self.machine.put(0xFD, (self.start + count) & 255)
 
     def call(self):
+        """Run saved UART service and report replies, UP stores and buffer sentinels."""
         before = self.machine.get(0xF5)
         writes_before = len(self.machine.writes)
         self.machine.call(SERVICE)
@@ -769,6 +785,7 @@ class Fixture:
 
 
 def assert_quiet(fixture, case, *, repeat=1):
+    """Require repeated calls to leave UP clear, sentinels intact and no reply."""
     for attempt in range(repeat):
         event = fixture.call()
         check(
@@ -786,6 +803,7 @@ def assert_quiet(fixture, case, *, repeat=1):
 
 
 def assert_up(fixture, case):
+    """Require one UP dispatch, its expected acknowledgement and intact sentinels."""
     event = fixture.call()
     check(event["accepted"] == 4, case, "valid UP body was not accepted")
     check(
@@ -803,6 +821,11 @@ def assert_up(fixture, case):
 
 
 def parser_result(image, wire, *, settle=False):
+    """Return parser output, reader position and error state for supplied wire bytes.
+
+    With settle enabled, repeat calls until a frame is accepted or all input
+    is consumed, allowing comparison with the stock parser's consumption pattern.
+    """
     wire = bytes(wire)
     machine = Machine(image)
     check(len(wire) < 256, "differential fixture", "wire exceeds RX ring")
@@ -828,6 +851,7 @@ def parser_result(image, wire, *, settle=False):
 
 
 def thumb_bl_target(image, address):
+    """Decode a Thumb BL destination and reject a call site with another opcode."""
     offset = address - 0x08000000
     first = int.from_bytes(image[offset : offset + 2], "little")
     second = int.from_bytes(image[offset + 2 : offset + 4], "little")
@@ -852,6 +876,11 @@ def thumb_bl_target(image, address):
 
 
 def rx_reset_call_result(image):
+    """Measure RX-reset return registers, flags, stack and continuation.
+
+    Stub the stock initializer with distinctive return values so wrapper
+    clobbers are visible in stock-to-candidate comparisons.
+    """
     fixture = Fixture(image, b"")
     machine = fixture.machine
     outputs = (0x10203040, 0x11223344, 0x55667788, 0x99AABBCC)
@@ -905,6 +934,11 @@ def rx_reset_call_result(image):
 
 
 def run(image, stock_image=None):
+    """Run receive-boundary, resynchronization and optional stock comparisons offline.
+
+    Return completed case descriptions. RX chunks and memory overwrites are
+    controlled fixtures, without DMA timing or physical-controller behavior.
+    """
     completed = []
 
     # The original defect accepts the stale suffix of this frame when only
@@ -1360,6 +1394,11 @@ def run(image, stock_image=None):
 
 
 def main():
+    """Validate saved image sizes and requested digests, then print parser test results.
+
+    An optional stock image must match the pinned stock digest before its
+    parser and RX-reset behavior are used for differential checks.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image", required=True, type=Path)
     parser.add_argument("--expect-sha256")

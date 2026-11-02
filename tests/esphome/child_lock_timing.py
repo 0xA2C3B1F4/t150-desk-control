@@ -4,6 +4,10 @@ import difflib
 
 
 def instrument(work):
+    """Add timing logs to generated host UART code and write a diagnostic diff.
+
+    Production sources and existing timeout thresholds remain unchanged.
+    """
     path = work / "build/src/esphome/components/desk_uart/desk_uart.cpp"
     original = path.read_text()
     source = original
