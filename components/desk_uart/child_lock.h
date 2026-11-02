@@ -58,6 +58,12 @@ class ChildLock {
     request_(locked ? 1 : 2, now);
     return true;
   }
+  // Cancelling an optional GET leaves the last confirmed lock state intact.
+  // A later reply to that GET cannot complete a newer nonce-bound request.
+  void yield_read() {
+    if (busy_ && operation_ == 0)
+      busy_ = queued_ = false;
+  }
   void accept(const Frame& frame, uint32_t now) {
     if (!busy_ || queued_ || frame.size != 15 || frame.bytes[0] != 0xD4 ||
         be16(frame.bytes + 11) != nonce_ || frame.bytes[2] != operation_)

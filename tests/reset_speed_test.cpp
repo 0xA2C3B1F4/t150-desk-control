@@ -55,6 +55,17 @@ int main() {
   Frame f;
   {
     ResetSpeed rs;
+    discover(rs);
+    const uint32_t token = rs.reply().token;
+    CHECK(rs.probe(2) && rs.take_frame(f));
+    rs.yield_read();
+    CHECK(!rs.busy() && rs.supported() && rs.known() && rs.fresh(3));
+    CHECK(rs.reply().token == token && !rs.take_frame(f));
+    rs.disconnect("Maintenance");
+    CHECK(!rs.supported() && !rs.known());
+  }
+  {
+    ResetSpeed rs;
     CHECK(!rs.begin(false, 0));
     CHECK(!rs.set_speed(true, 0));
     CHECK(!rs.cancel(0));

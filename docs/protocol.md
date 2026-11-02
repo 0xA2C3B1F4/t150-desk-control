@@ -33,6 +33,7 @@ Contents:
 - [Preset settings transaction](#preset-settings-transaction)
 - [Temporary target transaction](#temporary-target-transaction)
 - [T-key timer transaction](#t-key-timer-transaction)
+- [TB01 timer and buzzer transaction](#tb01-timer-and-buzzer-transaction)
 - [Test fixtures](#test-fixtures)
 
 ## Headers
@@ -40,22 +41,23 @@ Contents:
 Each header includes the one it builds on, so including `presets.h` also makes
 `target.h` and `protocol.h` available.
 
-| Header                             | Depends on                      | Responsibility                                                                                                                                          |
-| ---------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `desk_protocol/height_profile.h`   | standard headers only           | Shared display/position conversions, mathematical profile checks and the existing T150 control policy                                                   |
-| `desk_protocol/protocol.h`         | `height_profile.h`              | Framing (`encode`, `Parser`), command builders, typed decoders, `metric_display`, and the small helpers `HeightMonitor`, `AckTracker` and `ButtonPulse` |
-| `desk_protocol/target.h`           | `protocol.h`                    | Metric target conversion (`metric_target_raw`), typed parameter reads, and the `TemporaryPreset` transaction used for target height and keep-awake      |
-| `desk_protocol/target_detection.h` | `direct_target.h`, `identity.h` | Read-only stock/DT02 backend selection for the supported identity                                                                                       |
-| `desk_protocol/direct_target.h`    | `protocol.h`                    | Strict DT02 GET/SET with pending-brake output                                                                                                           |
-| `desk_protocol/uart_observation.h` | standard headers only           | Cumulative diagnostics; no motion decisions                                                                                                             |
-| `desk_protocol/presets.h`          | `target.h`                      | Preset height conversion (`preset_height`), preset reads, and the `PresetSettings` read/write transaction                                               |
-| `desk_protocol/timer.h`            | `protocol.h`                    | The `TimerSequence` T-key transaction                                                                                                                   |
-| `desk_protocol/identity.h`         | `protocol.h`                    | Bounded text-identity query builder and fixed-width ASCII decoder                                                                                       |
+| Header                                | Depends on                      | Responsibility                                                                                                                                          |
+| ------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `desk_protocol/height_profile.h`      | standard headers only           | Shared display/position conversions, mathematical profile checks and the existing T150 control policy                                                   |
+| `desk_protocol/protocol.h`            | `height_profile.h`              | Framing (`encode`, `Parser`), command builders, typed decoders, `metric_display`, and the small helpers `HeightMonitor`, `AckTracker` and `ButtonPulse` |
+| `desk_protocol/target.h`              | `protocol.h`                    | Metric target conversion (`metric_target_raw`), typed parameter reads, and the `TemporaryPreset` transaction used for target height and keep-awake      |
+| `desk_protocol/target_detection.h`    | `direct_target.h`, `identity.h` | Read-only stock/DT02 backend selection for the supported identity                                                                                       |
+| `desk_protocol/direct_target.h`       | `protocol.h`                    | Strict DT02 GET/SET with pending-brake output                                                                                                           |
+| `desk_protocol/uart_observation.h`    | standard headers only           | Cumulative diagnostics; no motion decisions                                                                                                             |
+| `desk_protocol/presets.h`             | `target.h`                      | Preset height conversion (`preset_height`), preset reads, and the `PresetSettings` read/write transaction                                               |
+| `desk_protocol/timer.h`               | `protocol.h`                    | The `TimerSequence` T-key transaction                                                                                                                   |
+| `desk_protocol/custom_timer_buzzer.h` | `protocol.h`                    | TB01 capability discovery and custom timer/buzzer transactions                                                                                          |
+| `desk_protocol/identity.h`            | `protocol.h`                    | Bounded text-identity query builder and fixed-width ASCII decoder                                                                                       |
 
-All transaction classes follow the same calling pattern. The caller drains
-`take_frame()` and transmits the frame, feeds every received frame to
-`accept()`, and calls `tick()` with its monotonic clock. None of them performs
-I/O, stores data or retries a write or movement.
+The caller obtains outgoing frames from `take_frame()` or a `begin()` output
+argument and transmits them. It feeds received frames to `accept()` and calls
+`tick()` with its monotonic clock. Transaction classes do not perform I/O,
+persist data or retry writes or movement.
 
 ## Framing
 
@@ -513,8 +515,48 @@ acknowledged. The fault remains set after returning to `Idle`, and `begin()`
 rejects further timer requests on that instance.
 `completed()` means the software sequence finished, not that the alarm state was
 verified. No timer-state query, direct sound command or immediate cancel frame
-is established. Physical local clicks remain invisible and can invalidate the
-sequence. The ESP-driven timer sequence is experimental. See [supported features and testing](validation.md).
+is established for stock firmware. Physical local clicks remain invisible and
+can invalidate the sequence. The ESP-driven timer sequence is experimental.
+See [supported features and testing](validation.md).
+
+## TB01 timer and buzzer transaction
+
+`desk_protocol/custom_timer_buzzer.h` adds the opt-in TB01 protocol. ESPHome
+probes only after verifying RS01 support and requires a matching TB01
+capability response before a timer or buzzer request. The transaction matches
+responses by operation and 16-bit nonce. The decoded `Frame` bodies
+include the kind byte, without delimiters, escaping or checksum:
+
+```text
+Request: D7 01 op nonce_hi nonce_lo A_hi A_lo B_hi B_lo count
+Reply:   D8 01 op nonce_hi nonce_lo result
+```
+
+`01` is the protocol version. The nonce, A and B are unsigned 16-bit big-endian
+values. The reply echoes the request's operation and nonce.
+
+| `op` | Operation        | A             | B              | `count`     |
+| ---- | ---------------- | ------------- | -------------- | ----------- |
+| `00` | Capability probe | 0             | 0              | 0           |
+| `01` | Set timer        | Minutes       | 0              | 0           |
+| `02` | Cancel timer     | 0             | 0              | 0           |
+| `03` | Beep             | On time in ms | Off time in ms | Pulse count |
+
+Results are `00` accepted, `01` invalid parameters, `02` busy and `03` backend
+error. An accepted probe confirms the capability. A backend error leaves the
+operation's outcome unknown. See [TB01 actions and limits](custom-timer-buzzer.md)
+for argument ranges.
+
+The 16-bit nonce cannot exclude every delayed response or undetected restart.
+
+Stop and release requests immediately preempt a pending probe or write. Other
+user commands and maintenance are refused while a TB01 write is pending.
+Read-only capability probes yield to user commands and maintenance, which
+retain their normal admission checks. Probe outcomes do not replace the last
+user-command result.
+
+Writes are not retried. A timeout or interruption leaves their outcome unknown.
+An ACK is command acceptance, not physical feedback.
 
 ## Test fixtures
 

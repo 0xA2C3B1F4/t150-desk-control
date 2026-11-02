@@ -130,8 +130,12 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
     all(true);
     require(!d.reset_speed_access_allowed_(now) && d.child_lock_busy_(),
             "CL01 GET admission still blocked");
-    require(!d.set_child_lock(true), "advisory availability does not admit CL01 SET during GET");
-    require(d.child_lock_.operation() == 0, "rejected CL01 SET preserves the pending GET");
+    // The real SET path yields this GET before admission. Check that step
+    // without transmitting through this fixture's deliberately absent UART.
+    d.yield_child_lock_read_();
+    require(d.child_lock_.supported() && d.child_lock_.state_known() && !d.child_lock_busy_(),
+            "yielded CL01 GET retains confirmed state");
+    require(d.child_lock_access_allowed_(now), "CL01 SET admission after yielding its own GET");
     d.child_lock_ = child_lock;
     require(d.preset_settings_.begin_read(1, now), "availability preset read");
     all(true);

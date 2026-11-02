@@ -9,6 +9,7 @@
 #include "reset_speed.h"
 #include "uart_observation.h"
 #include "timer.h"
+#include "custom_timer_buzzer.h"
 #include "presets.h"
 #include "preset_journal.h"
 #include "journal_storage.h"
@@ -116,6 +117,13 @@ class DeskUART : public Component, public uart::UARTDevice {
   bool is_stop_latched() const { return stop_latched_; }
   void set_timer_enabled(bool enabled) { timer_enabled_ = enabled; }
   void set_timer_pending_sensor(binary_sensor::BinarySensor* s) { timer_pending_sensor_ = s; }
+  // Experimental extension: return indicates local transmission only.
+  bool custom_set_timer(int minutes);
+  bool custom_cancel_timer();
+  bool custom_beep(int on_ms, int off_ms, int count);
+  void set_custom_timer_buzzer_enabled(bool enabled) { custom_enabled_ = enabled; }
+  void set_custom_command_result(text_sensor::TextSensor* s) { custom_result_ = s; }
+  void set_custom_available(binary_sensor::BinarySensor* s) { custom_available_sensor_ = s; }
   // minutes=0 requests cancellation using five short T-key clicks.
   bool set_timer(uint16_t minutes);
   bool cancel_timer() { return set_timer(0); }
@@ -148,6 +156,21 @@ class DeskUART : public Component, public uart::UARTDevice {
   binary_sensor::BinarySensor* stop_locked_sensor_{nullptr};
   bool last_stop_locked_{false}, sync_target_{false};
   const char* last_control_status_{nullptr};
+  void custom_loop_(uint32_t now);
+  void custom_event_();
+  void yield_custom_probe_();
+  bool custom_write_pending_() const {
+    return this->custom_.pending() &&
+           this->custom_.operation() != desk_protocol::CustomTimerBuzzer::Probe;
+  }
+  bool custom_request_(desk_protocol::CustomTimerBuzzer::Operation op, int a, int b, int count);
+  void report_custom_result_(bool accepted, const char* message);
+  desk_protocol::CustomTimerBuzzer custom_{};
+  desk_protocol::CustomBuzzerDeferral custom_beep_deferral_{};
+  text_sensor::TextSensor* custom_result_{nullptr};
+  binary_sensor::BinarySensor* custom_available_sensor_{nullptr};
+  uint32_t custom_last_probe_{0};
+  bool custom_enabled_{false}, custom_available_published_{false};
   void timer_loop_(uint32_t now);
   desk_protocol::TimerSequence timer_{};
   binary_sensor::BinarySensor* timer_pending_sensor_{nullptr};
@@ -163,8 +186,8 @@ class DeskUART : public Component, public uart::UARTDevice {
   void invalidate_reset_speed_(const char* reason);
   void yield_reset_speed_read_();
   bool reset_speed_enabled_() const {
-    return reset_enabled_ || reset_status_ || reset_available_ || motion_speed_select_ ||
-           motion_speed_available_;
+    return custom_enabled_ || reset_enabled_ || reset_status_ || reset_available_ ||
+           motion_speed_select_ || motion_speed_available_;
   }
   bool reset_speed_access_allowed_(uint32_t now, bool reset = false, bool read = false,
                                    bool presentation = false) const;

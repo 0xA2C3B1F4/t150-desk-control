@@ -81,8 +81,12 @@ class CppStyleTest(unittest.TestCase):
             "tests/five.h",
             "tests/six.hpp",
             "tools/test_reset_speed_header.cpp",
+            "tools/test_tb01_core.c",
             "tools/patches/reset_speed.c",
             "tools/patches/uart_parser.c",
+            "tools/patches/tb01.c",
+            "tools/patches/tb01_core.c",
+            "tools/patches/tb01_core.h",
         }
         protected = {
             "components/desk_firmware_update/ui.h",
@@ -92,6 +96,9 @@ class CppStyleTest(unittest.TestCase):
             "lib/desk_protocol/include/desk_protocol/protocol.h",
             "tools/patches/reset_speed.S",
             "tools/patches/reset_speed_core.S",
+            "tools/patches/tb01_core.S",
+            "tools/patches/tb01_platform.S",
+            "tools/patches/tb01_hooks.S",
             "tools/patches/unselected.c",
             "tools/other.cpp",
             "build/generated.cpp",

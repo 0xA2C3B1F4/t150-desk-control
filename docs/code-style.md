@@ -70,9 +70,9 @@ directory just to avoid writing useful explanations.
 ## C and C++
 
 Use clang-format 23.1.0. The shared helper selects tracked component and test
-sources, `tools/test_reset_speed_header.cpp`, and the two patch sources
-`tools/patches/reset_speed.c` and `tools/patches/uart_parser.c`. It checks the
-formatter version before running:
+sources, `tools/test_reset_speed_header.cpp`, `tools/test_tb01_core.c`, and the
+hand-maintained C sources and header for RS01, the UART parser and TB01 under
+`tools/patches`. It checks the formatter version before running:
 
 ```sh
 python tools/format_cpp.py --check

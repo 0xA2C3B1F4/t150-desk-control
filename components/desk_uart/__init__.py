@@ -58,6 +58,13 @@ MotionSpeedSelect = ns.class_("MotionSpeedSelect", select.Select)
 
 def validate_motion(config):
     """Validate motion-control prerequisites and normalize height entity units."""
+    if (
+        any(k in config for k in ("custom_command_result", "custom_available"))
+        and not config["experimental_custom_timer_buzzer"]
+    ):
+        raise cv.Invalid(
+            "Custom timer/buzzer diagnostics require experimental_custom_timer_buzzer: true"
+        )
     if any(k in config for k in ("reset_desk", "continue_reset")):
         if not config["experimental_reset_controls"]:
             raise cv.Invalid("Reset buttons require experimental_reset_controls: true")
@@ -200,6 +207,13 @@ CONFIG_SCHEMA = cv.All(
                 entity_category="diagnostic"
             ),
             cv.Optional("command_result"): text_sensor.text_sensor_schema(
+                entity_category="diagnostic"
+            ),
+            cv.Optional("experimental_custom_timer_buzzer", default=False): cv.boolean,
+            cv.Optional("custom_command_result"): text_sensor.text_sensor_schema(
+                entity_category="diagnostic"
+            ),
+            cv.Optional("custom_available"): binary_sensor.binary_sensor_schema(
                 entity_category="diagnostic"
             ),
             cv.Optional("target_height_backend"): text_sensor.text_sensor_schema(
@@ -453,6 +467,21 @@ async def to_code(config):
     )
     cg.add(var.set_target_enabled(config["experimental_target_height"]))
     cg.add(var.set_timer_enabled(config["experimental_timer_buttons"]))
+    cg.add(
+        var.set_custom_timer_buzzer_enabled(config["experimental_custom_timer_buzzer"])
+    )
+    if "custom_command_result" in config:
+        cg.add(
+            var.set_custom_command_result(
+                await text_sensor.new_text_sensor(config["custom_command_result"])
+            )
+        )
+    if "custom_available" in config:
+        cg.add(
+            var.set_custom_available(
+                await binary_sensor.new_binary_sensor(config["custom_available"])
+            )
+        )
     for minutes in (0, 30, 60, 90, 120):
         key = f"timer_{minutes}min" if minutes else "cancel_timer"
         if key in config:

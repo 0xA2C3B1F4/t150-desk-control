@@ -94,6 +94,7 @@ void DeskUART::invalidate_load_raw_() {
 
 bool DeskUART::begin_firmware_export(bool motor_isolated) {
   const uint32_t now = millis();
+  this->yield_child_lock_read_();
   const bool reset_link_stale = !this->height_seen_ || !this->monitor_.fresh(now) ||
                                 static_cast<uint32_t>(now - this->last_height_received_) > 750;
   // motor_isolated is the caller's explicit physical recovery precondition.
@@ -102,6 +103,8 @@ bool DeskUART::begin_firmware_export(bool motor_isolated) {
   const bool isolated_reset_recovery =
       motor_isolated && reset_link_stale && !this->reset_speed_.owned() &&
       !this->reset_speed_.busy() && static_cast<uint32_t>(now - this->last_reset_lease_tx_) >= 1500;
+  if (this->custom_write_pending_())
+    return this->result_(false, "Custom timer/buzzer transaction pending");
   if (!this->reset_speed_.maintenance_safe(now) && !isolated_reset_recovery)
     return false;
   if (this->firmware_export_active_ ||
@@ -156,6 +159,10 @@ bool DeskUART::begin_firmware_export(bool motor_isolated) {
   if (this->control_status_)
     this->control_status_->publish_state("Firmware read active; desk controls paused");
   this->last_control_status_ = nullptr;
+  this->custom_.disconnect();
+  this->custom_available_published_ = false;
+  if (this->custom_available_sensor_)
+    this->custom_available_sensor_->publish_state(false);
   return true;
 }
 void DeskUART::end_firmware_export() {
@@ -185,6 +192,9 @@ void DeskUART::end_firmware_export() {
 void DeskUART::send_(const desk_protocol::Frame& frame) {
   if (this->firmware_export_active_)
     return;
+  // Any competing transaction preempts the D7 reply wait. Never hold Stop or
+  // a button release behind it; its final state becomes unknown, with no retry.
+  this->custom_.observe_outgoing(frame);
   // Any other command (including Stop/native keys) cancels the exclusive probe.
   if (this->detection_.busy() && !this->detection_sending_)
     this->invalidate_detection_();
@@ -274,6 +284,11 @@ void DeskUART::setup() {
   this->detection_.seed(static_cast<uint16_t>(boot));
   this->child_lock_.seed(static_cast<uint16_t>(boot >> 16));
   this->reset_speed_.seed(static_cast<uint16_t>(boot ^ (boot >> 16)));
+  this->custom_.seed(static_cast<uint16_t>(boot ^ (boot >> 16)));
+  if (this->custom_available_sensor_)
+    this->custom_available_sensor_->publish_state(false);
+  if (this->custom_result_)
+    this->custom_result_->publish_state("No custom command requested");
   this->last_reset_lease_tx_ = millis();
   if (this->motion_speed_select_)
     this->motion_speed_select_->invalidate();
@@ -324,8 +339,11 @@ void DeskUART::release_(const desk_protocol::Frame& frame, uint32_t now) {
 }
 void DeskUART::loop() {
   this->uart_observation_.tick(millis());
-  if (this->firmware_export_active_)
+  if (this->firmware_export_active_) {
+    this->custom_.disconnect();
+    this->custom_beep_deferral_.expire(millis());
     return;
+  }
   const uint32_t loop_start = millis();
   if (this->height_seen_ && !this->monitor_.fresh(loop_start))
     this->invalidate_journal_session_();
@@ -392,6 +410,10 @@ void DeskUART::loop() {
       if (this->firmware_export_active_)
         return;
     }
+    if (this->custom_.accept(frame, now))
+      this->custom_event_();
+    if (this->firmware_export_active_)
+      return;
     this->identity_frame_(frame, now);
     this->limit_frame_(frame, now);
     this->preset_settings_.accept(frame, now);
@@ -408,6 +430,7 @@ void DeskUART::loop() {
     if (this->monitor_.observe(frame, now)) {
       if (this->height_seen_ &&
           static_cast<uint16_t>(this->monitor_.height().sequence - previous_sequence) >= 0x8000) {
+        this->custom_.disconnect();
         this->invalidate_reset_speed_(
             "Controller status changed; new reset and speed status required");
         this->invalidate_child_lock_("Controller status changed; panel lock must be checked again");
@@ -527,9 +550,13 @@ void DeskUART::loop() {
   if (!fresh && !this->timer_.busy() && !this->pulse_.active() && !this->release_ack_.pending() &&
       !this->stop_ack_.pending() && static_cast<uint32_t>(now - this->last_subscribe_) >= 5000)
     this->subscribe_(now);
+  // Start experimental discovery only after all existing background work.
+  this->custom_loop_(now);
 }
 bool DeskUART::recall_preset(uint8_t slot) {
   this->yield_reset_speed_read_();
+  if (this->custom_write_pending_())
+    return this->result_(false, "Custom timer/buzzer transaction pending");
   if (this->reset_speed_blocking_())
     return this->result_(false, this->control_reason_(millis()));
   if (this->direct_mode_ && this->direct_.brake_pending())
@@ -835,10 +862,10 @@ void DeskUART::limit_loop_(uint32_t now) {
     }
     return;
   }
-  if (this->reset_speed_blocking_() || this->child_lock_busy_() || this->detection_.busy() ||
-      this->preset_settings_.busy() || this->timer_.busy() || this->target_move_.busy() ||
-      this->direct_.busy() || !this->monitor_.fresh(now) || this->pulse_.active() ||
-      this->release_ack_.pending() || this->stop_ack_.pending())
+  if (this->custom_.pending() || this->reset_speed_blocking_() || this->child_lock_busy_() ||
+      this->detection_.busy() || this->preset_settings_.busy() || this->timer_.busy() ||
+      this->target_move_.busy() || this->direct_.busy() || !this->monitor_.fresh(now) ||
+      this->pulse_.active() || this->release_ack_.pending() || this->stop_ack_.pending())
     return;
   for (uint8_t offset = 0; offset < 2; ++offset) {
     const uint8_t i = (this->next_limit_ + offset) % 2;
@@ -850,9 +877,9 @@ void DeskUART::limit_loop_(uint32_t now) {
   }
 }
 bool DeskUART::preset_access_allowed_(uint32_t now) const {
-  return !this->reset_speed_blocking_() && !this->child_lock_busy_() && !this->detection_.busy() &&
-         !this->journal_error_() && !this->journal_recheck_pending_ && !this->pending_preset_ &&
-         !this->firmware_export_active_ && this->monitor_.fresh(now) &&
+  return !this->custom_.pending() && !this->reset_speed_blocking_() && !this->child_lock_busy_() &&
+         !this->detection_.busy() && !this->journal_error_() && !this->journal_recheck_pending_ &&
+         !this->pending_preset_ && !this->firmware_export_active_ && this->monitor_.fresh(now) &&
          this->stable_ms_(now) >= 1500 &&
          static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
          static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000 &&
@@ -1154,6 +1181,7 @@ void DeskUART::keep_awake_loop_(uint32_t now) {
   if (!this->target_detected_() || this->journal_recheck_pending_ || this->pending_preset_ ||
       !this->keep_awake_enabled_ || !this->target_enabled_ || this->keep_awake_fault_ ||
       this->preset_settings_.busy() || !this->preset_access_allowed_(now) ||
+      this->custom_beep_deferral_.active(now) ||
       static_cast<uint32_t>(now - this->last_keep_awake_) < 30000)
     return;
   const auto height =
@@ -1171,6 +1199,8 @@ void DeskUART::keep_awake_loop_(uint32_t now) {
 }
 bool DeskUART::move_to_height(float cm) {
   this->yield_reset_speed_read_();
+  if (this->custom_write_pending_())
+    return this->result_(false, "Custom timer/buzzer transaction pending");
   if (this->reset_speed_blocking_())
     return this->result_(false, this->control_reason_(millis()));
   if (const char* error = this->journal_error_())
@@ -1298,8 +1328,8 @@ void DeskUART::detection_loop_(uint32_t now) {
   }
 }
 bool DeskUART::direct_access_allowed_(uint32_t now) const {
-  return !this->reset_speed_blocking_() && !this->child_lock_busy_() && this->target_enabled_ &&
-         !this->journal_error_() && !this->journal_recheck_pending_ &&
+  return !this->custom_.pending() && !this->reset_speed_blocking_() && !this->child_lock_busy_() &&
+         this->target_enabled_ && !this->journal_error_() && !this->journal_recheck_pending_ &&
          !this->accept_current_active_ && !this->recovery_check_active_ &&
          !this->restore_requested_ && !this->target_move_.dirty() && !this->target_move_.busy() &&
          !this->firmware_export_active_ && this->monitor_.fresh(now) && this->height_seen_ &&
@@ -1357,7 +1387,8 @@ bool DeskUART::reset_speed_access_allowed_(uint32_t now, bool reset, bool read,
   const bool recovery_read = read && this->reset_stop_pending_;
   // Only availability publication skips read-only bus occupancy. Command
   // admission and polling always use the default, fully serialized path.
-  return !this->firmware_export_active_ &&
+  return !this->custom_write_pending_() && (!this->custom_.pending() || read || presentation) &&
+         !this->firmware_export_active_ &&
          (!this->reset_speed_.busy() ||
           (presentation && this->reset_speed_.operation() == desk_protocol::ResetSpeed::Get)) &&
          !this->detection_.busy() &&
@@ -1386,6 +1417,7 @@ bool DeskUART::reset_speed_access_allowed_(uint32_t now, bool reset, bool read,
          static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000;
 }
 void DeskUART::yield_reset_speed_read_() {
+  this->yield_custom_probe_();
   if (this->reset_speed_.busy() &&
       this->reset_speed_.operation() == desk_protocol::ResetSpeed::Get) {
     this->reset_speed_.yield_read();
@@ -1624,7 +1656,8 @@ void DeskUART::reset_speed_loop_(uint32_t now) {
 
 bool DeskUART::child_lock_access_allowed_(uint32_t now, bool read, bool presentation) const {
   const bool recovery_read = read && this->reset_stop_pending_;
-  return (!this->reset_speed_blocking_() ||
+  return !this->custom_write_pending_() && (!this->custom_.pending() || read || presentation) &&
+         (!this->reset_speed_blocking_() ||
           (!this->reset_speed_.owned() && !this->reset_speed_.busy()) ||
           (presentation && !this->reset_speed_.blocking() &&
            this->reset_speed_.operation() == desk_protocol::ResetSpeed::Get)) &&
@@ -1662,11 +1695,15 @@ void DeskUART::invalidate_child_lock_(const char* reason, bool publish, bool rep
 }
 void DeskUART::yield_child_lock_read_() {
   this->yield_reset_speed_read_();
-  if (!this->child_lock_detection_.busy() &&
-      !(this->child_lock_.busy() && this->child_lock_.operation() == 0))
+  if (this->child_lock_.busy() && this->child_lock_.operation() == 0) {
+    this->child_lock_.yield_read();
+    this->last_child_lock_query_ = millis();
     return;
-  // GET/preflight has no side effects. Yield before a user control's admission
-  // checks, without invoking callbacks until that control owns its transaction.
+  }
+  if (!this->child_lock_detection_.busy())
+    return;
+  // Prerequisite discovery has not confirmed lock state. Cancel its preflight
+  // without invoking callbacks until the user control owns its transaction.
   this->child_lock_detection_.reset();
   this->child_lock_.disconnect("Panel-lock check cancelled by another control; lock state unknown",
                                false);
@@ -1734,7 +1771,7 @@ const char* DeskUART::child_lock_status_text_(uint32_t now) const {
   return status;
 }
 bool DeskUART::set_child_lock(bool locked) {
-  this->yield_reset_speed_read_();
+  this->yield_child_lock_read_();
   if (this->reset_speed_blocking_())
     return this->result_(false, this->control_reason_(millis()));
   const uint32_t now = millis();
@@ -1956,10 +1993,10 @@ bool DeskUART::restore_temporary_preset() {
                                         : "No failed preset transaction to restore");
 }
 bool DeskUART::recovery_access_allowed_(uint32_t now) const {
-  return !this->reset_speed_blocking_() && !this->child_lock_busy_() && !this->detection_.busy() &&
-         !this->journal_error_() && !this->direct_.busy() && !this->firmware_export_active_ &&
-         !this->preset_settings_.busy() && !this->timer_.busy() && !this->release_fault_ &&
-         this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
+  return !this->custom_.pending() && !this->reset_speed_blocking_() && !this->child_lock_busy_() &&
+         !this->detection_.busy() && !this->journal_error_() && !this->direct_.busy() &&
+         !this->firmware_export_active_ && !this->preset_settings_.busy() && !this->timer_.busy() &&
+         !this->release_fault_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
          static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
          static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000 && !this->pulse_.active() &&
          !this->release_ack_.pending() && !this->stop_ack_.pending() &&
@@ -2120,6 +2157,9 @@ void DeskUART::target_loop_(uint32_t now) {
   }
 }
 bool DeskUART::set_timer(uint16_t minutes) {
+  this->yield_custom_probe_();
+  if (this->custom_write_pending_())
+    return this->result_(false, "Custom timer/buzzer transaction pending");
   this->yield_reset_speed_read_();
   if (this->reset_speed_blocking_())
     return this->result_(false, this->control_reason_(millis()));
@@ -2167,6 +2207,138 @@ void DeskUART::timer_loop_(uint32_t now) {
       this->timer_pending_sensor_->publish_state(pending);
   }
 }
+// Experimental extension. A matched D8 acknowledgement reports acceptance
+// by the controller, not physical sound or alarm expiry. No writes are retried.
+void DeskUART::report_custom_result_(bool accepted, const char* message) {
+  if (this->custom_result_)
+    this->custom_result_->publish_state(message);
+  if (accepted)
+    ESP_LOGI(TAG, "Custom timer/buzzer: %s", message);
+  else
+    ESP_LOGW(TAG, "Custom timer/buzzer: %s", message);
+}
+bool DeskUART::custom_request_(desk_protocol::CustomTimerBuzzer::Operation op, int a, int b,
+                               int count) {
+  const uint32_t now = millis();
+  if (!this->custom_enabled_) {
+    this->report_custom_result_(false, "Experimental controls disabled");
+    return false;
+  }
+  if (a < 0 || a > 65535 || b < 0 || b > 65535 || count < 0 || count > 255 ||
+      !desk_protocol::CustomTimerBuzzer::valid(
+          op, static_cast<uint16_t>(a), static_cast<uint16_t>(b), static_cast<uint8_t>(count))) {
+    this->report_custom_result_(false, "Invalid parameters");
+    return false;
+  }
+  if (!this->custom_.available()) {
+    this->report_custom_result_(false, "Controller capability not confirmed; no request sent");
+    return false;
+  }
+  this->yield_child_lock_read_();
+  if (this->reset_speed_blocking_() || !this->reset_speed_access_allowed_(now) ||
+      this->custom_.pending()) {
+    const char* reason = this->control_reason_(now);
+    this->report_custom_result_(false, std::strcmp(reason, "Ready") == 0
+                                           ? "Desk busy or link not ready; no request sent"
+                                           : reason);
+    return false;
+  }
+  desk_protocol::Frame frame;
+  if (!this->custom_.begin(op, static_cast<uint16_t>(a), static_cast<uint16_t>(b),
+                           static_cast<uint8_t>(count), now, frame)) {
+    this->report_custom_result_(false, "Request could not be started; no request sent");
+    return false;
+  }
+  this->send_(frame);
+  this->last_keep_awake_ = now;
+  if (op == desk_protocol::CustomTimerBuzzer::Beep)
+    this->custom_beep_deferral_.begin(static_cast<uint16_t>(a), static_cast<uint16_t>(b),
+                                      static_cast<uint8_t>(count), now);
+  this->report_custom_result_(true, "Request sent; awaiting controller acknowledgement");
+  return true;
+}
+bool DeskUART::custom_set_timer(int minutes) {
+  return this->custom_request_(desk_protocol::CustomTimerBuzzer::SetTimer, minutes, 0, 0);
+}
+bool DeskUART::custom_cancel_timer() {
+  return this->custom_request_(desk_protocol::CustomTimerBuzzer::CancelTimer, 0, 0, 0);
+}
+bool DeskUART::custom_beep(int on_ms, int off_ms, int count) {
+  return this->custom_request_(desk_protocol::CustomTimerBuzzer::Beep, on_ms, off_ms, count);
+}
+void DeskUART::yield_custom_probe_() {
+  if (this->custom_.pending() &&
+      this->custom_.operation() == desk_protocol::CustomTimerBuzzer::Probe) {
+    this->custom_.disconnect();
+    this->custom_last_probe_ = millis();
+  }
+}
+void DeskUART::custom_event_() {
+  using Event = desk_protocol::CustomTimerBuzzer::Event;
+  const Event event = this->custom_.take_event();
+  if (this->custom_.operation() == desk_protocol::CustomTimerBuzzer::Probe) {
+    // Background discovery has no user-write outcome. Preserve the last command
+    // result even when a probe succeeds after an unacknowledged write.
+    if (event != Event::None)
+      ESP_LOGD(TAG, "Custom timer/buzzer capability check event=%u", static_cast<unsigned>(event));
+    return;
+  }
+  switch (event) {
+    case Event::Available:
+      break;
+    case Event::Accepted:
+      this->report_custom_result_(true, "Controller accepted request");
+      break;
+    case Event::Invalid:
+      this->report_custom_result_(false, "Controller rejected parameters");
+      break;
+    case Event::Busy:
+      this->report_custom_result_(false, "Controller busy; request not accepted");
+      break;
+    case Event::BackendError:
+      this->report_custom_result_(false, "Controller backend error; result unknown, no retry");
+      break;
+    case Event::Timeout:
+      this->report_custom_result_(false, "No acknowledgement; result unknown, no retry");
+      break;
+    case Event::LinkLost:
+      this->report_custom_result_(false,
+                                  "Interrupted or connection lost; result unknown, no retry");
+      break;
+    default:
+      break;
+  }
+}
+void DeskUART::custom_loop_(uint32_t now) {
+  if (!this->custom_enabled_)
+    return;
+  // Earlier synchronous callbacks can start a request after the loop timestamp.
+  // Use its current clock before expiring either the hold or acknowledgement.
+  now = millis();
+  this->custom_beep_deferral_.expire(now);
+  if (!this->height_seen_ || !this->monitor_.fresh(now) || !this->reset_speed_.supported())
+    this->custom_.disconnect();
+  this->custom_.tick(now);
+  this->custom_event_();
+  const bool available = this->custom_.available() && this->monitor_.fresh(now);
+  if (available != this->custom_available_published_) {
+    this->custom_available_published_ = available;
+    if (this->custom_available_sensor_)
+      this->custom_available_sensor_->publish_state(available);
+  }
+  // Only a read-only probe may be retried. It is serialized with all existing
+  // transactions and never initiated while the device is stale or moving.
+  if (!available && !this->custom_.pending() &&
+      static_cast<uint32_t>(now - this->custom_last_probe_) >= 15000 &&
+      this->reset_speed_.supported() && !this->reset_speed_blocking_() && !this->available() &&
+      this->reset_speed_access_allowed_(now)) {
+    desk_protocol::Frame frame;
+    if (this->custom_.begin(desk_protocol::CustomTimerBuzzer::Probe, 0, 0, 0, now, frame)) {
+      this->custom_last_probe_ = now;
+      this->send_(frame);
+    }
+  }
+}
 bool DeskUART::result_(bool accepted, const char* message) {
   if (this->command_result_)
     this->command_result_->publish_state(message);
@@ -2179,6 +2351,8 @@ bool DeskUART::result_(bool accepted, const char* message) {
 const char* DeskUART::control_reason_(uint32_t now, bool presentation) const {
   if (const char* error = this->journal_error_())
     return error;
+  if (this->custom_write_pending_())
+    return "Custom timer/buzzer transaction pending";
   if (this->reset_speed_.blocking())
     return this->reset_speed_.busy() &&
                    this->reset_speed_.operation() == desk_protocol::ResetSpeed::Speed
@@ -2356,6 +2530,8 @@ void DeskUART::dump_config() {
                                             : "false");
   ESP_LOGCONFIG(TAG, "  Experimental preset buttons: %s",
                 this->motion_enabled_ ? "enabled" : "disabled");
+  ESP_LOGCONFIG(TAG, "  Experimental custom timer/buzzer: %s",
+                this->custom_enabled_ ? "enabled" : "disabled");
   ESP_LOGCONFIG(TAG, "  Experimental T-key timer: %s",
                 this->timer_enabled_ ? "enabled" : "disabled");
   ESP_LOGCONFIG(TAG, "  Keep-awake via preset 3 after 30 s of inactivity: %s",

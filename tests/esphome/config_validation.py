@@ -210,6 +210,24 @@ cases = [
         True,
     ),
     ("stop_without_motion_opt_in", base + "  stop:\n    name: Stop\n", True),
+    ("custom_default", base + "  experimental_custom_timer_buzzer: false\n", True),
+    ("custom_opt_in", base + "  experimental_custom_timer_buzzer: true\n", True),
+    (
+        "custom_available_without_opt_in",
+        base + "  custom_available:\n    name: Available\n",
+        False,
+    ),
+    (
+        "custom_result_without_opt_in",
+        base + "  custom_command_result:\n    name: Result\n",
+        False,
+    ),
+    (
+        "custom_diagnostics",
+        base
+        + "  experimental_custom_timer_buzzer: true\n  custom_available:\n    name: Available\n  custom_command_result:\n    name: Result\n",
+        True,
+    ),
     ("timer_without_opt_in", base + "  cancel_timer:\n    name: Cancel timer\n", False),
     (
         "timer_opt_in",
