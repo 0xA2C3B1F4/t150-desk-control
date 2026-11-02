@@ -40,17 +40,17 @@ Contents:
 Each header includes the one it builds on, so including `presets.h` also makes
 `target.h` and `protocol.h` available.
 
-| Header | Depends on | Responsibility |
-|---|---|---|
-| `desk_protocol/height_profile.h` | standard headers only | Shared display/position conversions, mathematical profile checks and the existing T150 control policy |
-| `desk_protocol/protocol.h` | `height_profile.h` | Framing (`encode`, `Parser`), command builders, typed decoders, `metric_display`, and the small helpers `HeightMonitor`, `AckTracker` and `ButtonPulse` |
-| `desk_protocol/target.h` | `protocol.h` | Metric target conversion (`metric_target_raw`), typed parameter reads, and the `TemporaryPreset` transaction used for target height and keep-awake |
-| `desk_protocol/target_detection.h` | `direct_target.h`, `identity.h` | Read-only stock/DT02 backend selection for the supported identity |
-| `desk_protocol/direct_target.h` | `protocol.h` | Strict DT02 GET/SET with pending-brake output |
-| `desk_protocol/uart_observation.h` | standard headers only | Cumulative diagnostics; no motion decisions |
-| `desk_protocol/presets.h` | `target.h` | Preset height conversion (`preset_height`), preset reads, and the `PresetSettings` read/write transaction |
-| `desk_protocol/timer.h` | `protocol.h` | The `TimerSequence` T-key transaction |
-| `desk_protocol/identity.h` | `protocol.h` | Bounded text-identity query builder and fixed-width ASCII decoder |
+| Header                             | Depends on                      | Responsibility                                                                                                                                          |
+| ---------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `desk_protocol/height_profile.h`   | standard headers only           | Shared display/position conversions, mathematical profile checks and the existing T150 control policy                                                   |
+| `desk_protocol/protocol.h`         | `height_profile.h`              | Framing (`encode`, `Parser`), command builders, typed decoders, `metric_display`, and the small helpers `HeightMonitor`, `AckTracker` and `ButtonPulse` |
+| `desk_protocol/target.h`           | `protocol.h`                    | Metric target conversion (`metric_target_raw`), typed parameter reads, and the `TemporaryPreset` transaction used for target height and keep-awake      |
+| `desk_protocol/target_detection.h` | `direct_target.h`, `identity.h` | Read-only stock/DT02 backend selection for the supported identity                                                                                       |
+| `desk_protocol/direct_target.h`    | `protocol.h`                    | Strict DT02 GET/SET with pending-brake output                                                                                                           |
+| `desk_protocol/uart_observation.h` | standard headers only           | Cumulative diagnostics; no motion decisions                                                                                                             |
+| `desk_protocol/presets.h`          | `target.h`                      | Preset height conversion (`preset_height`), preset reads, and the `PresetSettings` read/write transaction                                               |
+| `desk_protocol/timer.h`            | `protocol.h`                    | The `TimerSequence` T-key transaction                                                                                                                   |
+| `desk_protocol/identity.h`         | `protocol.h`                    | Bounded text-identity query builder and fixed-width ASCII decoder                                                                                       |
 
 All transaction classes follow the same calling pattern. The caller drains
 `take_frame()` and transmits the frame, feeds every received frame to
@@ -96,20 +96,20 @@ serialize accesses from interrupt/task contexts in the transport adapter.
 Message kinds, parameter selectors and wire bytes below are hexadecimal. Frame
 lengths, button numbers and timing values are decimal unless marked otherwise.
 
-| Purpose | Kind | Frame length, excluding XOR | Interpretation |
-|---|---|---:|---|
-| Query status | A1 | 1 | No arguments |
-| Status response | A2 | 4 | coarse state, sequence BE16 |
-| Schedule telemetry | 13 | 7 | channel, zero, period BE16, auxiliary zeros |
-| Schedule acknowledgment | 14 | 6 | auxiliary echo, reserved byte, sequence |
-| Height/load response on channel 2 | 05 | 32 | Load at offsets 3–4, Q at 19–20, sequence at 30–31; all BE16 |
-| Parameter read | 15 | 4 | selector, two zero bytes |
-| Parameter value | 16 | 6 | selector, value BE16, sequence BE16 |
-| Button override | 17 | 3 | selector, 1 pressed / 0 released |
-| Controlled brake | 17 | 4 | selector 01, echo 00, action 00; own `stop()` builder |
-| Button acknowledgment | 18 | 6 | selector, value, reserved byte, sequence |
-| Parameter write | 19 | 4 | selector, value BE16 |
-| Parameter acknowledgment | 1A | 5 | selector, result byte, sequence BE16; no extra reserved byte |
+| Purpose                           | Kind | Frame length, excluding XOR | Interpretation                                               |
+| --------------------------------- | ---- | --------------------------: | ------------------------------------------------------------ |
+| Query status                      | A1   |                           1 | No arguments                                                 |
+| Status response                   | A2   |                           4 | coarse state, sequence BE16                                  |
+| Schedule telemetry                | 13   |                           7 | channel, zero, period BE16, auxiliary zeros                  |
+| Schedule acknowledgment           | 14   |                           6 | auxiliary echo, reserved byte, sequence                      |
+| Height/load response on channel 2 | 05   |                          32 | Load at offsets 3–4, Q at 19–20, sequence at 30–31; all BE16 |
+| Parameter read                    | 15   |                           4 | selector, two zero bytes                                     |
+| Parameter value                   | 16   |                           6 | selector, value BE16, sequence BE16                          |
+| Button override                   | 17   |                           3 | selector, 1 pressed / 0 released                             |
+| Controlled brake                  | 17   |                           4 | selector 01, echo 00, action 00; own `stop()` builder        |
+| Button acknowledgment             | 18   |                           6 | selector, value, reserved byte, sequence                     |
+| Parameter write                   | 19   |                           4 | selector, value BE16                                         |
+| Parameter acknowledgment          | 1A   |                           5 | selector, result byte, sequence BE16; no extra reserved byte |
 
 `decode_height()` returns the filtered load field as `Height.load_raw`, without
 scaling. Offsets above start at the decoded kind byte and exclude framing and
@@ -141,15 +141,15 @@ Parameters are read with kind 15 and written with kind 19. A read is answered
 by a kind 16 value; a write is answered by a kind 1A acknowledgment whose result
 byte is zero on acceptance. Only the selectors below are used by the library.
 
-| Selector | Meaning | Access in the library | Builder or reader |
-|---|---|---|---|
-| 0B | Height scale coefficient A, expected 24 | Read only | `read_target_parameter`, `PresetSettings`, `TemporaryPreset` |
-| 0C | Height scale coefficient B, expected 39 | Read only | as above |
-| 0E | Upward load limit, raw units | Read and write | `read_load_limit`, `write_load_limit` with `LoadLimit::Upward` |
-| 0F | Downward base load limit, raw units; also used for homing | Read and write | `LoadLimit::DownwardBase` |
-| 10 | Alias of the 0F write target | Not exposed; rejected | — |
-| 17 | Integer position counter | Read only; never write it | `read_target_parameter`, keep-awake in `TemporaryPreset` |
-| 1D / 1E / 1F | Preset 1 / 2 / 3 raw position | Read and write | `read_preset_raw`, `write_preset_raw`; selector = 0x1C + slot |
+| Selector     | Meaning                                                   | Access in the library     | Builder or reader                                              |
+| ------------ | --------------------------------------------------------- | ------------------------- | -------------------------------------------------------------- |
+| 0B           | Height scale coefficient A, expected 24                   | Read only                 | `read_target_parameter`, `PresetSettings`, `TemporaryPreset`   |
+| 0C           | Height scale coefficient B, expected 39                   | Read only                 | as above                                                       |
+| 0E           | Upward load limit, raw units                              | Read and write            | `read_load_limit`, `write_load_limit` with `LoadLimit::Upward` |
+| 0F           | Downward base load limit, raw units; also used for homing | Read and write            | `LoadLimit::DownwardBase`                                      |
+| 10           | Alias of the 0F write target                              | Not exposed; rejected     | —                                                              |
+| 17           | Integer position counter                                  | Read only; never write it | `read_target_parameter`, keep-awake in `TemporaryPreset`       |
+| 1D / 1E / 1F | Preset 1 / 2 / 3 raw position                             | Read and write            | `read_preset_raw`, `write_preset_raw`; selector = 0x1C + slot  |
 
 Every transaction that maps centimetres to raw coordinates first reads 0B and
 0C and stops if they are not 24 and 39. Raw preset and position values are
@@ -272,8 +272,8 @@ recalling a preset or moving the desk.
 `preset_height(raw, tenths)` converts a stored raw value to tenths of a
 centimetre using the same metric profile as `target.h`: raw 8..740 is scaled by
 24/39 and passed through `metric_display()`. It returns the value before the
-panel's whole-centimetre rounding, so a stored 104.6 cm is reported as 1046, not
-1040. Values outside 73.0–118.0 cm are rejected.
+panel's whole-centimetre rounding, so a stored 104.6 cm is reported as 1046,
+not 1040. Values outside 73.0–118.0 cm are rejected.
 
 `PresetSettings` runs one read or one write at a time:
 
@@ -362,7 +362,7 @@ stateDiagram-v2
 ```
 
 Failures and recovery. Before `commit(true)` nothing has been written, so a
-failure returns to idle. After it, the transaction is *dirty*: a failure during
+failure returns to idle. After it, the transaction is _dirty_: a failure during
 preparation or movement goes to `Settle` and then restores the original, while a
 failure during restoration or inspection goes to `Fault` and keeps the backup.
 
@@ -536,14 +536,14 @@ It returns a NUL-terminated string and the sequence number. It rejects counter
 selector 08, unknown selectors, empty fields, embedded NULs followed by text,
 non-ASCII values and wrong lengths. Output is unchanged when decoding fails.
 
-| Selector | Data bytes | Observed content |
-|---|---:|---|
-| 03 | 16 | `T150-22-03` and six NUL bytes |
-| 04 | 17 | `LUMI LEGEND GROUP` |
-| 05 | 5 | `1.5.0` |
-| 06 | 5 | `1.6` and two NUL bytes |
-| 07 | 8 | `1.9.0118` |
-| 09 | 8 | `21/01/18` |
+| Selector | Data bytes | Observed content               |
+| -------- | ---------: | ------------------------------ |
+| 03       |         16 | `T150-22-03` and six NUL bytes |
+| 04       |         17 | `LUMI LEGEND GROUP`            |
+| 05       |          5 | `1.5.0`                        |
+| 06       |          5 | `1.6` and two NUL bytes        |
+| 07       |          8 | `1.9.0118`                     |
+| 09       |          8 | `21/01/18`                     |
 
 These replies identify the tested controller. `tests/identity_test.cpp` retains
 the captured wire frames for XOR, sequence and escaping checks. The roles of
@@ -599,17 +599,17 @@ SET requires an idle controller and is never retried automatically.
 Decoded request body: `D3 01 op nonce_hi nonce_lo`, with operations `00` GET,
 `01` LOCK and `02` UNLOCK. Decoded replies contain fifteen bytes:
 
-| Offset | Meaning |
-|---|---|
-| 0–1 | `D4 01` |
-| 2 | Requested operation |
-| 3 | Status: `00` success, `01` bad request, `02` busy, `03` storage failure |
-| 4 | Effective lock, 0 or 1 |
-| 5 | Physical release gate, 0 or 1 |
-| 6 | Storage fault, 0 or 1 |
-| 7–10 | ASCII `CL01` |
-| 11–12 | Echoed nonce, big-endian |
-| 13–14 | Controller sequence, big-endian |
+| Offset | Meaning                                                                 |
+| ------ | ----------------------------------------------------------------------- |
+| 0–1    | `D4 01`                                                                 |
+| 2      | Requested operation                                                     |
+| 3      | Status: `00` success, `01` bad request, `02` busy, `03` storage failure |
+| 4      | Effective lock, 0 or 1                                                  |
+| 5      | Physical release gate, 0 or 1                                           |
+| 6      | Storage fault, 0 or 1                                                   |
+| 7–10   | ASCII `CL01`                                                            |
+| 11–12  | Echoed nonce, big-endian                                                |
+| 13–14  | Controller sequence, big-endian                                         |
 
 The usual framing, escaping and checksum apply. Invalid length/checksum or
 insufficient TX queue space causes no mutation or reply. Invalid version or
@@ -666,11 +666,11 @@ See [controls](reset-speed.md) and the source in `tools/patches/reset_speed.c`.
 
 The maintenance adapter accepts only these 55,296-byte application hashes:
 
-| Image | SHA-256 |
-|---|---|
-| Original | `bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf` |
-| DT02 | `e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff` |
-| CL01, including DT02 | `81933d93b8bc28ef0eb8b29bf7ae1c7b9104f0a8e03c1c2f8096d509de0f75d3` |
+| Image                            | SHA-256                                                            |
+| -------------------------------- | ------------------------------------------------------------------ |
+| Original                         | `bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf` |
+| DT02                             | `e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff` |
+| CL01, including DT02             | `81933d93b8bc28ef0eb8b29bf7ae1c7b9104f0a8e03c1c2f8096d509de0f75d3` |
 | RS01 R7, including DT02 and CL01 | `ad1f321c570de25abef0f106175a5722d709b92e5db6d3da792bed9cc55fe78b` |
 
 The pinned loader erases 53 application pages, writes 25 blocks for original/DT02,

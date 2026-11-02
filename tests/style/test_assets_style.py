@@ -71,6 +71,26 @@ class AssetStyleTest(unittest.TestCase):
                 format_assets.selected_files(self.root, ["data"]), sorted(selected)
             )
 
+    def test_markdown_scope_excludes_local_notes_and_generated_documents(self):
+        """Track public Markdown while leaving local notes and dependency docs alone."""
+        selected = ["README.md", "CHANGELOG.md", "docs/guide.md"]
+        protected = [
+            "build/INSTALL.md",
+            "vendor/README.md",
+            "node_modules/pkg/README.md",
+        ]
+        for name in selected + ["AGENTS.md"]:
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("# Document\n")
+        with patch(
+            "format_assets.subprocess.check_output",
+            return_value="\0".join(selected + protected) + "\0",
+        ):
+            self.assertEqual(
+                format_assets.selected_files(self.root, ["markdown"]), sorted(selected)
+            )
+
     def test_symlinked_source_is_rejected(self):
         """A tracked source symlink cannot redirect a formatter write."""
         name = "components/desk_firmware_update/ui.html"

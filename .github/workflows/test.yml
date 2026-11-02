@@ -53,6 +53,12 @@ jobs:
           CI_FULL_SUITE: ${{ inputs.full-suite }}
           CI_SOURCE_REF: ${{ inputs.source-ref }}
         run: python tools/ci.py select
+      - name: Install formatter for documentation-only changes
+        if: steps.select.outputs.full == 'false'
+        run: python tools/install_ci_node.py
+      - name: Check Markdown formatting for documentation-only changes
+        if: steps.select.outputs.full == 'false'
+        run: python tools/format_assets.py --check --group markdown
 
   style:
     needs: changes
@@ -82,8 +88,8 @@ jobs:
           ruff check .
       - name: Install pinned formatter runtime
         run: python tools/install_ci_node.py
-      - name: Check web and configuration formatting
-        run: python tools/format_assets.py --check --group web --group data
+      - name: Check asset formatting
+        run: python tools/format_assets.py --check --group web --group data --group markdown
 
   native:
     needs: changes

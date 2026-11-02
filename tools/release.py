@@ -19,6 +19,15 @@ REPOSITORY = "0xA2C3B1F4/t150-desk-control"
 VERSION = r"[0-9]{4}\.(?:[1-9]|1[0-2])\.(?:0|[1-9][0-9]*)"
 SHA = r"[0-9a-f]{40}"
 VERSION_FILE = "components/desk_uart/project_version.json"
+STYLE_INFRASTRUCTURE = {
+    "tools/format_assets.py",
+    "tools/install_ci_node.py",
+    ".node-version",
+    "tools/style/package.json",
+    "tools/style/package-lock.json",
+    ".prettierrc.json",
+    ".prettierignore",
+}
 YAMLS = {
     name: "examples/esphome/" + name
     for name in (
@@ -139,6 +148,7 @@ def infrastructure(root, candidate, workflow):
             for p in text(root, "ls-tree", "-r", "--name-only", ref).splitlines()
             if (
                 p.startswith(".github/workflows/")
+                or p in STYLE_INFRASTRUCTURE
                 or p in {"tools/ci.py", "tools/check_docs.py", "requirements-ci.txt"}
                 or p.startswith("tools/release")
                 and p.endswith(".py")

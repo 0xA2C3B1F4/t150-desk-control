@@ -26,6 +26,7 @@ class ReleaseTest(unittest.TestCase):
         self.root = Path(self.temp.name) / "repo"
         paths = {
             release.VERSION_FILE,
+            *release.STYLE_INFRASTRUCTURE,
             "metadata/firmware-catalog.json",
             "requirements-dev.txt",
             "CHANGELOG.md",
@@ -195,7 +196,12 @@ class ReleaseTest(unittest.TestCase):
 
     def test_ci_helpers_are_bound_to_the_release_candidate(self):
         """Reject later changes to selection, documentation checks or their dependencies."""
-        for name in ("tools/ci.py", "tools/check_docs.py", "requirements-ci.txt"):
+        for name in (
+            "tools/ci.py",
+            "tools/check_docs.py",
+            "requirements-ci.txt",
+            *sorted(release.STYLE_INFRASTRUCTURE),
+        ):
             for operation in ("modify", "delete"):
                 with self.subTest(path=name, operation=operation):
                     path = self.root / name

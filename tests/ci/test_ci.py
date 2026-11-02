@@ -44,6 +44,11 @@ class SelectionTest(unittest.TestCase):
             "components/x.cpp",
             ".github/workflows/test.yml",
             "requirements-ci.txt",
+            ".prettierrc.json",
+            ".prettierignore",
+            ".node-version",
+            "tools/style/package.json",
+            "tools/style/package-lock.json",
             "examples/esphome/x.yaml",
             "CHANGELOG.md",
             "docs/example.yaml",
@@ -214,6 +219,34 @@ class WorkflowTest(unittest.TestCase):
         self.assertIn("github.event.pull_request.number", concurrency["group"])
         self.assertIn("github.run_id", concurrency["group"])
         self.assertIn("!inputs.full-suite", concurrency["cancel-in-progress"])
+
+    def test_markdown_check_runs_in_each_selected_path(self):
+        """Light PRs check Markdown after selection; full runs check it in style."""
+        jobs = yaml.safe_load((ROOT / ".github/workflows/test.yml").read_text())["jobs"]
+        steps = jobs["changes"]["steps"]
+        select = next(i for i, step in enumerate(steps) if step.get("id") == "select")
+        commands = [
+            "python tools/install_ci_node.py",
+            "python tools/format_assets.py --check --group markdown",
+        ]
+        for command in commands:
+            matches = [
+                (i, step) for i, step in enumerate(steps) if step.get("run") == command
+            ]
+            self.assertEqual(len(matches), 1)
+            index, step = matches[0]
+            self.assertGreater(index, select)
+            self.assertEqual(step["if"], "steps.select.outputs.full == 'false'")
+        full = next(
+            step
+            for step in jobs["style"]["steps"]
+            if step.get("name") == "Check asset formatting"
+        )
+        self.assertEqual(
+            full["run"],
+            "python tools/format_assets.py --check --group web --group data --group markdown",
+        )
+        self.assertNotIn("if", full)
 
     def test_job_dependencies_and_always_running_gate(self):
         """Heavy jobs use one selector and the final check sees every job result."""
