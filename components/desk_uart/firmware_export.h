@@ -213,7 +213,7 @@ class FirmwareExport {
       }
       image_ = allocate_ ? allocate_(context_, expected_size_) : nullptr;
       if (!image_) {
-        fail("Not enough RAM for firmware image; clear the previous image and retry");
+        fail("Not enough memory for the firmware file; clear the previous file and retry");
         return;
       }
       remember_packet_(p, length);

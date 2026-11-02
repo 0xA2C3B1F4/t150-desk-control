@@ -22,10 +22,14 @@ struct Probe : fw::FirmwareUpdate {
     if (!std::strcmp(action, "patch"))
       return !std::strcmp(error_, "Generated patch hash mismatch");
     if (!std::strcmp(action, "patch_child_lock"))
-      return !std::strcmp(error_, "CL01 patch precondition failed") ||
-             !std::strcmp(error_, "Generated CL01 hash mismatch");
-    return !std::strcmp(error_, "RS01 patch precondition failed") ||
-           !std::strcmp(error_, "Generated RS01 hash mismatch");
+      return !std::strcmp(
+                 error_,
+                 "Cannot prepare panel lock; firmware does not match the required starting version") ||
+             !std::strcmp(error_, "Prepared panel-lock firmware failed its integrity check");
+    return !std::strcmp(
+               error_,
+               "Cannot prepare reset and speed controls; firmware does not match the required starting version") ||
+           !std::strcmp(error_, "Prepared reset and speed firmware failed its integrity check");
   }
   bool admits(const char* source, const char* target) {
     preflight_ = tail_erased_ = backup_ = true;

@@ -83,7 +83,9 @@ class ResetSpeedAccess : public esphome::desk_uart::DeskUART {
       stage = 3;
     }
     if (stage == 4 && (timeout || rejected) && direct.phase() == Phase::Fault && status &&
-        status->state == (rejected ? "DT02 GET rejected" : "DT02 capability response missing")) {
+        status->state == (rejected
+                              ? "Controller rejected the height control status request"
+                              : "Controller did not reply to the height control support check")) {
       if (timeout) {
         ESP_LOGI("rs_test", "dt02_fault_barrier=1 dt02_fault_guard=%u", direct.reply().guards);
         stage = 7;
@@ -91,30 +93,34 @@ class ResetSpeedAccess : public esphome::desk_uart::DeskUART {
         finish();
     }
     if (stage == 7 && (desk->*monitor_member).height().q == 7) {
-      const bool ignored = direct.phase() == Phase::Fault && !direct.known() &&
-                           direct.reply().guards == 1 && direct.error() &&
-                           std::strcmp(direct.error(), "DT02 capability response missing") == 0;
+      const bool ignored =
+          direct.phase() == Phase::Fault && !direct.known() && direct.reply().guards == 1 &&
+          direct.error() &&
+          std::strcmp(direct.error(),
+                      "Controller did not reply to the height control support check") == 0;
       ESP_LOGI("rs_test", "dt02_late_fault_ignored=%d dt02_late_fault_guard=%u", ignored,
                direct.reply().guards);
       if (failure_stop) {
         ESP_LOGI("rs_test", "dt02_failure_visible_before_stop=%d",
-                 status && status->state == "DT02 capability response missing");
+                 status && status->state ==
+                               "Controller did not reply to the height control support check");
         ESP_LOGI("rs_test", "dt02_failure_stop=%d", desk->stop());
         stage = 5;
       } else
         stage = 8;
     }
-    const char* expected_ready = std::strcmp(test, "dt02_refresh_guarded") == 0
-                                     ? "DT02 controller inhibited; select target to recheck"
-                                     : "Ready";
+    const char* expected_ready =
+        std::strcmp(test, "dt02_refresh_guarded") == 0
+            ? "Controller is blocking movement; select the target again to recheck"
+            : "Ready";
     if (status && (stage == 3 || (stage == 4 && !timeout && !rejected)) &&
         direct.phase() == Phase::Ready && status->state == expected_ready)
       finish();
     if (status && stage == 6 && direct.phase() == Phase::Unknown && !direct.known() &&
-        status->state == "DT02 capability unverified")
+        status->state == "Direct height control support not confirmed")
       finish();
     if (status && stage == 8 && direct.phase() == Phase::Fault &&
-        status->state == "DT02 capability response missing")
+        status->state == "Controller did not reply to the height control support check")
       finish();
     // Host stdout is a file, so explicitly release barrier records to the peer.
     std::fflush(stdout);

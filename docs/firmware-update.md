@@ -53,9 +53,9 @@ Follow the active instruction panel. Keep the ESP32 powered throughout.
    Wait for `read complete`.
 3. Download the backup and confirm it is saved on your computer. Closing the
    page loses its browser-memory copy.
-4. Select **Prepare DT02 patch** for direct height control and the sleep fix,
-   or **Prepare panel lock (CL01)** for both plus persistent panel locking.
-   Choose **Prepare reset and speed controls (RS01)** for those features plus
+4. Select **Prepare direct height control** for direct height control and the sleep fix,
+   or **Prepare panel lock** for both plus persistent panel locking.
+   Choose **Prepare reset and speed controls** for those features plus
    [calibration and Normal/Slow controls](reset-speed.md).
    Alternatively, select a saved application and **Prepare selected file**.
    CL01 and RS01 initially lock physical buttons, including local stopping; configure

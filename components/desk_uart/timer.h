@@ -62,10 +62,10 @@ class TimerSequence {
       return;
     poll_release(now);
     if (press_ack_.expired(now))
-      fail_("No T press ACK; timer state unknown, no retry", now);
+      fail_("Timer button press not confirmed; timer state unknown, request not retried", now);
     if (release_ack_.expired(now)) {
       release_fault_ = true;
-      error_ = "No T release ACK; remote buttons blocked until ESP restart";
+      error_ = "Timer button release not confirmed; remote buttons blocked until ESPHome restarts";
       press_ack_ = AckTracker{};
       phase_ = Phase::Idle;
       return;

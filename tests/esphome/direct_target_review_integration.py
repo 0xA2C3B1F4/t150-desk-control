@@ -197,8 +197,8 @@ desk_uart:
             "second=1",
             "uncertain_preset_rejected=1",
             "healthy_preset=1",
-            "Checking DT02 capability; select target again when Ready",
-            "SET admission uncertain; braking, press preset again after settling",
+            "Checking direct height control support; select the target again when Ready",
+            "Target acceptance uncertain; braking, press the preset again after the desk settles",
         ):
             assert marker in log_text, (marker, events)
         assert get_count == 3 and set_count == 2, (get_count, set_count, events)

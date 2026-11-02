@@ -74,7 +74,7 @@ class DirectTarget {
     if (!waiting() || queued_ || f.size != 37 || f.bytes[0] != 0xD2 || be16(f.bytes + 9) != nonce_)
       return;
     if (static_cast<uint32_t>(now - sent_at_) >= 800) {
-      fail_("DT02 reply arrived after deadline");
+      fail_("Height control reply arrived too late");
       return;
     }
     const uint8_t op = phase_ == Phase::SetAck ? 1 : 0;
@@ -82,13 +82,14 @@ class DirectTarget {
       return;
     DirectReply r;
     if (!direct_reply(f, r) || r.requested != (op ? requested_ : 0)) {
-      fail_("DT02 capability, profile or reply binding mismatch");
+      fail_(
+          "Height control reply does not match the expected features, controller settings or request");
       return;
     }
     reply_ = r;
     known_ = true;
     if (op == 0 && r.status != 0) {
-      fail_("DT02 GET rejected");
+      fail_("Controller rejected the height control status request");
       return;
     }
     if (phase_ == Phase::Probe) {
@@ -98,7 +99,8 @@ class DirectTarget {
     if (phase_ == Phase::Check) {
       if (r.guards || r.mode || r.previous || r.current < 6 || r.current > 747) {
         phase_ = Phase::Ready;
-        error_ = "DT02 controller inhibited, busy or outside profile";
+        error_ =
+            "Height control blocked; controller busy, movement restricted or current height outside the supported range";
         return;
       }
       request_(1, requested_, Phase::SetAck, now);
@@ -108,12 +110,12 @@ class DirectTarget {
       // Only a strictly bound explicit rejection proves this SET was not accepted.
       phase_ = Phase::Ready;
       set_sent_ = false;
-      error_ = "DT02 SET explicitly rejected";
+      error_ = "Controller rejected the target height";
       return;
     }
     if (r.current < 6 || r.current > 747 || r.guards || r.mode != 1 || r.previous ||
         r.target != direct_committed_target(requested_, r.current)) {
-      fail_("DT02 SET acknowledgement inconsistent; braking");
+      fail_("Target height confirmation does not match the request; braking");
       return;
     }
     phase_ = Phase::Active;
@@ -123,12 +125,12 @@ class DirectTarget {
   void tick(uint32_t now, bool fresh, uint32_t stable_ms) {
     if (!fresh) {
       if (known_ || busy())
-        fail_("UART freshness lost; direct capability invalidated");
+        fail_("No recent controller reply; direct height control unavailable");
       return;
     }
     if (waiting() && static_cast<uint32_t>(now - sent_at_) >= 800)
-      fail_(set_sent_ ? "DT02 SET acknowledgement uncertain; braking"
-                      : "DT02 capability response missing");
+      fail_(set_sent_ ? "Target height confirmation uncertain; braking"
+                      : "Controller did not reply to the height control support check");
     if (phase_ == Phase::Active && static_cast<uint32_t>(now - accepted_at_) >= 2000 &&
         stable_ms >= 1500 && (motion_seen_ || static_cast<uint32_t>(now - accepted_at_) >= 3000)) {
       phase_ = Phase::Ready;
@@ -144,7 +146,7 @@ class DirectTarget {
     phase_ = known_ ? Phase::Ready : Phase::Unknown;
     error_ = nullptr;
   }
-  void disconnect() { fail_("Direct capability lost; select target again"); }
+  void disconnect() { fail_("Direct height control no longer confirmed; select the target again"); }
   bool take_frame(Frame& f) {
     if (!queued_)
       return false;

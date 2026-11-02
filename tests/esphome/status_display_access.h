@@ -290,8 +290,10 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
       require(d.reset_speed_.error() && !d.reset_speed_.blocking(),
               "unsupported capability stays unverified");
       d.expect(now, "Ready");
-      d.child_lock_.disconnect("CL01 storage fault; runtime locked, persistence uncertain", false);
-      d.expect(now, "CL01 storage fault; runtime locked, persistence uncertain", "Ready");
+      d.child_lock_.disconnect(
+          "Panel-lock saving failed; locked now, lock state after power loss uncertain", false);
+      d.expect(now, "Panel-lock saving failed; locked now, lock state after power loss uncertain",
+               "Ready");
     }
     {
       StatusDisplayAccess d;
@@ -299,8 +301,8 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
       d.reset_enabled_ = true;
       d.cl_reply(now - 2);
       d.rs_reply(now - 2);
-      d.reset_speed_.disconnect("RS01 UART unavailable; state unknown");
-      d.expect(now, "RS01 UART unavailable; state unknown", "Ready");
+      d.reset_speed_.disconnect("No recent controller reply; reset and speed state unknown");
+      d.expect(now, "No recent controller reply; reset and speed state unknown", "Ready");
     }
     for (uint8_t result : {uint8_t(3), uint8_t(4), uint8_t(5), uint8_t(6)}) {
       StatusDisplayAccess d;
@@ -308,9 +310,9 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
       d.rs_reply(now - 2, 3, 0, 4, result);
       d.expect(now, result == 4   ? "Reset paused; release physical keys to continue"
                     : result == 5 ? "Reset paused; panel lock blocks continuation"
-                    : result == 6 ? "Reset paused; controller guard blocks continuation"
+                    : result == 6 ? "Reset paused; controller is blocking movement"
                                   : "Reset paused; continuation unavailable; inspect the desk");
-      d.expect(now + 1000, "Unknown; fresh RS01 status required");
+      d.expect(now + 1000, "Reset and speed status unknown; waiting for a new controller reply");
     }
     {
       StatusDisplayAccess d;
@@ -324,7 +326,7 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
       d.rs_reply(now - 2);
       require(d.reset_speed_.probe(now), "background GET starts");
       require(d.reset_speed_blocking_(), "GET still serializes commands");
-      d.expect(now, "Ready", "Reading RS01 status");
+      d.expect(now, "Ready", "Reading reset and speed status");
       esphome::text_sensor::TextSensor sensor;
       d.control_status_ = &sensor;
       unsigned publishes = 0;
@@ -341,11 +343,12 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
       d.expect(now, "Button release uncertain; inspect desk and restart ESP");
       d.release_fault_ = false;
       d.stop_latched_ = true;
-      d.expect(now, "Brake ACK missing or pending; movement blocked");
+      d.expect(now, "Stop not confirmed by controller; movement controls blocked");
       d.stop_acknowledged_ = true;
       d.expect(now, "Stop: waiting for settled height and preset cleanup");
       d.stop_latched_ = false;
-      d.expect(now + 3000, "No fresh UART height; wake panel or check connection");
+      d.expect(now + 3000,
+               "No recent height reading; wake the panel or check the controller connection");
       d.last_height_change_ = now;
       d.expect(now, "Waiting for height to settle");
     }
@@ -354,7 +357,7 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
       d.idle(now);
       d.cl_reply(now - 2);
       require(d.child_lock_.probe(now), "CL01 background GET");
-      d.expect(now, "Ready", "CL01 child lock transaction pending");
+      d.expect(now, "Ready", "Panel-lock request in progress");
       esphome::text_sensor::TextSensor sensor;
       d.child_lock_status_ = &sensor;
       d.publish_child_lock_(now);
@@ -368,8 +371,8 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
       d.idle(now);
       d.cl_reply(now - 2);
       require(d.child_lock_.set(true, now), "CL01 SET");
-      d.expect(now, "Lock requested; awaiting CL01 acknowledgement",
-               "CL01 child lock transaction pending");
+      d.expect(now, "Lock requested; waiting for controller confirmation",
+               "Panel-lock request in progress");
     }
     {
       StatusDisplayAccess d;
@@ -378,7 +381,8 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
       static esphome::desk_uart::ChildLockSwitch lock;
       d.child_lock_switch_ = &lock;
       d.cl_reply(now - 2, true, true);
-      d.expect(now, "CL01 storage fault; runtime locked, persistence uncertain", "Ready");
+      d.expect(now, "Panel-lock saving failed; locked now, lock state after power loss uncertain",
+               "Ready");
     }
     {
       StatusDisplayAccess d;
@@ -439,7 +443,7 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
       StatusDisplayAccess d;
       d.idle(now);
       d.rs_reply(now - 2, state);
-      d.expect(now, state == 1   ? "Reset descending; ownership unverified"
+      d.expect(now, state == 1   ? "Reset descending; ESPHome control not confirmed"
                     : state == 3 ? "Reset paused; select Reset to continue"
                                  : "Reset fault; power-cycle the controller");
       d.reset_speed_.disconnect("lost");
@@ -450,7 +454,7 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
       d.idle(now);
       d.rs_reply(now - 2);
       require(d.reset_speed_.begin(false, now), "START awaiting ACK");
-      d.expect(now, "RS01 request pending");
+      d.expect(now, "Waiting for the controller to confirm the reset or speed request");
     }
     availability_checks();
     maintenance_capability_checks();

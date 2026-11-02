@@ -58,19 +58,19 @@ class TargetDetection {
           return;
         DirectReply reply;
         if (direct_reply(f, reply) && reply.op == 0 && reply.requested == 0 && reply.status != 0) {
-          fail_("DT02 capability GET rejected; target control unavailable");
+          fail_("Controller rejected the height control support check; target control unavailable");
           return;
         }
         probe_.accept(f, now);
         if (probe_.known()) {
           if (stage_ == Stage::Confirm)
-            fail_("Conflicting firmware capability replies");
+            fail_("Controller gave conflicting replies about height control support");
           else {
             backend_ = Backend::Direct;
             stage_ = Stage::Done;
           }
         } else
-          fail_("Invalid or unbound DT02 capability reply");
+          fail_("Height control reply is invalid or does not match this request");
         return;
       }
       if (!f.size || f.bytes[0] != 0xEE)
