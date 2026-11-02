@@ -14,7 +14,7 @@ Basic control works with supported stock firmware; patches are optional. Develop
 
 - ESP32 controls provide height in cm or inches, preset recall and editing, target-height moves, controlled Stop, UART status and preset recovery through ESPHome, the browser and Home Assistant. Optional controls cover keep-awake, load telemetry, load settings and timers.
 - Controller firmware extensions add [direct height commands](docs/esphome.md#direct-backend), a persistent [panel lock](docs/child-lock.md), and [RS01 R7 calibration and speed controls](docs/reset-speed.md).
-- Experimental [TB01 timer and buzzer controls](docs/custom-timer-buzzer.md) add a custom-duration timer and configurable buzzer pulses through ESPHome actions.
+- Experimental [TB01 timer and buzzer controls](docs/custom-timer-buzzer.md) add an adjustable timer and buzzer pulses to the web interface and Home Assistant.
 - Targeted [controller firmware fixes](docs/validation.md#controller-firmware-fixes) address sleep logic at the RTC hour boundary and UART receive parsing.
 
 The optional [firmware maintenance tools](docs/firmware-update.md) provide backup, patching, installation and recovery.

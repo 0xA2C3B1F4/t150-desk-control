@@ -37,6 +37,7 @@ YAMLS = {
         "secrets.example.yaml",
         "stamp-c3-firmware-export.yaml",
         "stamp-c3-firmware-update.yaml",
+        "stamp-c3-tb01.yaml",
     )
 }
 YAMLS.update(
@@ -45,6 +46,7 @@ YAMLS.update(
         for name in (
             "child-lock.yaml",
             "reset-speed.yaml",
+            "custom-timer-buzzer.yaml",
             "firmware-export.yaml",
             "firmware-update.yaml",
         )

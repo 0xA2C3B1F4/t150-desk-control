@@ -221,6 +221,13 @@ class DeskUART : public Component, public uart::UARTDevice {
       last_child_lock_available_{false};
   uint32_t last_child_lock_query_{0};
   const char* last_child_lock_status_{nullptr};
+  bool discovery_access_allowed_(uint32_t now) const;
+  bool legacy_ownership_active_() const;
+  bool legacy_backend_ready_() const {
+    return !direct_mode_ && (!auto_target_mode_ || auto_target_ready_);
+  }
+  void unload_journal_();
+  void publish_restore_pending_();
   void detection_loop_(uint32_t now);
   void invalidate_detection_();
   bool target_detected_() const { return !auto_target_mode_ || auto_target_ready_; }
@@ -277,6 +284,10 @@ class DeskUART : public Component, public uart::UARTDevice {
   }
   desk_protocol::PresetJournal cached_journal_{};
   const char* journal_block_reason_{nullptr};
+  // Storage bytes remain dormant outside the selected preset backend. A live
+  // borrow keeps ownership through reconnect until its write/cleanup is resolved.
+  bool journal_active_{false}, legacy_transaction_started_{false};
+  const char* journal_write_error_{nullptr};
   // RAM readback evidence only; never authorizes deleting the durable backup.
   struct VerifiedJournal {
     bool valid;

@@ -35,6 +35,7 @@ def main():
         "esp32",
         "stamp-c3-firmware-export",
         "stamp-c3-firmware-update",
+        "stamp-c3-tb01",
     ):
         run = work / name
         run.mkdir()
@@ -93,8 +94,12 @@ def main():
         generated = run / "build/src/esphome/components"
         required = (
             ["desk_uart"]
-            + (["desk_firmware_export"] if "firmware" in name else [])
-            + (["desk_firmware_update"] if name.endswith("update") else [])
+            + (
+                ["desk_firmware_export"]
+                if "firmware" in name or name.endswith("tb01")
+                else []
+            )
+            + (["desk_firmware_update"] if name.endswith(("update", "tb01")) else [])
         )
         for component in required:
             for src in (ROOT / "components" / component).iterdir():

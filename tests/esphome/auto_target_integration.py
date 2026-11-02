@@ -97,13 +97,13 @@ interval:
     then:
       - lambda: |-
           static bool done = false;
-          if (!done && std::string(getenv("DESK_AUTO_CASE")) == "cancel_probe" && ::access("trigger", F_OK) == 0) {{
+          if (!done && std::string(getenv("DESK_AUTO_CASE")) == "unknown_mutations" && ::access("trigger", F_OK) == 0) {{
             done = true;
             ESP_LOGI("auto_test", "timer_blocked=%d", !id(desk)->set_timer(30));
             ESP_LOGI("auto_test", "preset_edit_blocked=%d", !id(desk)->set_preset_height(3, 80));
             ESP_LOGI("auto_test", "limit_blocked=%d", !id(desk)->set_load_limit(desk_protocol::LoadLimit::Upward, 4800));
             ESP_LOGI("auto_test", "recovery_blocked=%d", !id(desk)->restore_temporary_preset());
-            ESP_LOGI("auto_test", "native_preempts=%d", id(desk)->recall_preset(1));
+            ESP_LOGI("auto_test", "native_blocked=%d", !id(desk)->recall_preset(1));
           }}
 host:
 external_components:
@@ -169,7 +169,7 @@ desk_uart:
             ("disconnect_active", 22),
             ("direct_idle", 33),
             ("preset_idle", 38),
-            ("cancel_probe", 14),
+            ("unknown_mutations", 14),
             ("preset_gap", 21),
         ]:
             if args.only and scenario not in args.only:
@@ -266,14 +266,14 @@ desk_uart:
                                 <= elapsed
                                 < preset_gap["ends_at"]
                             )
-                            or (scenario == "cancel_probe" and 5 <= elapsed < 6.2)
+                            or (scenario == "unknown_mutations" and 5 <= elapsed < 6.2)
                         )
                         stock = (
                             scenario
                             in (
                                 "preset_move",
                                 "preset_idle",
-                                "cancel_probe",
+                                "unknown_mutations",
                                 "preset_gap",
                             )
                             or (scenario == "reconnect" and elapsed < 7)
@@ -329,7 +329,7 @@ desk_uart:
                                     if stock:
                                         probe_count += 1
                                         if (
-                                            scenario == "cancel_probe"
+                                            scenario == "unknown_mutations"
                                             and probe_count == 3
                                             and not rejected_once
                                         ):
@@ -363,7 +363,7 @@ desk_uart:
                                     goal = q
                                     reply(bytes.fromhex("18 01 00 00"))
                                 elif frame[:2] == bytes.fromhex("17 06"):
-                                    assert scenario == "cancel_probe"
+                                    assert scenario == "unknown_mutations"
                                     reply(bytes([0x18, 6, frame[2], 0]))
                                 elif frame[:2] == bytes.fromhex("17 08"):
                                     assert stock
@@ -443,33 +443,31 @@ desk_uart:
                 # Background load/preset/identity diagnostics resume outside the exclusive transaction.
                 assert any(e["body_hex"] == "150e0000" for e in events)
                 assert any(e["body_hex"] == "151f0000" for e in events)
-            if scenario == "cancel_probe":
+            if scenario == "unknown_mutations":
                 for marker in (
                     "timer_blocked=1",
                     "preset_edit_blocked=1",
                     "limit_blocked=1",
                     "recovery_blocked=1",
-                    "native_preempts=1",
+                    "native_blocked=1",
                 ):
                     assert marker in out, marker
                 assert (
                     out.count("Height control method: Height control using preset 3")
                     >= 2
-                    and probe_count >= 5
+                    and probe_count >= 4
                     and not writes
                     and not sets
                 )
                 for reason in (
-                    "Preset edit blocked:",
+                    "Checking height control support; preset editing unavailable",
+                    "Checking height control support; preset recall unavailable",
+                    "Checking height control support; preset recovery unavailable",
                     "Load edit blocked:",
-                    "Preset recovery blocked:",
                 ):
                     assert reason in out, reason
-                press = next(e["seconds"] for e in events if e["body_hex"] == "170601")
-                assert not any(
-                    press < e["seconds"] < press + 2.9
-                    and e["body_hex"].startswith("d1")
-                    for e in events
+                assert not any(e["body_hex"].startswith("1706") for e in events), (
+                    "Unclassified controller must not receive a preset recall"
                 )
             if scenario in ("preset_move", "preset_idle", "preset_gap", "reconnect"):
                 assert events[first_probe + 1]["body_hex"] == "11030000"
@@ -496,9 +494,13 @@ desk_uart:
                     out.count("Height control method: Height control using preset 3")
                     >= 2
                 )
-                assert out.rindex(
+                classified = out.rindex(
                     "Height control method: Height control using preset 3"
-                ) > out.index("Original preset matches")
+                )
+                restored = out.index("Original preset matches", classified)
+                assert classified < restored
+                assert "Internal control status: Ready" not in out[classified:restored]
+                assert "Internal control status: Ready" in out[restored:]
             result = dict(
                 case=scenario,
                 passed=True,

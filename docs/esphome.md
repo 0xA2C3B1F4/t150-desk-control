@@ -55,6 +55,17 @@ example already includes both. The monitoring-only `desk.yaml` does not provide
 the controls these packages require. Follow the
 [firmware maintenance instructions](firmware-update.md) when working on the controller.
 
+After installing TB01, add its controls after `packages.desk`:
+
+```yaml
+packages:
+  # Keep your existing desk package above this entry.
+  timer_buzzer: github://0xA2C3B1F4/t150-desk-control/examples/esphome/packages/custom-timer-buzzer.yaml@${t150_ref}
+```
+
+This replaces the panel-timer shortcuts with an adjustable timer and adds buzzer
+controls to the web interface and Home Assistant. See [TB01 setup](custom-timer-buzzer.md).
+
 ### Source diagnostics
 
 Optional `source_version` and `source_revision` entries under `desk_uart` create
@@ -241,7 +252,7 @@ Configuration validation checks the listed dependencies. Keep the component
 | `custom_available`                 | binary sensor | —       | `experimental_custom_timer_buzzer: true` |
 | `custom_command_result`            | text sensor   | —       | `experimental_custom_timer_buzzer: true` |
 
-See [TB01 actions and limits](custom-timer-buzzer.md) for custom timer set,
+See [TB01 controls, actions and limits](custom-timer-buzzer.md) for custom timer set,
 cancellation and buzzer API actions.
 
 ### Load limits
@@ -301,17 +312,21 @@ Update any dashboards or automations that depend on its previous name or values.
 See the [detection reference](protocol.md#automatic-target-detection) for exact
 identity matching; other stock revisions require explicit `preset` mode.
 
-Unknown or incomplete detection blocks target moves and keep-awake, but leaves
-native preset buttons and Stop available. Failed checks retry after reconnection
+Unknown or incomplete detection blocks target moves, preset recalls and preset
+edits. Stop remains available. Once identified, direct control leaves old
+temporary-preset backups dormant; the preset backend activates its recovery
+checks before allowing commands. Failed checks retry after reconnection
 or maintenance. No target is replayed; select it again once ready. Runtime
 identification does not verify firmware bytes. Examples use `preset` mode;
 configure `auto` explicitly to enable detection.
 
 ### Direct backend
 
-`target_height_mode: direct` requires DT02 or CL01 and
+`target_height_mode: direct` requires DT02, CL01, RS01 or TB01 and
 `experimental_target_height: true`. It never borrows presets or falls back to
-the preset backend. Each request checks capability and idle state first.
+the preset backend. Old temporary-preset backups remain stored but do not block
+direct control or trigger preset recovery. Each request checks capability and
+idle state first.
 An uncertain acknowledgement requests Stop without retrying the target.
 
 Changing a target during a direct move stops the desk. Wait for settling and
@@ -347,9 +362,10 @@ not physically stopped. Do not call it from an interrupt handler.
 
 ### Recovering a borrowed preset
 
-The ESP retains the original backup after target and keep-awake cycles. On
-restart or UART reconnection, it checks preset 3. A matching value resolves the
-check; a different value requires [Restore or Accept](#preset-restoration-pending-is-on).
+With the preset backend, the ESP retains the original backup after target and
+keep-awake cycles. It checks preset 3 on restart or UART reconnection; auto mode
+first identifies the controller. A matching value resolves the check; a different
+value requires [Restore or Accept](#preset-restoration-pending-is-on).
 These actions do not move the desk and do not verify EEPROM.
 
 Keep `id: desk` stable because it identifies the saved backup. Resolve recovery

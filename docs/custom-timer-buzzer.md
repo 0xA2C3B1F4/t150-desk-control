@@ -1,46 +1,43 @@
 # Custom timer and buzzer
 
 TB01 adds a 2–720 minute timer and configurable buzzer pulses to RS01 R7.
-Enable the ESPHome actions below after installing TB01. See
+Enable the ESPHome controls below after installing TB01. See
 [test coverage](validation.md#tb01-custom-timer-and-buzzer).
 
 The browser installer does not support TB01. The offline builder requires the
 exact R7 image. Keep generated images and backups private and outside version
 control; they contain manufacturer firmware.
 
-## ESPHome actions
+## Web and Home Assistant controls
 
-Merge these entries into the existing `desk_uart` and `api` sections, keeping
-your device settings. Replace `desk` with your component ID. Do not add another
-reader on the same UART.
+For Stamp-C3, use `examples/esphome/stamp-c3-tb01.yaml` with your existing
+`secrets.yaml`. It includes the normal desk controls, firmware maintenance and
+TB01 controls. For another supplied board example, include that example first
+and `packages/custom-timer-buzzer.yaml` second in a wrapper YAML's `packages`
+section. Place the wrapper beside the supplied examples and keep their directory
+layout. The package uses direct height commands and omits the temporary-preset
+recovery controls. Saved presets remain available.
 
-```yaml
-desk_uart:
-  id: desk
-  experimental_custom_timer_buzzer: true
-  custom_available:
-    name: Custom controls available
-  custom_command_result:
-    name: Custom command result
+The Timer group has a duration, Start timer and Cancel timer. It replaces the
+fixed panel-timer shortcuts. The Buzzer group has pulse length, pause,
+repetitions and Play buzzer. Home Assistant exposes the same numbers and buttons
+on the device. Support and command-result sensors use the existing Diagnostics
+group in the web interface.
 
-api:
-  actions:
-    - action: custom_timer_set
-      variables:
-        minutes: int
-      then:
-        - lambda: id(desk)->custom_set_timer(minutes);
-    - action: custom_timer_cancel
-      then:
-        - lambda: id(desk)->custom_cancel_timer();
-    - action: custom_beep
-      variables:
-        on_ms: int
-        off_ms: int
-        count: int
-      then:
-        - lambda: id(desk)->custom_beep(on_ms, off_ms, count);
-```
+Changing a number only saves the selection; press the corresponding button to
+send it. Values survive an ESP32 restart, but neither timers nor sounds start
+at boot. Cancel an existing timer before starting another. Press the panel's M
+button to stop a buzzer sequence; TB01 has no remote buzzer-cancel command.
+
+Keep the TB01 package after the base package. Main YAML values override packages,
+so remove older timer-control overrides and duplicate custom API actions from
+copied configurations, including any `target_height_mode: preset` or `auto`
+override. If a previous installation has an interrupted preset move, restore its
+backup before switching to this package.
+
+## Home Assistant actions
+
+The package also keeps these actions for automations:
 
 | Action                | Arguments                  | Limits                                     |
 | --------------------- | -------------------------- | ------------------------------------------ |
@@ -73,7 +70,7 @@ timers once the T selection menu closes; it does not suppress an alarm already
 delivered by the controller.
 
 Commands, including cancellation, require an unlocked panel, a cleared physical-key
-gate and no latched storage fault. Held or pending keys, menus, motion, calibration,
+gate and no controller-reported storage fault. Held or pending keys, menus, motion, calibration,
 lock operations and native alarms block requests. A custom beep also blocks
 setting a timer. A backend error leaves the operation's outcome unknown.
 
@@ -82,12 +79,6 @@ and sleep releases the output. Press M to stop the sound. ESPHome Stop and timer
 cancellation do not stop it remotely. No pause follows the final pulse. Pulses
 end through SysTick, with no independent hardware cutoff if the CPU or interrupts
 stop.
-
-After a beep request is transmitted, automatic preset keep-awake waits for the
-sequence duration plus 3.5 seconds, even if the controller rejects it or does not
-reply. Later requests can extend this wait, up to 138.5 seconds from transmission.
-The usual 30-second quiet interval still applies. This wait does not delay user
-controls, Stop, key releases or preset recovery.
 
 ## Build offline
 
