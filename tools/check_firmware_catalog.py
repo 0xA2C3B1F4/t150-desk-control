@@ -72,6 +72,8 @@ def validate(catalog, probe):
             image["application_size"] != probe["application_size"]
             or image["application_offset"] != 0x2800
             or image["flash_size"] != 65536
+            or image["payload_size"] != probe["payload_sizes"][image["id"]]
+            or image["erase_size"] != probe["erase_size"]
         ):
             raise ValueError("Firmware region differs from the supported layout")
     pairs = [tuple(x) for x in catalog["install"]]
@@ -81,13 +83,23 @@ def validate(catalog, probe):
         raise ValueError("Install pairs differ from production admission")
     # Exact builder source/output pins, not catalog-to-schema self-consistency.
     import build_child_lock_patch as cl
+    import build_platform_patch as fp
     import build_reset_speed_patch as rs
+    import build_tb01_patch as tb
 
     if (
         cl.SOURCE_APP_SHA256 != probe["images"]["dt02"]
         or cl.OUTPUT_APP_SHA256 != probe["images"]["cl01"]
         or rs.SOURCE_APP_SHA256 != cl.OUTPUT_APP_SHA256
         or rs.OUTPUT_APP_SHA256 != probe["images"]["rs01-r7"]
+        or tb.SOURCE_APP_SHA256 != rs.OUTPUT_APP_SHA256
+        or tb.OUTPUT_APP_SHA256 != probe["images"]["tb01"]
+        or fp.SOURCE_APP_SHA256 != rs.OUTPUT_APP_SHA256
+        or fp.OUTPUT_APP_SHA256 != probe["images"]["fp01"]
+        or tb.PAYLOAD_SIZE != probe["payload_sizes"]["tb01"]
+        or fp.PAYLOAD_SIZE != probe["payload_sizes"]["fp01"]
+        or fp.LAYOUT["application_size"] != probe["application_size"]
+        or fp.LAYOUT["payload_size"] != probe["erase_size"]
     ):
         raise ValueError("Patch builder chain differs")
     if catalog["prepare"] != probe["prepare"]:

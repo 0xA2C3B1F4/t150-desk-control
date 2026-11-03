@@ -23,12 +23,18 @@ EXTRA_SOURCES = {
     "tools/patches/tb01.c",
     "tools/patches/tb01_core.c",
     "tools/patches/tb01_core.h",
+    "tools/patches/platform_runtime.c",
+    "tools/patches/platform_runtime.h",
+    "tools/patches/platform_tb01.c",
 }
 EXCLUDED = {
     "components/desk_firmware_update/ui.h",
     "components/desk_firmware_update/child_lock_patch.h",
     "components/desk_firmware_update/reset_speed_patch.h",
     "components/desk_firmware_update/dt02_patch.h",
+    "components/desk_firmware_update/tb01_patch.h",
+    "components/desk_firmware_update/platform_patch.h",
+    "components/desk_uart/firmware_layout.h",
 }
 
 

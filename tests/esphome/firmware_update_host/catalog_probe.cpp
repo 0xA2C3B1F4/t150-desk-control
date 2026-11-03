@@ -26,10 +26,20 @@ struct Probe : fw::FirmwareUpdate {
                  error_,
                  "Cannot prepare panel lock; firmware does not match the required starting version") ||
              !std::strcmp(error_, "Prepared panel-lock firmware failed its integrity check");
+    if (!std::strcmp(action, "patch_timer_buzzer") || !std::strcmp(action, "patch_platform"))
+      return !std::strcmp(error_, "Cannot prepare the exact reset and speed source") ||
+             !std::strcmp(error_,
+                          "Cannot restore the exact reset and speed source from timer firmware") ||
+             !std::strcmp(error_,
+                          "Intermediate reset and speed firmware failed its integrity check");
     return !std::strcmp(
                error_,
                "Cannot prepare reset and speed controls; firmware does not match the required starting version") ||
            !std::strcmp(error_, "Prepared reset and speed firmware failed its integrity check");
+  }
+  size_t payload(const char* hash) {
+    std::strcpy(hash_, hash);
+    return payload_size_();
   }
   bool admits(const char* source, const char* target) {
     preflight_ = tail_erased_ = backup_ = true;
@@ -41,21 +51,29 @@ struct Probe : fw::FirmwareUpdate {
   }
 };
 int main() {
-  const char* ids[] = {"stock", "dt02", "cl01", "rs01-r7"};
-  const char* hashes[] = {fw::STOCK_SHA, fw::DT02_SHA, fw::CL01_SHA, fw::RS01_SHA};
+  const char* ids[] = {"stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01"};
+  const char* hashes[] = {fw::STOCK_SHA, fw::DT02_SHA, fw::CL01_SHA,
+                          fw::RS01_SHA,  fw::TB01_SHA, fw::FP01_SHA};
   Probe probe;
   std::cout << "{\"application_size\":" << fw::IMAGE_SIZE << ",\"images\":{";
-  for (unsigned i = 0; i < 4; ++i) {
+  for (unsigned i = 0; i < 6; ++i) {
     if (i)
       std::cout << ',';
     if (!fw::known(hashes[i]))
       return 1;
     std::cout << '"' << ids[i] << "\":\"" << hashes[i] << '"';
   }
-  std::cout << "},\"install\":[";
+  std::cout << "},\"payload_sizes\":{";
+  for (unsigned i = 0; i < 6; ++i) {
+    if (i)
+      std::cout << ',';
+    std::cout << '"' << ids[i] << "\":" << probe.payload(hashes[i]);
+  }
+  std::cout << "},\"erase_size\":" << desk_protocol::firmware_layout::ERASE_SIZE
+            << ",\"install\":[";
   bool first = true;
-  for (unsigned i = 0; i < 4; ++i)
-    for (unsigned j = 0; j < 4; ++j) {
+  for (unsigned i = 0; i < 6; ++i)
+    for (unsigned j = 0; j < 6; ++j) {
       if (!probe.admits(hashes[i], hashes[j]))
         continue;
       if (!first)
@@ -67,13 +85,14 @@ int main() {
     if (probe.admits("unknown", hash) || probe.admits(hash, "unknown"))
       return 2;
   std::cout << "],\"prepare\":{";
-  const char* actions[] = {"patch", "patch_child_lock", "patch_reset_speed"};
-  for (unsigned target = 1; target < 4; ++target) {
+  const char* actions[] = {"patch", "patch_child_lock", "patch_reset_speed", "patch_timer_buzzer",
+                           "patch_platform"};
+  for (unsigned target = 1; target < 6; ++target) {
     if (target > 1)
       std::cout << ',';
     std::cout << '"' << ids[target] << "\":[";
     bool initial = true;
-    for (unsigned source = 0; source < 4; ++source) {
+    for (unsigned source = 0; source < 6; ++source) {
       if (!probe.prepares(hashes[source], actions[target - 1]))
         continue;
       if (!initial)

@@ -1,12 +1,13 @@
 # Custom timer and buzzer
 
 TB01 adds a 2–720 minute timer and configurable buzzer pulses to RS01 R7.
-Enable the ESPHome controls below after installing TB01. See
+Enable the ESPHome controls below after installing TB01 or FP01. See
 [test coverage](validation.md#tb01-custom-timer-and-buzzer).
 
-The browser installer does not support TB01. The offline builder requires the
-exact R7 image. Keep generated images and backups private and outside version
-control; they contain manufacturer firmware.
+Install TB01 through [firmware maintenance](firmware-update.md), or use the
+offline builder below with the exact R7 image. [FP01](firmware-platform.md)
+includes the same timer and buzzer commands. Keep images and backups private;
+they contain manufacturer firmware.
 
 ## Web and Home Assistant controls
 
@@ -56,7 +57,7 @@ data:
   count: 3
 ```
 
-`custom_available` requires TB01 discovery and fresh telemetry.
+`custom_available` requires timer/buzzer discovery and fresh telemetry.
 `custom_command_result` reports the last user command's outcome. An accepted
 command does not confirm sound or timer expiry. Writes never retry. Commands
 do not queue across a disconnect or wake a sleeping controller.

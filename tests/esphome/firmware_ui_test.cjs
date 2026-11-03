@@ -83,6 +83,18 @@ async function page() {
     "utf8",
   ).match(/RS01_SHA = "([0-9a-f]{64})"/)[1];
   assert.equal(p.run("RS01"), pinned);
+  for (const [identity, header] of [
+    ["TB01", "tb01_patch.h"],
+    ["FP01", "platform_patch.h"],
+  ]) {
+    const source = readFileSync(
+      join(__dirname, "../../components/desk_firmware_update", header),
+      "utf8",
+    );
+    const hash = source.match(new RegExp(identity + '_SHA = "([0-9a-f]{64})"'))[1];
+    assert.equal(p.run(identity), hash);
+  }
+
   await p.state({ state: "installing", active: true, waiting_for_power_cycle: true });
   assert.match(e.guidanceTitle.textContent, /OFF, then ON/);
   assert.equal(e.cancel.hidden, false);
@@ -158,6 +170,38 @@ async function page() {
   ]) {
     await p.state(s);
     assert.equal(e.patchResetSpeed.disabled, true);
+  }
+  // Published timer firmware upgrades directly to the shared foundation.
+  for (const identity of ["STOCK", "DT02", "CL01", "RS01", "TB01"]) {
+    await p.state({
+      state: "read_complete",
+      sha256: p.run(identity),
+      source_sha256: p.run(identity),
+    });
+    assert.equal(e.patchPlatform.disabled, false);
+    assert.equal(e.patchTimerBuzzer.disabled, identity === "TB01");
+  }
+  p.run("original=new Uint8Array(55296);originalHash=TB01");
+  e.saved.checked = true;
+  p.io.actions = [];
+  await e.patchPlatform.onclick();
+  assert.deepEqual(p.io.actions, ["backup", "patch_platform"]);
+  await p.state({ state: "read_complete", sha256: p.run("FP01") });
+  assert.match(e.guidanceTitle.textContent, /foundation.*already installed/);
+  assert.equal(e.patchPlatform.disabled, true);
+  assert.equal(e.patchTimerBuzzer.disabled, true);
+  for (const identity of ["TB01", "FP01"]) {
+    await p.state({ state: "verified", sha256: p.run(identity) });
+    assert.match(e.guidanceDetail.textContent, /unlock the panel remotely/i);
+  }
+  for (const status of [
+    { state: "read_complete", sha256: "unknown" },
+    { state: "read_complete", sha256: p.run("TB01"), preflight_seconds: 0 },
+    { state: "reading", sha256: p.run("TB01"), active: true },
+  ]) {
+    await p.state(status);
+    assert.equal(e.patchPlatform.disabled, true);
+    assert.equal(e.patchTimerBuzzer.disabled, true);
   }
   await p.state({ state: "read_complete", sha256: "unknown" });
   assert.equal(e.patchChildLock.disabled, true);

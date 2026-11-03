@@ -71,8 +71,8 @@ directory just to avoid writing useful explanations.
 
 Use clang-format 23.1.0. The shared helper selects tracked component and test
 sources, `tools/test_reset_speed_header.cpp`, `tools/test_tb01_core.c`, and the
-hand-maintained C sources and header for RS01, the UART parser and TB01 under
-`tools/patches`. It checks the formatter version before running:
+hand-maintained C sources and headers for RS01, the UART parser, TB01 and the
+shared firmware platform under `tools/patches`. It checks the formatter version before running:
 
 ```sh
 python tools/format_cpp.py --check
@@ -96,10 +96,9 @@ Preserve public names and interfaces during formatting. Keep changes to naming,
 control flow and ownership separate from layout changes. Explain constraints in
 comments instead of restating statements.
 
-The helper excludes the four protected firmware headers `ui.h`,
-`child_lock_patch.h`, `reset_speed_patch.h` and `dt02_patch.h`, the exact protocol
-include wrappers, and assembly sources under `tools/patches`. Do not format
-these files by hand or edit generated output. For C++ changes, run the native
+The helper excludes generated firmware headers, the generated platform layout,
+the exact protocol include wrappers, and assembly sources under `tools/patches`.
+Do not format these files by hand or edit generated output. For C++ changes, run the native
 Debug and Release tests with sanitizers and the component tests affected by the
 change.
 

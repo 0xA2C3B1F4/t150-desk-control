@@ -1,5 +1,6 @@
 #pragma once
 #include "firmware_export.h"
+#include "firmware_layout.h"
 
 namespace desk_protocol {
 // The pinned T150 loader protocol. One transmission per packet, no retries,
@@ -20,23 +21,28 @@ class FirmwareInstall {
     Complete,
     Failed
   };
-  enum class Profile { OriginalDT02, ChildLockCL01, ResetSpeedRS01 };
+  enum class Profile { OriginalDT02, ChildLockCL01, ResetSpeedRS01, TimerBuzzerTB01, PlatformFP01 };
   static constexpr size_t RESET_SPEED_PAYLOAD_SIZE = 32768;
+  static constexpr size_t PLATFORM_PAYLOAD_SIZE = firmware_layout::PAYLOAD_SIZE;
   using Write = FirmwareExport::Write;
   using BeforeErase = bool (*)(void*);
   void set_before_erase(BeforeErase callback) { before_erase_ = callback; }
   bool begin(const uint8_t* image, size_t size, Write write, void* context, uint32_t now,
              Profile profile = Profile::OriginalDT02) {
-    if (active() || !image || size != 55296 || !write)
+    if (active() || !image || size != firmware_layout::APPLICATION_SIZE || !write)
       return false;
     if (profile != Profile::OriginalDT02 && profile != Profile::ChildLockCL01 &&
-        profile != Profile::ResetSpeedRS01)
+        profile != Profile::ResetSpeedRS01 && profile != Profile::TimerBuzzerTB01 &&
+        profile != Profile::PlatformFP01)
       return false;
-    payload_size_ = profile == Profile::ResetSpeedRS01  ? RESET_SPEED_PAYLOAD_SIZE
+    payload_size_ = profile == Profile::PlatformFP01 ? PLATFORM_PAYLOAD_SIZE
+                    : (profile == Profile::ResetSpeedRS01 || profile == Profile::TimerBuzzerTB01)
+                        ? RESET_SPEED_PAYLOAD_SIZE
                     : profile == Profile::ChildLockCL01 ? 26624
                                                         : 25600;
     // This erase profile leaves the final page untouched. Everything after
-    // the explicitly selected 25/26/32-block profile must be erased in the target.
+    // the explicitly selected 25/26/32/53-block profile must be erased in the target.
+    // The pinned loader erases all 53 writable pages even for shorter payloads.
     for (size_t i = payload_size_; i < size; ++i)
       if (image[i] != 255)
         return false;
@@ -107,9 +113,10 @@ class FirmwareInstall {
         const char name[] = "t150-application.bin";
         std::memcpy(header, name, sizeof(name));
         std::memcpy(header + sizeof(name),
-                    payload_size_ == RESET_SPEED_PAYLOAD_SIZE ? "32768 "
-                    : payload_size_ == 26624                  ? "26624 "
-                                                              : "25600 ",
+                    payload_size_ == PLATFORM_PAYLOAD_SIZE      ? firmware_layout::PAYLOAD_SIZE_TEXT
+                    : payload_size_ == RESET_SPEED_PAYLOAD_SIZE ? "32768 "
+                    : payload_size_ == 26624                    ? "26624 "
+                                                                : "25600 ",
                     6);
         transition_(State::HeaderAck, now);
         send_packet_(0, header, 128);

@@ -23,6 +23,10 @@ class CatalogTest(unittest.TestCase):
             "images": {x["id"]: x["sha256"] for x in self.catalog["images"]},
             "install": copy.deepcopy(self.catalog["install"]),
             "prepare": copy.deepcopy(self.catalog["prepare"]),
+            "payload_sizes": {
+                x["id"]: x["payload_size"] for x in self.catalog["images"]
+            },
+            "erase_size": 54272,
         }
 
     def test_rejects_metadata_divergence(self):
@@ -30,6 +34,10 @@ class CatalogTest(unittest.TestCase):
         mutations = [
             lambda c: c["images"][0].update(sha256="0" * 64),
             lambda c: c["images"][0].update(application_size=65536),
+            lambda c: c["images"][0].update(payload_size=54272),
+            lambda c: c["images"][0].update(erase_size=32768),
+            lambda c: c["images"][-1].update(payload_size=32768),
+            lambda c: c["images"][-1].update(sha256="f" * 64),
             lambda c: c["images"][0].update(id="unknown"),
             lambda c: c["images"].append(c["images"][0]),
             lambda c: c["install"].pop(),

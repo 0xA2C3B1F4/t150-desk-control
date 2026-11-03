@@ -69,16 +69,26 @@ def main():
         out = args.work_dir / f"{name}.out"
         start = time.monotonic()
         with out.open("w") as log:
-            result = subprocess.run(
+            commands = [
                 [
                     sys.executable,
                     str(Path(__file__).parent / f"{name}.py"),
                     "--work-dir",
                     str(args.work_dir / name),
-                ],
-                stdout=log,
-                stderr=subprocess.STDOUT,
-            )
+                ]
+            ]
+            if name == "firmware_update_lifecycle":
+                commands.insert(
+                    0,
+                    [
+                        sys.executable,
+                        str(Path(__file__).parent / "firmware_update_wrapper_test.py"),
+                    ],
+                )
+            for command in commands:
+                result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT)
+                if result.returncode:
+                    break
             if name == "reset_speed_integration" and result.returncode == 0:
                 result = subprocess.run(
                     [

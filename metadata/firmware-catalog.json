@@ -9,7 +9,9 @@
       "application_offset": 10240,
       "flash_size": 65536,
       "features": [],
-      "validation": "docs/validation.md"
+      "validation": "docs/validation.md",
+      "payload_size": 25600,
+      "erase_size": 54272
     },
     {
       "id": "dt02",
@@ -19,7 +21,9 @@
       "application_offset": 10240,
       "flash_size": 65536,
       "features": ["direct-height", "sleep-fix"],
-      "validation": "docs/validation.md"
+      "validation": "docs/validation.md",
+      "payload_size": 25600,
+      "erase_size": 54272
     },
     {
       "id": "cl01",
@@ -29,7 +33,9 @@
       "application_offset": 10240,
       "flash_size": 65536,
       "features": ["direct-height", "sleep-fix", "panel-lock"],
-      "validation": "docs/validation.md"
+      "validation": "docs/validation.md",
+      "payload_size": 26624,
+      "erase_size": 54272
     },
     {
       "id": "rs01-r7",
@@ -46,31 +52,98 @@
         "motion-speed",
         "uart-parser-fix"
       ],
+      "validation": "docs/validation.md",
+      "payload_size": 32768,
+      "erase_size": 54272
+    },
+    {
+      "id": "tb01",
+      "name": "DT02 + CL01 + RS01 R7 + TB01",
+      "sha256": "eb4ea2ff574aab412d5b7c5b4d6a74a3515ab6329d5459fae2143baec2356f07",
+      "application_size": 55296,
+      "application_offset": 10240,
+      "flash_size": 65536,
+      "payload_size": 32768,
+      "erase_size": 54272,
+      "features": [
+        "direct-height",
+        "sleep-fix",
+        "panel-lock",
+        "reset-control",
+        "motion-speed",
+        "uart-parser-fix",
+        "custom-timer",
+        "custom-buzzer"
+      ],
+      "validation": "docs/validation.md"
+    },
+    {
+      "id": "fp01",
+      "name": "FP01 shared firmware foundation",
+      "sha256": "7ae194172863a9cff9847b671bfe24a1d33399d5fa3a90eabb158992f70a0adb",
+      "application_size": 55296,
+      "application_offset": 10240,
+      "flash_size": 65536,
+      "payload_size": 54272,
+      "erase_size": 54272,
+      "features": [
+        "direct-height",
+        "sleep-fix",
+        "panel-lock",
+        "reset-control",
+        "motion-speed",
+        "uart-parser-fix",
+        "custom-timer",
+        "custom-buzzer",
+        "shared-firmware-platform"
+      ],
       "validation": "docs/validation.md"
     }
   ],
   "prepare": {
     "dt02": ["stock"],
     "cl01": ["stock", "dt02"],
-    "rs01-r7": ["stock", "dt02", "cl01"]
+    "rs01-r7": ["stock", "dt02", "cl01"],
+    "tb01": ["stock", "dt02", "cl01", "rs01-r7"],
+    "fp01": ["stock", "dt02", "cl01", "rs01-r7", "tb01"]
   },
   "install": [
     ["stock", "stock"],
     ["stock", "dt02"],
     ["stock", "cl01"],
     ["stock", "rs01-r7"],
+    ["stock", "tb01"],
+    ["stock", "fp01"],
     ["dt02", "stock"],
     ["dt02", "dt02"],
     ["dt02", "cl01"],
     ["dt02", "rs01-r7"],
+    ["dt02", "tb01"],
+    ["dt02", "fp01"],
     ["cl01", "stock"],
     ["cl01", "dt02"],
     ["cl01", "cl01"],
     ["cl01", "rs01-r7"],
+    ["cl01", "tb01"],
+    ["cl01", "fp01"],
     ["rs01-r7", "stock"],
     ["rs01-r7", "dt02"],
     ["rs01-r7", "cl01"],
-    ["rs01-r7", "rs01-r7"]
+    ["rs01-r7", "rs01-r7"],
+    ["rs01-r7", "tb01"],
+    ["rs01-r7", "fp01"],
+    ["tb01", "stock"],
+    ["tb01", "dt02"],
+    ["tb01", "cl01"],
+    ["tb01", "rs01-r7"],
+    ["tb01", "tb01"],
+    ["tb01", "fp01"],
+    ["fp01", "stock"],
+    ["fp01", "dt02"],
+    ["fp01", "cl01"],
+    ["fp01", "rs01-r7"],
+    ["fp01", "tb01"],
+    ["fp01", "fp01"]
   ],
   "recovery": {
     "target": "stock",

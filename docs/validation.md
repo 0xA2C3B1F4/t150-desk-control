@@ -55,6 +55,21 @@ were confirmed on the desk.
 | Timer expiry          | Alarm after display standby; display woke with the alarm, confirmed by the operator              |
 | Firmware maintenance  | Rejected custom requests during maintenance; controls recovered after exit                       |
 
+### FP01 shared firmware platform
+
+The maintenance interface prepared and installed FP01 from original firmware,
+installed a saved TB01 image over FP01, and prepared and reinstalled FP01 from
+TB01. Each installation passed full application readback, including the cleared
+extension area after downgrade. Maintenance exited with no recovery pending.
+A separate cold-start diagnostic checked the 1 KiB RAM reservation before FP01
+installation.
+
+With ESPHome 2026.10.1, the browser and Home Assistant returned to Ready after
+restart. Timer start, cancellation and busy rejection worked through both
+interfaces. Browser buzzer playback produced three pulses, confirmed by the operator.
+These stationary checks used a disconnected motor. The R7 motion and standby/wake
+results above remain specific to R7.
+
 ## Controller firmware fixes
 
 The sleep fix is included in DT02, CL01 and RS01 R7. The original firmware's
@@ -279,6 +294,25 @@ UART discovery, command results and the API actions:
 python tests/esphome/run_all.py --work-dir "${TMPDIR:?}/t150-tb01-tests" \
   --only custom_timer_buzzer_integration custom_timer_buzzer_api_integration
 ```
+
+### FP01 reproduction
+
+FP01 compiles the maintained C sources directly with LLVM 23.1.0; its instruction
+tests require Unicorn 2.1.4. Check the shared
+layout, embedded sections and synthetic instruction tests with:
+
+```sh
+python tools/generate_platform_layout.py --check
+python tools/embed_tb01_patch.py --check --llvm-bin /path/to/llvm/bin
+python tools/embed_platform_patch.py --check --llvm-bin /path/to/llvm/bin
+python tools/test_platform_patch.py --llvm-bin /path/to/llvm/bin
+```
+
+The instruction tests cover startup, profile rejection, RAM guards and the moved
+TB01 state. Installer tests cover the accepted image transitions, full readback,
+interrupted writes and repeated original-image recovery. The complete installer
+matrix requires private images for all six supported versions. These checks model RAM
+and peripherals; they do not measure physical SRAM or reset behavior.
 
 ## ESPHome 2026.10.1
 

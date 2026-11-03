@@ -138,7 +138,10 @@ jobs:
           python3 tools/generate_reset_speed_core.py --clang clang --check
           python3 tools/embed_reset_speed_patch.py --check
           python3 tools/generate_tb01_core.py --clang clang --check
-      - name: Test TB01 against synthetic controller helpers
+          python3 tools/generate_platform_layout.py --check
+          python3 tools/embed_tb01_patch.py --check
+          python3 tools/embed_platform_patch.py --check
+      - name: Test controller extensions against synthetic helpers
         if: matrix.build_type == 'Debug'
         env:
           TMPDIR: ${{ runner.temp }}
@@ -147,6 +150,7 @@ jobs:
         run: |
           python3 -m pip install 'unicorn==2.1.4'
           python3 tools/test_tb01_patch.py
+          python3 tools/test_platform_patch.py
       - name: C++11 ${{ matrix.build_type }} with ASan and UBSan
         run: |
           cmake -S . -B "$RUNNER_TEMP/native" -DDESK_SANITIZERS=ON -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
@@ -217,6 +221,9 @@ jobs:
       - name: Install lifecycle host-test dependencies
         if: matrix.test == 'firmware_export_lifecycle' || matrix.test == 'firmware_update_lifecycle'
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+      - name: Check lifecycle coverage arguments
+        if: matrix.test == 'firmware_update_lifecycle'
+        run: python tests/esphome/firmware_update_wrapper_test.py
       - name: Validate adapter against a simulated UART peer
         run: |
           extra_args=()

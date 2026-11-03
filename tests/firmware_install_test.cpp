@@ -250,6 +250,54 @@ int main() {
     r.feed(6);
     CHECK(r.writes.size() == before);
   }
+  // TB01 retains its 32-block payload; FP01 reaches all 53 writable pages.
+  // Neither profile may include the untouched final readback page.
+  for (auto profile : {Sender::Profile::TimerBuzzerTB01, Sender::Profile::PlatformFP01}) {
+    const size_t blocks = profile == Sender::Profile::PlatformFP01 ? 53 : 32;
+    Rig r;
+    for (size_t i = 25600; i < blocks * 1024; ++i)
+      r.image[i] = uint8_t(i * 29);
+    r.header(profile);
+    const std::string header(r.writes[1].begin() + 3, r.writes[1].begin() + 131);
+    CHECK(header.find(std::to_string(blocks * 1024) + " ") != std::string::npos);
+    for (size_t i = 0; i < blocks; ++i)
+      r.feed(6);
+    CHECK(r.sender.acked_blocks() == blocks);
+    r.feed(6);
+    r.feed(6);
+    CHECK(r.sender.complete());
+    CHECK(r.writes.size() == blocks + 4);
+    for (size_t i = 0; i < blocks; ++i) {
+      const auto& packet = r.writes[i + 2];
+      CHECK(packet[1] == i + 1);
+      CHECK(std::equal(packet.begin() + 3, packet.begin() + 1027, r.image.begin() + i * 1024));
+      CHECK(desk_protocol::FirmwareExport::crc(packet.data() + 3, 1024) ==
+            (unsigned(packet[1027]) << 8 | packet[1028]));
+    }
+    for (size_t byte : {blocks * 1024, size_t(55295)}) {
+      Rig bad;
+      bad.image[byte] = 0;
+      CHECK(!bad.sender.begin(bad.image.data(), bad.image.size(), Rig::write, &bad, bad.now,
+                              profile));
+      CHECK(bad.writes.empty());
+    }
+    // Include data ACKs 33/53, EOT and closing ACK loss. A timeout never retries.
+    for (size_t stop = 0; stop < blocks + 6; ++stop) {
+      Rig interrupted;
+      interrupted.begin(profile);
+      interrupted.boot();
+      std::vector<uint8_t> replies{6, 0x43, 6, 0x43};
+      replies.insert(replies.end(), blocks + 2, 6);
+      for (size_t i = 0; i < stop; ++i)
+        interrupted.feed(replies[i]);
+      const size_t before = interrupted.writes.size();
+      interrupted.sender.tick(interrupted.now + 5001);
+      CHECK(!interrupted.sender.active());
+      CHECK(interrupted.sender.erase_possible());
+      interrupted.feed(6);
+      CHECK(interrupted.writes.size() == before);
+    }
+  }
   std::cout
       << "Sender sequence, payload CRC, all response timeouts, NAK/CAN, tail and wrap checks passed\n";
 }

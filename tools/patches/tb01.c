@@ -11,7 +11,22 @@ typedef uint32_t u32;
 #define W(o) (*(volatile u32*)(0x20000000u + (o)))
 #define REG(a) (*(volatile u32*)(a))
 #define FN(a, t) ((t)(a))
-#define STATE ((tb_state*)0x20000ff0u)
+#ifndef TB01_STATE_ADDRESS
+#define TB01_STATE_ADDRESS 0x20000ff0u
+#endif
+#ifndef TB01_READY
+#define TB01_READY() true
+#endif
+#ifndef TB01_INITIALIZED
+#define TB01_INITIALIZED() true
+#endif
+#ifndef TB01_MARK_READY
+#define TB01_MARK_READY() ((void)0)
+#endif
+#ifndef TB01_ACCEPT_VERSION
+#define TB01_ACCEPT_VERSION(version) true
+#endif
+#define STATE ((tb_state*)TB01_STATE_ADDRESS)
 #define RTC_CR REG(0x40002808u)
 #define RTC_ISR REG(0x4000280cu)
 #define RTC_ALARM REG(0x4000281cu)
@@ -31,6 +46,8 @@ static void unlock(u32 v) {
   __asm volatile("msr PRIMASK, %0" ::"r"(v) : "memory");
 }
 static bool ready(void* unused) {
+  if (!TB01_READY())
+    return false;
   /* Request context points to the decoded opcode; SysTick passes null.
    * Only setting a timer requires the RTC alarm to be unarmed. */
   if (unused && *(const u8*)unused == 1 && (RTC_CR & 0x1100u))
@@ -146,7 +163,8 @@ static const tb_platform platform = {ready,      timer_set, timer_cancel, buzzer
                                      buzzer_off, buzzer_on, buzzer_off};
 void tb01_abort(void) {
   u32 saved = lock();
-  tb_abort(STATE, &platform, 0);
+  if (TB01_READY())
+    tb_abort(STATE, &platform, 0);
   unlock(saved);
 }
 void tb01_native_priority(u32 mode, u32 count) {
@@ -158,7 +176,10 @@ void tb01_native_priority(u32 mode, u32 count) {
 void tb01_init(void) {
   /* Initialize our unzeroed reservation before native init can enable work. */
   u32 saved = lock();
-  tb_init(STATE);
+  if (TB01_INITIALIZED()) {
+    tb_init(STATE);
+    TB01_MARK_READY();
+  }
   unlock(saved);
   FN(0x080094a1u, void (*)(void))();
 }
@@ -166,7 +187,8 @@ void tb01_watchdog(void) {
   FN(0x080094c1u, void (*)(void))();
   /* A higher-priority native-sound IRQ must not reset STATE mid-update. */
   u32 saved = lock();
-  tb_tick(STATE, &platform, 0, W(0x75c));
+  if (TB01_READY())
+    tb_tick(STATE, &platform, 0, W(0x75c));
   unlock(saved);
 }
 void tb01_sleep(void) {
@@ -174,9 +196,11 @@ void tb01_sleep(void) {
   FN(0x08007569u, void (*)(void))();
 }
 int tb01_route(void) {
+#ifndef TB01_EXTENSION_ONLY
   int original = FN(0x080097e1u, int (*)(void))();
   if (original)
     return original;
+#endif
   const volatile u8* r = (const volatile u8*)W(0xe8);
   if (r[0] != 0xd7)
     return 0;
@@ -185,6 +209,8 @@ int tb01_route(void) {
     return 1;
   for (u8 i = 0; i < (u8)(n - 1); ++i)
     q[i] = r[i];
+  if (!TB01_ACCEPT_VERSION(q[1]))
+    return 1;
   if ((u8)(B(0xf4) - B(0xf5) - 1) < 16)
     return 1;
   u32 mask;
@@ -192,7 +218,15 @@ int tb01_route(void) {
   if (mask)
     return 1; /* Do not enter native RTC waits with IRQs masked. */
   int result;
-  if (q[2] == 1 || q[2] == 2) {
+  if (!TB01_READY()) {
+    out[0] = 0xd8;
+    out[1] = 1;
+    out[2] = q[2];
+    out[3] = q[3];
+    out[4] = q[4];
+    out[5] = TB_BACKEND;
+    result = TB_REPLIED;
+  } else if (q[2] == 1 || q[2] == 2) {
     result = tb_request(STATE, &platform, &q[2], q, n - 1, W(0x75c), out);
   } else {
     u32 saved = lock();
