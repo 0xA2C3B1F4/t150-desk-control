@@ -163,6 +163,8 @@
         <button disabled id="patch">Prepare direct height control</button>
         <button disabled id="patchChildLock">Prepare panel lock</button>
         <button disabled id="patchResetSpeed">Prepare reset and speed controls</button>
+        <button disabled id="patchTimerBuzzer">Prepare custom timer and buzzer</button>
+        <button disabled id="patchPlatform">Prepare shared firmware foundation</button>
         <p class="note"
           >The reset and speed option includes panel lock, direct height control, reset calibration,
           Normal/Slow movement speeds and a fix for receiving controller messages. Use the ESPHome
@@ -231,8 +233,8 @@
     >
     <p
       >Installation erases application flash. A failed transfer may require restoring the original
-      file. Only exact supported 55,296-byte original, DT02, CL01 or RS01 application files can be
-      installed. Unknown versions can be saved for research.</p
+      file. Only exact supported 55,296-byte original, DT02, CL01, RS01, TB01 or FP01 application
+      files can be installed. Unknown versions can be saved for research.</p
     >
     <p>Files in this page are temporary. The computer download is your persistent backup.</p>
   </details>
@@ -254,7 +256,9 @@
     const STOCK = "bf52d596c81d6d499480a9dd3173e6991de5ee0c72364e0b53bc91ea89053faf",
       DT02 = "e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff",
       CL01 = "81933d93b8bc28ef0eb8b29bf7ae1c7b9104f0a8e03c1c2f8096d509de0f75d3",
-      RS01 = "ad1f321c570de25abef0f106175a5722d709b92e5db6d3da792bed9cc55fe78b";
+      RS01 = "ad1f321c570de25abef0f106175a5722d709b92e5db6d3da792bed9cc55fe78b",
+      TB01 = "eb4ea2ff574aab412d5b7c5b4d6a74a3515ab6329d5459fae2143baec2356f07",
+      FP01 = "7ae194172863a9cff9847b671bfe24a1d33399d5fa3a90eabb158992f70a0adb";
     const lockNotice =
       "Without a valid saved panel-lock setting, the panel starts locked. All physical buttons are blocked while locked, including buttons used to stop movement. Unlock the panel remotely to enable the buttons.";
     let status = null,
@@ -367,6 +371,8 @@
         "patch",
         "patchChildLock",
         "patchResetSpeed",
+        "patchTimerBuzzer",
+        "patchPlatform",
         "stage",
         "install",
         "verify",
@@ -399,6 +405,18 @@
         !status.preflight_seconds ||
         status.state !== "read_complete" ||
         ![STOCK, DT02, CL01].includes(status.sha256);
+      $("patchTimerBuzzer").disabled =
+        locked ||
+        status.pending ||
+        !status.preflight_seconds ||
+        status.state !== "read_complete" ||
+        ![STOCK, DT02, CL01, RS01].includes(status.sha256);
+      $("patchPlatform").disabled =
+        locked ||
+        status.pending ||
+        !status.preflight_seconds ||
+        status.state !== "read_complete" ||
+        ![STOCK, DT02, CL01, RS01, TB01].includes(status.sha256);
       $("install").disabled =
         locked || status.pending || !status.preflight_seconds || status.state !== "staged";
       $("verify").disabled =
@@ -479,7 +497,7 @@
         title = "All application bytes verified";
         detail =
           "Select Finish maintenance to resume normal desk communication and operation. Reconnect the motor only with controller power off." +
-          ([CL01, RS01].includes(status.sha256) ? " " + lockNotice : "");
+          ([CL01, RS01, TB01, FP01].includes(status.sha256) ? " " + lockNotice : "");
         attention = true;
       } else if (expired) {
         title = "Preflight expired. Read the controller again";
@@ -489,24 +507,40 @@
       } else if (status.state === "read_complete") {
         const alreadyPatched = status.sha256 === DT02,
           alreadyLocked = status.sha256 === CL01,
-          alreadyReset = status.sha256 === RS01;
-        const known = alreadyReset || alreadyPatched || alreadyLocked || status.sha256 === STOCK;
-        title = alreadyReset
-          ? "Reset and speed controls are already installed"
-          : alreadyLocked
-            ? "Panel lock is already installed"
-            : alreadyPatched
-              ? "Direct height control is already installed"
-              : "Read complete. Save the controller backup";
-        detail = alreadyReset
-          ? "Reset calibration, speed selection, panel lock and direct height control are installed. Save this backup. To remove reset and speed controls, select a saved original firmware file or one with direct height control or panel lock. " +
-            lockNotice
-          : alreadyLocked
-            ? "Panel lock and direct height control are installed. Save this backup. To remove panel lock, select your saved original firmware or a file with direct height control only. " +
+          alreadyReset = status.sha256 === RS01,
+          alreadyTimer = status.sha256 === TB01,
+          alreadyPlatform = status.sha256 === FP01;
+        const known =
+          alreadyPlatform ||
+          alreadyTimer ||
+          alreadyReset ||
+          alreadyPatched ||
+          alreadyLocked ||
+          status.sha256 === STOCK;
+        title = alreadyPlatform
+          ? "Shared firmware foundation is already installed"
+          : alreadyTimer
+            ? "Custom timer and buzzer are already installed"
+            : alreadyReset
+              ? "Reset and speed controls are already installed"
+              : alreadyLocked
+                ? "Panel lock is already installed"
+                : alreadyPatched
+                  ? "Direct height control is already installed"
+                  : "Read complete. Save the controller backup";
+        detail =
+          alreadyPlatform || alreadyTimer
+            ? "Custom timer, buzzer, reset calibration, speed selection, panel lock and direct height control are installed. Save this backup before selecting another supported firmware file. " +
               lockNotice
-            : alreadyPatched
-              ? "Direct height control is installed. Save this backup before preparing panel lock or selecting another firmware file. Leave controller power on."
-              : "Download the original backup and save it on your computer before preparing an image. Leave controller power on.";
+            : alreadyReset
+              ? "Reset calibration, speed selection, panel lock and direct height control are installed. Save this backup. To remove reset and speed controls, select a saved original firmware file or one with direct height control or panel lock. " +
+                lockNotice
+              : alreadyLocked
+                ? "Panel lock and direct height control are installed. Save this backup. To remove panel lock, select your saved original firmware or a file with direct height control only. " +
+                  lockNotice
+                : alreadyPatched
+                  ? "Direct height control is installed. Save this backup before preparing panel lock or selecting another firmware file. Leave controller power on."
+                  : "Download the original backup and save it on your computer before preparing an image. Leave controller power on.";
         if (!known) {
           title = status.recovery_required
             ? "Recovery read complete. Save this read"
@@ -523,7 +557,7 @@
         title = "Image prepared. Confirm and arm installation";
         detail =
           "Installation erases application flash; a failed transfer may require restoring the original file. Confirm installation below and select Arm installation. Leave controller power on until the instruction changes to OFF, then ON." +
-          ([CL01, RS01].includes(status.sha256) ? " " + lockNotice : "");
+          ([CL01, RS01, TB01, FP01].includes(status.sha256) ? " " + lockNotice : "");
       } else if (normalBootNeeded && status.state === "idle" && !status.claimed) {
         title = "Maintenance finished. Restart the controller for normal use";
         detail =
@@ -668,6 +702,16 @@
       task(async () => {
         await confirmBackup();
         await action("patch_reset_speed");
+      });
+    $("patchTimerBuzzer").onclick = () =>
+      task(async () => {
+        await confirmBackup();
+        await action("patch_timer_buzzer");
+      });
+    $("patchPlatform").onclick = () =>
+      task(async () => {
+        await confirmBackup();
+        await action("patch_platform");
       });
     $("file").onchange = async () => {
       const f = $("file").files[0];

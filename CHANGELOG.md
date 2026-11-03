@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- FP01 shared controller firmware layout and RAM reservation, retaining R7 and
+  TB01 controls.
+- Browser preparation and installation of TB01 and FP01, including verified
+  restoration of earlier supported images.
+
 ## 2026.11.0
 
 - ESPHome height reporting in cm or inches, preset controls, target-height moves,

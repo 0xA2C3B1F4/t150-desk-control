@@ -23,7 +23,11 @@ parser.add_argument("--patched", type=Path)
 parser.add_argument("--interrupted", type=Path)
 parser.add_argument("--child-lock", type=Path)
 parser.add_argument("--reset-speed", type=Path)
+parser.add_argument("--timer-buzzer", type=Path)
+parser.add_argument("--platform", type=Path)
 args = parse_args(parser=parser)
+if bool(args.timer_buzzer) != bool(args.platform):
+    parser.error("--timer-buzzer and --platform must be provided together")
 if args.interrupted and not args.original:
     parser.error("--interrupted requires both private images")
 if bool(args.original) != bool(args.patched):
@@ -32,6 +36,8 @@ if args.child_lock and not args.original:
     parser.error("--child-lock requires both private images")
 if args.reset_speed and not args.child_lock:
     parser.error("--reset-speed requires --child-lock and private images")
+if args.timer_buzzer and not args.reset_speed:
+    parser.error("--timer-buzzer requires --reset-speed and private images")
 work = args.work_dir
 host = ROOT / "tests/esphome/firmware_export_host"
 update = ROOT / "tests/esphome/firmware_update_host"
@@ -89,10 +95,20 @@ if args.child_lock:
     command += [str(args.child_lock.resolve())]
 if args.reset_speed:
     command += [str(args.reset_speed.resolve())]
+if args.timer_buzzer:
+    command += [str(args.timer_buzzer.resolve())]
+if args.platform:
+    command += [str(args.platform.resolve())]
 with (work / "run.log").open("w") as log:
     subprocess.run(
         command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=60
     )
+run_output = (work / "run.log").read_text()
+if args.platform and (
+    "TB01/FP01 exact preparation, 36 modeled transitions, 53-to-32 erase, final ACK loss, "
+    "torn blocks 33/53 and repeated original recovery passed" not in run_output
+):
+    raise SystemExit("TB01/FP01 extended lifecycle suite was not exercised")
 interrupted = None
 if args.interrupted:
     # The test strips a 0x2800 loader prefix from full-flash dumps; hash the same bytes.
@@ -100,22 +116,29 @@ if args.interrupted:
     interrupted = hashlib.sha256(
         image[0x2800:] if len(image) == 65536 else image
     ).hexdigest()
-    if (
-        f"Saved power-cut image {interrupted} recovery passed"
-        not in (work / "run.log").read_text()
-    ):
+    if f"Saved power-cut image {interrupted} recovery passed" not in run_output:
         raise SystemExit("Interrupted image was not exercised")
 summary = dict(
     passed=True,
     private_images=bool(args.original),
     child_lock_image=bool(args.child_lock),
     reset_speed_image=bool(args.reset_speed),
+    timer_buzzer_image=bool(args.timer_buzzer),
+    platform_image=bool(args.platform),
     interrupted_image=interrupted,
     hardware_access=False,
     boundary="Real adapter and SHA; host stand-ins for IDF, HTTP transport, UART, heap and preferences",
 )
 summary["application_sha256"] = {}
-for name in ("original", "patched", "child_lock", "reset_speed", "interrupted"):
+for name in (
+    "original",
+    "patched",
+    "child_lock",
+    "reset_speed",
+    "timer_buzzer",
+    "platform",
+    "interrupted",
+):
     path = getattr(args, name)
     if path:
         image = path.read_bytes()

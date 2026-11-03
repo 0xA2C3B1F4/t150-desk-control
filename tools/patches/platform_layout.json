@@ -1,0 +1,68 @@
+{
+  "identifier": "FP01",
+  "descriptor_magic": "T150FP01",
+  "layout_version": 1,
+  "ram_abi": 1,
+  "flash_base": 134217728,
+  "full_size": 65536,
+  "application_offset": 10240,
+  "application_size": 55296,
+  "code_offset": 40976,
+  "code_end": 64480,
+  "descriptor_offset": 64480,
+  "descriptor_size": 32,
+  "payload_size": 54272,
+  "payload_end": 64512,
+  "ram_start": 536875008,
+  "ram_size": 1024,
+  "initial_msp": 536874952,
+  "profile": "STM32F030C8T6-8KiB-exact-R7",
+  "slots": [
+    {
+      "name": "header",
+      "offset": 0,
+      "size": 32
+    },
+    {
+      "name": "buzzer",
+      "offset": 32,
+      "size": 16
+    },
+    {
+      "name": "display",
+      "offset": 48,
+      "size": 16
+    },
+    {
+      "name": "volume",
+      "offset": 64,
+      "size": 16
+    },
+    {
+      "name": "trim",
+      "offset": 80,
+      "size": 16
+    },
+    {
+      "name": "transaction",
+      "offset": 96,
+      "size": 64
+    },
+    {
+      "name": "abi_reserve",
+      "offset": 160,
+      "size": 96
+    },
+    {
+      "name": "future",
+      "offset": 256,
+      "size": 752
+    },
+    {
+      "name": "guard",
+      "offset": 1008,
+      "size": 16
+    }
+  ],
+  "loader_erase_size": 54272
+}

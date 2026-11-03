@@ -2,6 +2,8 @@
 #include "dt02_patch.h"
 #include "child_lock_patch.h"
 #include "reset_speed_patch.h"
+#include "tb01_patch.h"
+#include "platform_patch.h"
 #include "partial_recovery.h"
 #include "esphome/components/sha256/sha256.h"
 #include <algorithm>
@@ -247,6 +249,35 @@ struct Rig : fw::FirmwareUpdate {
       feed({6});
     CHECK(state() == "readback_required");
   }
+  std::vector<uint8_t> complete_write_model(std::vector<uint8_t> flash) {
+    // Model the pinned bootloader erase policy from the real transmitted packets.
+    // This tests image coverage, not the controller flash peripheral itself.
+    const size_t start = export_host::tx.size();
+    const size_t payload = payload_size_();
+    complete_write();
+    const auto& wire = export_host::tx;
+    CHECK(wire.size() - start == 9 + 133 + payload / 1024 * 1029 + 1 + 133);
+    std::fill(flash.begin(), flash.begin() + desk_protocol::firmware_layout::ERASE_SIZE, 255);
+    for (size_t block = 0; block < payload / 1024; ++block) {
+      const uint8_t* packet = wire.data() + start + 9 + 133 + block * 1029;
+      CHECK(packet[0] == 2 && packet[1] == block + 1 && (packet[1] ^ packet[2]) == 255);
+      CHECK(Receiver::crc(packet + 3, 1024) == (unsigned(packet[1027]) << 8 | packet[1028]));
+      std::copy(packet + 3, packet + 1027, flash.begin() + block * 1024);
+    }
+    return flash;
+  }
+  void lose_final_ack() {
+    feed({0xfa, 0x30, 0, 1, 0x31, 0xfd});
+    feed({6, 0x43, 6, 0x43});
+    for (size_t i = 0; i < payload_size_() / 1024 + 1; ++i)
+      feed({6});
+    const size_t sent = export_host::tx.size();
+    export_host::now += 5001;
+    tick();
+    CHECK(state() == "error");
+    CHECK(recovery_required());
+    CHECK(export_host::tx.size() == sent);
+  }
   std::vector<uint8_t> download() {
     AsyncWebServerRequest req("/desk-firmware/download");
     req.request_headers["Host"] = "desk.local";
@@ -263,6 +294,181 @@ std::vector<uint8_t> load(const char* path) {
     b.erase(b.begin(), b.begin() + 0x2800);
   CHECK(b.size() == 55296);
   return b;
+}
+void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_t>& direct,
+                     const std::vector<uint8_t>& child, const std::vector<uint8_t>& reset,
+                     const std::vector<uint8_t>& timer, const std::vector<uint8_t>& platform) {
+  for (size_t i = 0; i < stock.size(); ++i) {
+    CHECK(fw::tb01_byte(i, stock[i]) == timer[i]);
+    CHECK(fw::fp01_byte(i, stock[i]) == platform[i]);
+  }
+  const std::vector<std::vector<uint8_t>> old{stock, direct, child, reset};
+  for (const char* action : {"patch_timer_buzzer", "patch_platform"}) {
+    auto sources = old;
+    if (!std::strcmp(action, "patch_platform"))
+      sources.push_back(timer);
+    const auto& expected = !std::strcmp(action, "patch_platform") ? platform : timer;
+    for (const auto& source : sources) {
+      export_host::reset();
+      Rig r;
+      r.claim();
+      r.read(source);
+      r.post(action);
+      CHECK(r.state() == "error");
+      r.read(source);
+      r.backup();
+      r.post(action);
+      CHECK(r.state() == "staged");
+      CHECK(r.download() == expected);
+      r.install();
+      CHECK(r.complete_write_model(source) == expected);
+      r.post("verify");
+      r.export_image(expected);
+      CHECK(r.state() == "verified");
+      CHECK(!r.recovery_required());
+    }
+  }
+  auto all = old;
+  all.push_back(timer);
+  all.push_back(platform);
+  // All 36 source/target pairs include same-image reinstalls and shorter
+  // downgrades. Compare every byte of modeled flash with the exact target.
+  for (const auto& source : all)
+    for (const auto& target : all) {
+      export_host::reset();
+      Rig r;
+      r.claim();
+      r.read(source);
+      r.backup();
+      r.upload(target);
+      CHECK(r.state() == "staged");
+      r.install();
+      const auto written = r.complete_write_model(source);
+      CHECK(written == target);
+      r.post("verify");
+      r.export_image(written);
+      CHECK(r.state() == "verified");
+      CHECK(!r.recovery_required());
+    }
+  for (const auto& target : {timer, platform}) {
+    export_host::reset();
+    {
+      Rig r;
+      r.claim();
+      r.read(reset);
+      r.backup();
+      r.upload(target);
+      r.install();
+      r.lose_final_ack();
+    }
+    export_host::reset();
+    {
+      Rig r;
+      CHECK(r.recovery_required());
+      r.claim();
+      r.read(target);
+      CHECK(!r.recovery_required());
+    }
+  }
+  // Torn block 33 and descriptor block 53 survive adapter restarts and repeated
+  // interrupted original recovery. A damaged image never admits a patched target.
+  for (size_t block : {size_t(32), size_t(52)}) {
+    const size_t start = block * 1024;
+    size_t cut = start + 2;
+    while (cut < start + 1024 && std::all_of(
+                                     platform.begin() + start, platform.begin() + cut,
+                                     [](uint8_t b) {
+                                       return b == 255;
+                                     }))
+      cut += 2;
+    CHECK(cut < start + 1024);
+    export_host::reset();
+    {
+      Rig r;
+      r.claim();
+      r.read(timer);
+      r.backup();
+      r.upload(platform);
+      r.install();
+      r.feed({0xfa, 0x30, 0, 1, 0x31, 0xfd});
+      r.post("cancel");
+    }
+    auto torn = platform;
+    std::fill(torn.begin() + cut, torn.end(), 255);
+    for (unsigned attempt = 0; attempt < 3; ++attempt) {
+      export_host::reset();
+      Rig r;
+      CHECK(r.recovery_required());
+      r.claim();
+      r.read(torn);
+      r.backup();
+      r.upload(platform);
+      CHECK(r.state() == "error");
+      r.read(torn);
+      r.backup();
+      r.upload(stock);
+      CHECK(r.state() == "staged");
+      r.install();
+      r.feed({0xfa, 0x30, 0, 1, 0x31, 0xfd});
+      r.post("cancel");
+      CHECK(r.original_recorded());
+      // Re-observe the same high torn block, then a torn original recovery.
+      // Both histories must remain valid after each persisted retry.
+      if (attempt == 1) {
+        torn = stock;
+        std::fill(torn.begin() + 0x5dfa, torn.end(), 255);
+      }
+    }
+    export_host::reset();
+    {
+      Rig r;
+      r.claim();
+      r.read(torn);
+      r.backup();
+      r.upload(stock);
+      CHECK(r.state() == "staged");
+      r.install();
+      CHECK(r.complete_write_model(torn) == stock);
+      r.post("verify");
+      r.export_image(stock);
+      CHECK(r.state() == "verified");
+      CHECK(!r.recovery_required());
+    }
+  }
+  // A matching descriptor without a matching whole-image hash grants nothing.
+  for (int damage : {0, 1}) {
+    export_host::reset();
+    Rig r;
+    r.claim();
+    r.read(reset);
+    r.backup();
+    auto bad = platform;
+    bad[damage ? bad.size() - 1 : 0] ^= 1;
+    r.upload(bad);
+    CHECK(r.state() == "error");
+    CHECK(!r.recovery_required());
+  }
+  // Verification covers the untouched page as well as all 53 written blocks.
+  export_host::reset();
+  {
+    Rig r;
+    r.claim();
+    r.read(reset);
+    r.backup();
+    r.upload(platform);
+    r.install();
+    r.complete_write();
+    r.post("verify");
+    auto damaged = platform;
+    damaged.back() = 0;
+    r.export_image(damaged);
+    CHECK(r.state() == "error");
+    CHECK(r.recovery_required());
+    r.read(platform);
+    CHECK(!r.recovery_required());
+  }
+  std::cout
+      << "TB01/FP01 exact preparation, 36 modeled transitions, 53-to-32 erase, final ACK loss, torn blocks 33/53 and repeated original recovery passed\n";
 }
 int main(int argc, char** argv) {
   {
@@ -1162,6 +1368,8 @@ int main(int argc, char** argv) {
           r.post("patch_reset_speed");
           CHECK(r.state() == "error");
         }
+        if (argc >= 8)
+          extended_images(stock, patched, child, reset, load(argv[6]), load(argv[7]));
         std::cout
             << "RS01 exact bytes, chained preparation, sixteen image transitions and extended-block recovery passed\n";
       }

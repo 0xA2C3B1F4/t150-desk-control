@@ -9,23 +9,22 @@ Host tests and successful builds do not establish physical behavior.
 
 These checks used the R7 image and the updated `FA FA` sender together.
 
-| Feature            | Checked on hardware                                                                                                                                                                                                                                                                                   |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Installation       | Browser preparation from CL01, installation and comparison of all application bytes by full readback                                                                                                                                                                                                  |
-| UART and controls  | Controller discovery, telemetry, preset and load-setting readbacks, and remote Stop during a preset move                                                                                                                                                                                              |
-| Reset              | Stop during descent, a stationary pause, explicit continuation and completed calibration with controller outputs off; physical movement confirmed by the operator                                                                                                                                     |
-| Motion speed       | Normal/Slow selection and comparison runs in both directions, with short and longer direct-target moves; preset values unchanged. Target-position differences remained, including Slow upward moves stopping below the requested height. See [positioning observations](reset-speed.md#motion-speed). |
-| Control status     | Ready displayed in the browser; reset, pause, continuation and completion states observed through the ESPHome API                                                                                                                                                                                     |
-| Standby and wake   | Panel display went dark while ESPHome was stopped for the test. A local button woke the panel; UART, identification and Ready returned. Target movement and Stop worked after waking, with operator confirmation. Presets and load limits were unchanged.                                             |
-| Patched keep-awake | Stationary telemetry stayed continuous in automatic direct mode, without new UART errors or gaps. This mode uses the firmware sleep fix and does not borrow a preset.                                                                                                                                 |
-| Timer controls     | All four menu selections and cancellation, including operator confirmation of the panel display; alarm expiry was not tested                                                                                                                                                                          |
-| Downward load base | Stationary write, controller readback and restoration of the original value; force response and homing with a changed value were not tested                                                                                                                                                           |
+| Feature            | Checked on hardware                                                                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Installation       | Browser preparation from CL01, installation and full application readback                                                                      |
+| UART and controls  | Discovery, telemetry, preset and load-setting readbacks, and Stop during a preset move                                                         |
+| Reset              | Stop, pause, explicit continuation and completed calibration                                                                                   |
+| Motion speed       | Normal/Slow moves in both directions, with presets unchanged. Positioning differences remain; see [motion speed](reset-speed.md#motion-speed). |
+| Control status     | Browser Ready state and API calibration states                                                                                                 |
+| Standby and wake   | Panel standby, button wake, restored UART control, target movement and Stop; presets and load limits unchanged                                 |
+| Patched keep-awake | Continuous stationary telemetry in automatic direct mode, without UART errors or preset borrowing                                              |
+| Timer controls     | All four panel selections and cancellation; alarm expiry was not tested                                                                        |
+| Downward load base | Stationary write, readback and restoration; changed-limit force response and homing were not tested                                            |
 
 ### Original, DT02 and CL01
 
-These results apply to the original, DT02 and CL01 configurations with earlier
-ESPHome software. They do not validate the current sender or Control status
-layout with those images, or establish R7 coverage.
+These checks used earlier ESPHome software and apply only to the listed
+controller versions.
 
 | Feature                         | Checked on hardware                                                                                                                                         |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -38,22 +37,27 @@ layout with those images, or establish R7 coverage.
 
 ### TB01 custom timer and buzzer
 
-The [TB01 image](custom-timer-buzzer.md) was built from the exact RS01 R7 source
-with pinned LLVM 23.1.0. Its full-image SHA-256 is
-`d9154fc156515d9d2d169b73130ee6ab71bd21061f2e9ac5fb2107735ffb4f2a`.
-The adapter checks used ESPHome 2026.10.1.
-The TB01 control package was also checked after encrypted OTA installation:
-web buzzer playback, web and HA timer controls, saved selections and startup
-without temporary-preset recovery. Buzzer output and timer indicator changes
-were confirmed on the desk.
+The [TB01 controls](custom-timer-buzzer.md) were checked with ESPHome 2026.10.1,
+including encrypted OTA, saved selections and startup without temporary-preset
+recovery.
 
-| Feature               | Checked on hardware                                                                              |
-| --------------------- | ------------------------------------------------------------------------------------------------ |
-| Installation          | Full application readback matched the TB01 image                                                 |
-| Home Assistant buzzer | Short and long pulses, pauses, pulse count and physical M interruption confirmed by the operator |
-| Timer actions         | Set, busy/invalid rejection, HA and panel-set timer cancellation, and indicator behavior         |
-| Timer expiry          | Alarm after display standby; display woke with the alarm, confirmed by the operator              |
-| Firmware maintenance  | Rejected custom requests during maintenance; controls recovered after exit                       |
+| Feature              | Checked on hardware                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------------------------- |
+| Installation         | Full application readback matched the TB01 image                                                     |
+| Buzzer               | Web and HA playback, pulse lengths, pauses, repeat count and interruption with M                     |
+| Timer actions        | Web and HA start/cancel, busy/invalid rejection, panel-set timer cancellation and indicator behavior |
+| Timer expiry         | Alarm and display wake after standby                                                                 |
+| Firmware maintenance | Rejected custom requests during maintenance; controls recovered after exit                           |
+
+### FP01 shared firmware platform
+
+Hardware checks covered installation from original firmware, downgrade to TB01
+and reinstallation of FP01, each with full application readback, including the
+cleared extension area after downgrade. A separate diagnostic checked the 1 KiB
+RAM reservation at cold start before FP01 installation.
+
+Stationary ESPHome 2026.10.1 checks covered restart, timer controls and buzzer
+playback through web and HA, and rejection of timer requests while busy.
 
 ## Controller firmware fixes
 
@@ -279,6 +283,25 @@ UART discovery, command results and the API actions:
 python tests/esphome/run_all.py --work-dir "${TMPDIR:?}/t150-tb01-tests" \
   --only custom_timer_buzzer_integration custom_timer_buzzer_api_integration
 ```
+
+### FP01 reproduction
+
+FP01 compiles the maintained C sources directly with LLVM 23.1.0; its instruction
+tests require Unicorn 2.1.4. Check the shared
+layout, embedded sections and synthetic instruction tests with:
+
+```sh
+python tools/generate_platform_layout.py --check
+python tools/embed_tb01_patch.py --check --llvm-bin /path/to/llvm/bin
+python tools/embed_platform_patch.py --check --llvm-bin /path/to/llvm/bin
+python tools/test_platform_patch.py --llvm-bin /path/to/llvm/bin
+```
+
+The instruction tests cover startup, profile rejection, RAM guards and the moved
+TB01 state. Installer tests cover the accepted image transitions, full readback,
+interrupted writes and repeated original-image recovery. The complete installer
+matrix requires private images for all six supported versions. These checks model RAM
+and peripherals; they do not measure physical SRAM or reset behavior.
 
 ## ESPHome 2026.10.1
 
