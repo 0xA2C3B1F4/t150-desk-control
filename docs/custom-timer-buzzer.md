@@ -22,9 +22,11 @@ timer or Play buzzer to use it. Settings survive an ESP32 restart; timers and
 sounds do not restart automatically. Changing the alarm settings after starting
 a timer affects the next timer.
 
-Both volumes default to 50%. Volume is relative output strength, not a measured
-loudness. Softening rounds the start and end of longer pulses. It is off by
-default and has no effect on very short pulses or full-volume output.
+Both volumes default to 50%. The controls step by 5%; enter a whole number
+manually or use an action for finer adjustment. Volume is relative output
+strength, not measured loudness. Softening rounds the start and end of longer
+pulses. It is off by default and has no effect on very short pulses, volumes
+up to 5% or full-volume output.
 
 A zero-volume timer is silent. Play buzzer at zero volume stops the current
 custom sound. Cancel buzzer stops playback without cancelling a timer that has
@@ -56,7 +58,7 @@ These action names use the device name, not the Home Assistant entity name.
 | `on_ms`   | 5–2000 ms             |
 | `off_ms`  | 5–5000 ms             |
 | `count`   | 1–20 pulses           |
-| `volume`  | 0–100%, in steps of 5 |
+| `volume`  | 0–100%, whole numbers |
 | `soften`  | `true` or `false`     |
 
 `custom_timer_cancel` and `custom_buzzer_cancel` take no parameters.

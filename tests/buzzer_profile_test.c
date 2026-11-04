@@ -24,8 +24,7 @@ int main(void) {
   }
   for (unsigned volume = 0; volume <= 255; ++volume) {
     bytes[7] = (uint8_t)volume;
-    assert(buzzer_profile_decode(bytes, 19, &profile, &minutes) ==
-           (volume >= 5 && volume <= 100 && volume % 5 == 0));
+    assert(buzzer_profile_decode(bytes, 19, &profile, &minutes) == (volume >= 1 && volume <= 100));
   }
   packet(bytes, BUZZER_TIMER);
   bytes[7] = 0;
@@ -56,13 +55,13 @@ int main(void) {
     assert(!buzzer_profile_decode(bytes, 19, &profile, &minutes));
     bytes[i] ^= 1;
   }
-  for (unsigned volume = 0; volume <= 100; volume += 5) {
+  for (unsigned volume = 0; volume <= 100; ++volume) {
     for (unsigned on_ms = 5; on_ms <= 2000; ++on_ms) {
       for (unsigned elapsed = 0; elapsed <= on_ms; ++elapsed) {
         const unsigned peak = 24 * volume;
         const unsigned level = buzzer_profile_compare(volume, true, on_ms, elapsed);
         assert(level <= peak);
-        assert(level >= (volume >= 5 ? 120u : 0u));
+        assert(level >= (volume >= 5 ? 120u : peak));
         if (volume == 100 || on_ms < 15 || volume <= 5) {
           assert(level == peak);
         }

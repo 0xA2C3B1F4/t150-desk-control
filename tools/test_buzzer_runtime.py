@@ -141,6 +141,23 @@ class BuzzerRuntimeTests(unittest.TestCase):
             [(0, True), (10, True), (20, True)],
         )
 
+    def test_one_percent_steps_drive_exact_pwm_and_release(self):
+        """Fine volume values reach the PWM compare register for sounds and alarms."""
+        for operation in (9, 10):
+            for volume in (1, 2, 3, 4, 6, 94, 95, 96, 97, 98, 99):
+                with self.subTest(operation=operation, volume=volume):
+                    desk = self.desk()
+                    self.assertEqual(
+                        desk.send(profile_packet(operation, volume=volume))[5], 0
+                    )
+                    if operation == 10:
+                        desk.alarm()
+                    self.assertEqual(desk.reg(0x40014034), volume * 24)
+                    self.assertEqual(desk.reg(0x40020058) & 1, 1)
+                    for now in (5, 10, 15, 20, 25):
+                        desk.tick(now)
+                    self.assert_released(desk)
+
     def test_owner_refusal_and_no_loud_fallback(self):
         """A foreign timer, DMA owner or lost PWM claim never becomes full-volume output."""
         for address, value in ((0x40021018, 1 << 16), (0x40020058, 1), (0x40021004, 0)):

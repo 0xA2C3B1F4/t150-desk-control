@@ -411,6 +411,40 @@ desk_uart:
         await wait_until(lambda: len(writes()) == before + 1)
         assert writes()[-1][8:13] == bytes([0, 5, 0, 5, 1])
         assert writes()[-1][13:] == bytes([2, 5, 20, 20, 80, 100])
+        # The UI arrow step remains five, but manual whole-number values are exact.
+        for number, button, action, volume in (
+            ("Buzzer volume", "Play buzzer", "custom_beep_profile", 1),
+            ("Timer alarm volume", "Start timer", "custom_timer_profile", 99),
+        ):
+            client.number_command(keys["Timer duration"], 2)
+            client.number_command(keys["Buzzer repetitions"], 2)
+            client.number_command(keys[number], volume)
+            await wait_until(lambda: latest(number) == volume)
+            before = len(writes())
+            client.button_command(keys[button])
+            await wait_until(lambda: len(writes()) == before + 1)
+            button_frame = writes()[-1]
+            assert button_frame[7] == volume
+            await asyncio.sleep(0.1)
+            data = dict(on_ms=5, off_ms=5, count=1, volume=volume, soften=False)
+            if action == "custom_timer_profile":
+                data["minutes"] = 2
+            await client.execute_service(service[action], data)
+            await wait_until(lambda: len(writes()) == before + 2)
+            assert writes()[-1][7] == volume
+            await asyncio.sleep(0.1)
+            client.number_command(keys[number], volume + 0.5)
+            await wait_until(lambda: latest(number) == volume + 0.5)
+            marker = len(states)
+            client.button_command(keys[button])
+            await wait_until(
+                lambda: any(
+                    key == keys["Custom timer and buzzer result"]
+                    and value.startswith("Use whole numbers")
+                    for key, value in states[marker:]
+                )
+            )
+            assert len(writes()) == before + 2
         return [frame.hex(" ") for frame in writes()]
     finally:
         if client is not None:

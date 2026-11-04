@@ -85,7 +85,7 @@ class CustomTimerBuzzer {
   }
   static bool valid_profile(int on_ms, int off_ms, int count, int volume) {
     return on_ms >= 5 && on_ms <= 2000 && off_ms >= 5 && off_ms <= 5000 && count >= 1 &&
-           count <= 20 && volume >= 0 && volume <= 100 && volume % 5 == 0;
+           count <= 20 && volume >= 0 && volume <= 100;
   }
   bool begin_profile(Operation op, uint16_t minutes, uint16_t on_ms, uint16_t off_ms, uint8_t count,
                      uint8_t volume, bool soften, uint32_t now, Frame& out) {

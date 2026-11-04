@@ -7,8 +7,8 @@ static uint16_t be16(const uint8_t* bytes) {
 bool buzzer_profile_valid(const BuzzerProfile* profile, bool allow_silent) {
   return profile->on_ms >= 5 && profile->on_ms <= 2000 && profile->off_ms >= 5 &&
          profile->off_ms <= 5000 && profile->count >= 1 && profile->count <= 20 &&
-         profile->volume <= 100 && profile->volume % 5 == 0 &&
-         (allow_silent || profile->volume != 0) && profile->soften <= 1 && !profile->reserved;
+         profile->volume <= 100 && (allow_silent || profile->volume != 0) && profile->soften <= 1 &&
+         !profile->reserved;
 }
 
 bool buzzer_profile_decode(const uint8_t* body, size_t size, BuzzerProfile* profile,
@@ -56,7 +56,7 @@ static uint16_t ramp_ms(uint16_t duration, uint16_t cap) {
 }
 
 uint16_t buzzer_profile_compare(uint8_t volume, bool soften, uint16_t on_ms, uint16_t elapsed_ms) {
-  if (volume > 100 || volume % 5 != 0) {
+  if (volume > 100) {
     return 0;
   }
   const uint16_t peak = (BUZZER_PERIOD * volume) / 100;

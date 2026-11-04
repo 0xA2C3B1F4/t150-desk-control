@@ -49,7 +49,7 @@ void buzzer_pwm_release(void) {
 }
 
 void buzzer_pwm_compare(uint16_t compare) {
-  if (buzzer_pwm_owned() && compare >= BUZZER_PERIOD / 20 && compare <= BUZZER_PERIOD * 95 / 100) {
+  if (buzzer_pwm_owned() && compare >= BUZZER_PERIOD / 100 && compare <= BUZZER_PERIOD * 99 / 100) {
     TIM(0x34) = compare;
   }
 }
@@ -62,7 +62,7 @@ bool buzzer_pwm_resume(bool direct, uint16_t compare) {
     PF_BSRR = 0x80;
     return true;
   }
-  if (!buzzer_pwm_owned() || compare < BUZZER_PERIOD / 20 || compare > BUZZER_PERIOD * 95 / 100) {
+  if (!buzzer_pwm_owned() || compare < BUZZER_PERIOD / 100 || compare > BUZZER_PERIOD * 99 / 100) {
     return false;
   }
   stop_engine();
@@ -82,7 +82,7 @@ bool buzzer_pwm_resume(bool direct, uint16_t compare) {
 }
 
 bool buzzer_pwm_begin(uint8_t volume, uint16_t compare) {
-  if (!volume || volume > 100 || volume % 5 || !buzzer_pwm_available() ||
+  if (!volume || volume > 100 || !buzzer_pwm_available() ||
       (REG(0x48001400u) & 0xc000u) != 0x4000u) {
     return false;
   }
@@ -91,8 +91,8 @@ bool buzzer_pwm_begin(uint8_t volume, uint16_t compare) {
   }
   /* HSI/2 x12, PLL selected, no HCLK/PCLK division. DMA and GPIO are native clocks. */
   if ((REG(0x40021004u) & 0x003d07fcu) != 0x00280008u ||
-      (REG(0x40021014u) & 0x00400001u) != 0x00400001u || compare < BUZZER_PERIOD / 20 ||
-      compare > BUZZER_PERIOD * 95 / 100) {
+      (REG(0x40021014u) & 0x00400001u) != 0x00400001u || compare < BUZZER_PERIOD / 100 ||
+      compare > BUZZER_PERIOD * 99 / 100) {
     return false;
   }
   RCC |= TIMER_CLOCK;

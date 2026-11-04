@@ -10,13 +10,13 @@ from build_motion_trim_patch import BOOT_PROFILE, write_outputs as write_outputs
 import build_platform_patch as platform
 import compile_motion_trim as compiler
 
-OUTPUT_FULL_SHA256 = "5e4b7185a161d43f55ed4fd6fe9f5382186bbf5a511f11ed6c20756924c159df"
-OUTPUT_APP_SHA256 = "56d7033ccb28c682eed97f81adc6892fd0e4fccd606fce2962555ecf1049d0bb"
+OUTPUT_FULL_SHA256 = "034f136ee4fcc10b1ec569b138394394f2dc1956bff1af55b561bc9e0d7bf2f3"
+OUTPUT_APP_SHA256 = "e7b7392cb648209ca9b7eb0d5b02cd96f407bdfb73b2e5cfe5c5748398d13d25"
 OUTPUT_PAYLOAD_SHA256 = (
-    "f5610f1a34a3e2911294da2734409b53c114b508ecc936b5daf7bcd5a1f64c04"
+    "d1ab14f44f1e46826de90fcbfe5a3367cf39b437db4bc5b466b71c7b1a38f029"
 )
 PATCH_SECTIONS_SHA256 = (
-    "015e05aadd781e6f41b597550ab020bc411fbf1cebafe92a6fcd8bbd7d91f069"
+    "83eb3db3ddeacd8d9ffc5ccacf38d46e53cf58d413311ec7f0ca2fada5130ec7"
 )
 PAYLOAD_SIZE = platform.PAYLOAD_SIZE
 HOOKS = {"hook_buzzer_timer": (0x67EC, bytes.fromhex("70b53c21fcf780f8"))}

@@ -58,6 +58,9 @@ int main() {
     alarm.clear();
     CHECK(!alarm.active(60000));
   }
+  for (int volume = -1; volume <= 101; ++volume) {
+    CHECK(CustomTimerBuzzer::valid_profile(5, 5, 1, volume) == (volume >= 0 && volume <= 100));
+  }
   {
     CustomTimerBuzzer profiles;
     Frame request{}, response{};

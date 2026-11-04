@@ -209,7 +209,7 @@ button:
               length >= 5 && length <= 2000 && length == std::floor(length) &&
               pause >= 5 && pause <= 5000 && pause == std::floor(pause) &&
               count >= 1 && count <= 20 && count == std::floor(count) &&
-              volume >= 0 && volume <= 100 && std::fmod(volume, 5) == 0) {
+              volume >= 0 && volume <= 100 && volume == std::floor(volume)) {
             id(desk)->custom_timer_profile(static_cast<int>(minutes), static_cast<int>(length),
                 static_cast<int>(pause), static_cast<int>(count), static_cast<int>(volume),
                 id(timer_sound_soften).state);
@@ -241,7 +241,7 @@ button:
           if (length >= 5 && length <= 2000 && length == std::floor(length) &&
               pause >= 5 && pause <= 5000 && pause == std::floor(pause) &&
               count >= 1 && count <= 20 && count == std::floor(count) &&
-              volume >= 0 && volume <= 100 && std::fmod(volume, 5) == 0) {
+              volume >= 0 && volume <= 100 && volume == std::floor(volume)) {
             id(desk)->custom_beep_profile(static_cast<int>(length), static_cast<int>(pause),
                 static_cast<int>(count), static_cast<int>(volume), id(buzzer_soften).state);
           } else {
