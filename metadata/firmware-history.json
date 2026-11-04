@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_commit": "fb345b84f07ac7d0d3ffe28acf9c1d3d2631638b",
+  "source_commit": "84f2e035c5700120a8c77fe88b1c2f79de5487aa",
   "headers": {
     "dt02_patch.h": {
       "sha256": "81b4cd16ec96585c64331272fe9b6bce0bc01fa259913b2f9cd02f6eddca6757",
@@ -81,6 +81,53 @@
         "11:before_hook_route": "8e5e563b3d4ff9fb83cfea6c5b270b65e6a7f46253b5b9bdd18cc815420920e5",
         "12:before_hook_tick": "1b1ebb325cc6d5bae3329cbdcebc76b021247fa5b0c6fe85e8e53e01581998d5",
         "13:before_hook_boot": "34fbb06012c6b9586d4d9ea14017ef785631aac5c8f9ba5895a95fb19add7270"
+      }
+    },
+    "motion_trim_patch.h": {
+      "sha256": "45be9c05e02375232761e587c23a22a6ec57d94d70cfcf10ccc565ee8b9d6ec4",
+      "sections": {
+        "0:TR01_HOOK_SOUND": "6fb80709bed55ca1c0e5b153baa06b566df14e9913faf466ebf10bae13952234",
+        "1:TR01_HOOK_SLEEP": "7fc7e3b8ca5b4934174f3518cce36c96759d3644106fd266d83d4e5508a7890f",
+        "2:TR01_HOOK_INIT": "904f3b5d959fda13210f7160bfc817936af17b7ea3971beb97708b1afbfeff55",
+        "3:TR01_HOOK_ROUTE": "e1316e4ac6e76e676643dd394b85ff521abe3b4b4553756571a7c1d5bc174183",
+        "4:TR01_HOOK_TICK": "cdb648753d9661db010541939bdaa819f4ea6acb1d18b46a5703a83d9a736ac1",
+        "5:TR01_HOOK_BOOT": "201a0a2fb90a6678881c73d49b442f8c2632b80047ba3b45aaa6fd74cb161716",
+        "6:TR01_HOOK_TRIM_PRESET_1": "ce397a1b717d1a5860ea9cb5928f5c410ed50d385d986eec60d80de419640c56",
+        "7:TR01_HOOK_TRIM_PRESET_2": "6f1f49b29ff8235cb09d1282c89300d064742fb1bb1b5059e253b1c0825dd9e3",
+        "8:TR01_HOOK_TRIM_PRESET_3": "98faa96fb62ac0a07384dc143bfe26db62f8a232be43c95f4a6a77c3fa76e6af",
+        "9:TR01_HOOK_TRIM_DIRECT": "f8c254159c5dbea72cdfc9cd12f383b5ce03812bea59cf7b93d58c02c2288555",
+        "10:TR01_HOOK_TRIM_TX": "10b66acbe5ded5ebfd0c5baefc978a4fc860dcdf94aeff925cf7d0f80fc24a73",
+        "11:TR01_HOOK_TRIM_GPIO": "fc5dc9971701d12d8c63bab63a55691c7291b50935920eb152c115b3b8ef199b",
+        "12:TR01_HOOK_TRIM_NATIVE": "45d247324fa0ed37dc3847fc97fcb69abe75710d15e557ca5638c8807d5ead41",
+        "13:TR01_HOOK_TRIM_UART": "569e9f1ba4236c2411e16f8b03c236e4fcd24792b358e59ee32a7f0b9a68e333",
+        "14:TR01_HOOK_TRIM_STARTUP": "f42f13ea40b7fe1024188289e1d6d53a78fde772df3894a4a92af716ee37b29f",
+        "15:TR01_HOOK_TRIM_SELECTOR": "06cbf2a819215e08c8ef8c24943595f19e7008e41040c3a547dd788957669f27",
+        "16:TR01_HOOK_TRIM_FOREGROUND": "f5b82dea3e58f66dded8d138310bbb0a9b316e1c59e715a5b2853fe7e39033b9",
+        "17:TR01_CANDIDATE": "e743fe258df592b20146a66714aa413b2c022c65d7d1919846acc8f01aab7084",
+        "18:TR01_DESCRIPTOR": "7925c3b8448296acbbaf6423b7ddba585dde42121b559fc81d053d129b581074",
+        "19:before_hook_sound": "dc200be023cf7496bd67bab6517f59f18ab106ac7222f5d8be059ce9e2bc3550",
+        "20:before_hook_sleep": "db0f0a906d3576a9aafd3ec61a87d53ba818a74ef1babbca2300a26541b16682",
+        "21:before_hook_init": "ca83fc56b5af36dec5163ece39b0ece3561c438ef1e892fab7b6b3fa46d58e30",
+        "22:before_hook_route": "8e5e563b3d4ff9fb83cfea6c5b270b65e6a7f46253b5b9bdd18cc815420920e5",
+        "23:before_hook_tick": "1b1ebb325cc6d5bae3329cbdcebc76b021247fa5b0c6fe85e8e53e01581998d5",
+        "24:before_hook_boot": "34fbb06012c6b9586d4d9ea14017ef785631aac5c8f9ba5895a95fb19add7270",
+        "25:before_hook_trim_preset_1": "87ce4e891cbe1f3e8189f659fa9e65ecd261ef972e0e57abe67ea98d7ebd6fe3",
+        "26:before_hook_trim_preset_2": "87ce4e891cbe1f3e8189f659fa9e65ecd261ef972e0e57abe67ea98d7ebd6fe3",
+        "27:before_hook_trim_preset_3": "87ce4e891cbe1f3e8189f659fa9e65ecd261ef972e0e57abe67ea98d7ebd6fe3",
+        "28:before_hook_trim_direct": "8e8b06bc40b0bb5b56e2d93d952b446bbd133e53d414c98b48d735be33a99634",
+        "29:before_hook_trim_tx": "4fe54c7156a7139aad1fc7091e7396a597c78b81903b0582932c8e0aafc97ca0",
+        "30:before_hook_trim_gpio": "bb02f7406de54a35ce133d046a69e0c497e987d481f8e91a1cf5b6cedce11269",
+        "31:before_hook_trim_native": "be7039747e8fbff520fe37bd6e719dc8ee0f58cd617902d603d2c53337ea37a2",
+        "32:before_hook_trim_uart": "7419c679c2272623c41e254d3abe26bbb9130cf17108eb023b9f3527e4e73aaf",
+        "33:before_hook_trim_startup": "b472a84b4ce63d9ab8010d55f81c90591dda104b0607fbceb40497d4253a1188",
+        "34:before_hook_trim_selector": "fd8b9cec4a00f70a791290d054cbf81e137dcd56f932997c90d2404b16917d18",
+        "35:before_hook_trim_foreground": "d7583b04f6ebe4e6852e48920c64cf48109cece3498bede7229a6e33f2c789dd",
+        "36:before_hook_sound": "dc200be023cf7496bd67bab6517f59f18ab106ac7222f5d8be059ce9e2bc3550",
+        "37:before_hook_sleep": "db0f0a906d3576a9aafd3ec61a87d53ba818a74ef1babbca2300a26541b16682",
+        "38:before_hook_init": "ca83fc56b5af36dec5163ece39b0ece3561c438ef1e892fab7b6b3fa46d58e30",
+        "39:before_hook_route": "8e5e563b3d4ff9fb83cfea6c5b270b65e6a7f46253b5b9bdd18cc815420920e5",
+        "40:before_hook_tick": "1b1ebb325cc6d5bae3329cbdcebc76b021247fa5b0c6fe85e8e53e01581998d5",
+        "41:before_hook_boot": "34fbb06012c6b9586d4d9ea14017ef785631aac5c8f9ba5895a95fb19add7270"
       }
     }
   }

@@ -3,7 +3,26 @@
 Hardware results apply to the [tested controller](hardware.md#desk-and-controller-compatibility).
 Host tests and successful builds do not establish physical behavior.
 
+## Custom sound profiles
+
+BZ01 adds 5 ms pulses, volume and a separate timer alarm sound to the current
+controller firmware. Linked-code tests cover playback, cancellation, sleep,
+resource conflicts and fault cleanup. Exact-image emulation also runs the native
+RTC interrupt and alarm-service branch. Host tests check the web and HA controls,
+parameter validation, and all 64 supported install/restore image pairs.
+
+The Stamp-C3 build includes the controls, encrypted API, web interface, OTA and
+firmware maintenance. Earlier firmware reconstruction bytes remain pinned.
+
 ## Hardware validation
+
+### Custom sound profiles
+
+BZ01 passed installation and full application readback through firmware
+maintenance. Encrypted ESPHome OTA, web controls and Home Assistant actions
+worked on Stamp-C3. Hardware checks covered volume, 5 ms pulse and pause limits,
+softening, playback cancellation, zero-volume stopping and a separate timer
+alarm sound.
 
 ### Current firmware maintenance
 
@@ -83,8 +102,9 @@ playback through web and HA, and rejection of timer requests while busy.
 
 ## Controller firmware fixes
 
-The sleep fix is included in DT02, CL01 and RS01 R7. The original firmware's
-RTC hour-wrap branch could request sleep while channel-2 telemetry was active.
+The current controller firmware includes the sleep fix from DT02, CL01 and
+RS01 R7. The original firmware's RTC hour-wrap branch could request sleep while
+channel-2 telemetry was active.
 The patch makes that branch use the same telemetry check as the ordinary sleep
 path. Arithmetic and instruction tests cover the branch. Hardware checks cover
 installation, full readback and telemetry continuity. The R7 panel standby and

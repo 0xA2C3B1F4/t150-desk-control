@@ -5,6 +5,7 @@
 #include "tb01_patch.h"
 #include "platform_patch.h"
 #include "motion_trim_patch.h"
+#include "buzzer_patch.h"
 #include "partial_recovery.h"
 #include "esphome/components/sha256/sha256.h"
 #include <algorithm>
@@ -58,7 +59,7 @@ struct Rig : fw::FirmwareUpdate {
     CHECK(body.back() == '}');
     CHECK(body.find("\"target_name\":\"T150 Desk Control controller firmware\"") !=
           std::string::npos);
-    CHECK(body.find(std::string("\"target_sha256\":\"") + fw::TR01_SHA + "\"") !=
+    CHECK(body.find(std::string("\"target_sha256\":\"") + fw::BZ01_SHA + "\"") !=
           std::string::npos);
     CHECK(body.find(std::string(32, '9')) != std::string::npos);
     CHECK(body.find(std::string(232, 'a')) != std::string::npos);
@@ -360,12 +361,13 @@ std::vector<uint8_t> load(const char* path) {
 void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_t>& direct,
                      const std::vector<uint8_t>& child, const std::vector<uint8_t>& reset,
                      const std::vector<uint8_t>& timer, const std::vector<uint8_t>& platform,
-                     const std::vector<uint8_t>& trims) {
+                     const std::vector<uint8_t>& trims, const std::vector<uint8_t>& current) {
   for (size_t i = 0; i < stock.size(); ++i) {
     CHECK(fw::tb01_byte(i, stock[i]) == timer[i]);
     CHECK(fw::fp01_byte(i, stock[i]) == platform[i]);
     if (!trims.empty())
       CHECK(fw::tr01_byte(i, stock[i]) == trims[i]);
+    CHECK(fw::bz01_byte(i, stock[i]) == current[i]);
   }
   const std::vector<std::vector<uint8_t>> old{stock, direct, child, reset};
   auto all = old;
@@ -373,6 +375,7 @@ void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_
   all.push_back(platform);
   CHECK(!trims.empty());
   all.push_back(trims);
+  all.push_back(current);
   for (const auto& source : all) {
     export_host::reset();
     Rig r;
@@ -385,11 +388,11 @@ void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_
     r.check_preparation_guards(source);
     r.post("prepare_current");
     CHECK(r.state() == "staged");
-    CHECK(r.download() == trims);
+    CHECK(r.download() == current);
     r.install();
-    CHECK(r.complete_write_model(source) == trims);
+    CHECK(r.complete_write_model(source) == current);
     r.post("verify");
-    r.export_image(trims);
+    r.export_image(current);
     CHECK(r.state() == "verified");
     CHECK(!r.recovery_required());
   }
@@ -419,7 +422,7 @@ void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_
     {
       Rig r;
       r.claim();
-      r.read(trims);
+      r.read(current);
       r.backup();
       r.upload(target);
       r.install();
@@ -430,7 +433,7 @@ void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_
     {
       Rig r;
       CHECK(r.recovery_required());
-      CHECK(r.source() == fw::TR01_SHA);
+      CHECK(r.source() == fw::BZ01_SHA);
       r.claim();
       auto torn = target;
       const size_t cut = target == stock ? 0x5dfa : 0xc080;
@@ -447,7 +450,7 @@ void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_
       CHECK(!r.recovery_required());
     }
   }
-  auto extended = std::vector<std::vector<uint8_t>>{timer, platform};
+  auto extended = std::vector<std::vector<uint8_t>>{timer, platform, current};
   if (!trims.empty())
     extended.push_back(trims);
   for (const auto& target : extended) {
@@ -572,12 +575,11 @@ void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_
     }
   }
   std::cout
-      << (trims.empty() ? "TB01/FP01" : "TB01/FP01/TR01") << " exact preparation, "
-      << all.size() * all.size()
+      << "TB01/FP01/TR01/BZ01" << " exact preparation, " << all.size() * all.size()
       << " modeled transitions, 53-to-32 erase, final ACK loss, torn blocks 33/53 and repeated original recovery passed\n";
 }
 int main(int argc, char** argv) {
-  if (argc >= 10) {
+  if (argc >= 10 && std::strcmp(argv[9], "-")) {
     std::ifstream file(argv[9], std::ios::binary);
     CHECK(file.good());
     const std::vector<uint8_t> saved{std::istreambuf_iterator<char>(file), {}};
@@ -1501,9 +1503,9 @@ int main(int argc, char** argv) {
           CHECK(r.state() == "read_complete");
           CHECK(r.download() == reset);
         }
-        if (argc >= 8)
-          extended_images(stock, patched, child, reset, load(argv[6]), load(argv[7]),
-                          argc >= 9 ? load(argv[8]) : std::vector<uint8_t>{});
+        if (argc >= 11)
+          extended_images(stock, patched, child, reset, load(argv[6]), load(argv[7]), load(argv[8]),
+                          load(argv[10]));
         std::cout
             << "RS01 exact bytes, saved-image staging, sixteen image transitions and extended-block recovery passed\n";
       }

@@ -13,6 +13,7 @@ HEADERS = (
     "reset_speed_patch.h",
     "tb01_patch.h",
     "platform_patch.h",
+    "motion_trim_patch.h",
 )
 
 

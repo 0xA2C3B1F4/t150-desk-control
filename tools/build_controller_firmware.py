@@ -7,10 +7,10 @@ from pathlib import Path
 import re
 import subprocess
 
+import build_buzzer_patch as recipe
 from build_child_lock_patch import ImageError, read_saved_image, sha256
-import build_motion_trim_patch as recipe
 
-FIRMWARE_ID = "tr01"
+FIRMWARE_ID = "bz01"
 FIRMWARE_NAME = "T150 Desk Control controller firmware"
 PROFILE = recipe.platform.LAYOUT["profile"]
 SOURCE_APP_SHA256 = recipe.platform.SOURCE_APP_SHA256

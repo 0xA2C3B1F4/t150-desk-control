@@ -51,6 +51,72 @@ int main() {
     deferral.expire(3650);
     CHECK(!deferral.active(100));
   }
+  {
+    CustomAlarmDeferral alarm;
+    CHECK(alarm.begin(2, 5, 5, 1, 0));
+    CHECK(alarm.active(60000));
+    alarm.clear();
+    CHECK(!alarm.active(60000));
+  }
+  {
+    CustomTimerBuzzer profiles;
+    Frame request{}, response{};
+    CHECK(profiles.begin(CustomTimerBuzzer::Probe, 0, 0, 0, 0, request));
+    CHECK(profiles.accept(reply(0, be16(request.bytes + 3), 0), 1));
+    CHECK(
+        profiles.begin_profile(CustomTimerBuzzer::ProbeProfiles, 0, 0, 0, 0, 0, false, 2, request));
+    CHECK(request.size == 5 && request.bytes[1] == 3 && request.bytes[2] == 0);
+    response = reply(0, be16(request.bytes + 3), 0);
+    CHECK(!profiles.accept(response, 3));
+    response.size = 8;
+    response.bytes[1] = 3;
+    response.bytes[6] = 0xF3;
+    CHECK(profiles.accept(response, 3));
+    CHECK(profiles.profiles_available() && profiles.timer_profiles_available());
+    CHECK(profiles.begin_profile(CustomTimerBuzzer::ProfileBeep, 0, 5, 5, 1, 50, true, 4, request));
+    CHECK(request.size == 19 && request.bytes[7] == 50 && request.bytes[9] == 5 &&
+          request.bytes[11] == 5 && request.bytes[13] == 2 && request.bytes[18] == 100);
+    profiles.observe_outgoing(request);
+    CHECK(profiles.pending());
+    response = reply(9, be16(request.bytes + 3), 0);
+    response.size = 8;
+    response.bytes[1] = 3;
+    CHECK(profiles.accept(response, 5));
+    CHECK(!profiles.begin_profile(CustomTimerBuzzer::ProfileTimer, 1, 5, 5, 1, 50, false, 6,
+                                  request));
+    CHECK(
+        !profiles.begin_profile(CustomTimerBuzzer::ProfileBeep, 0, 5, 5, 1, 0, false, 6, request));
+    CHECK(profiles.begin_profile(CustomTimerBuzzer::ProfileTimer, 720, 2000, 5000, 20, 0, false, 6,
+                                 request));
+    CHECK(request.size == 21 && be16(request.bytes + 19) == 720 && request.bytes[7] == 0);
+    Frame interrupt{};
+    interrupt.size = 1;
+    interrupt.bytes[0] = 0xA1;
+    profiles.observe_outgoing(interrupt);
+    CHECK(!profiles.pending() && !profiles.profiles_available());
+    CHECK(profiles.take_event() == CustomTimerBuzzer::Event::LinkLost);
+  }
+  {
+    CustomTimerBuzzer legacy;
+    Frame request{};
+    CHECK(legacy.begin(CustomTimerBuzzer::Probe, 0, 0, 0, 0, request));
+    CHECK(legacy.accept(reply(0, be16(request.bytes + 3), 0), 1));
+    CHECK(legacy.begin_profile(CustomTimerBuzzer::ProbeProfiles, 0, 0, 0, 0, 0, false, 2, request));
+    legacy.tick(3502);
+    CHECK(legacy.available() && legacy.profiles_checked() && !legacy.profiles_available());
+    CHECK(legacy.begin(CustomTimerBuzzer::Beep, 50, 50, 1, 3503, request));
+  }
+  {
+    CustomAlarmDeferral alarm;
+    CHECK(alarm.begin(2, 2000, 5000, 20, 0xFFFFFF00U));
+    CHECK(!alarm.active(static_cast<uint32_t>(0xFFFFFF00U + 59999U)));
+    CHECK(alarm.active(static_cast<uint32_t>(0xFFFFFF00U + 60000U)));
+    CHECK(alarm.active(static_cast<uint32_t>(0xFFFFFF00U + 258499U)));
+    CHECK(!alarm.active(static_cast<uint32_t>(0xFFFFFF00U + 258500U)));
+    alarm.expire(static_cast<uint32_t>(0xFFFFFF00U + 258500U));
+    CHECK(!alarm.active(static_cast<uint32_t>(0xFFFFFF00U + 60000U)));
+    CHECK(!alarm.begin(1, 5, 5, 1, 0));
+  }
   CustomTimerBuzzer t;
   Frame f{}, resp{};
   CHECK(CustomTimerBuzzer::valid(CustomTimerBuzzer::SetTimer, 2, 0, 0));

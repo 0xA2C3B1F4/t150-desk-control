@@ -25,7 +25,8 @@ parser.add_argument("--child-lock", type=Path)
 parser.add_argument("--reset-speed", type=Path)
 parser.add_argument("--timer-buzzer", type=Path)
 parser.add_argument("--platform", type=Path)
-parser.add_argument("--current", "--motion-trims", dest="current", type=Path)
+parser.add_argument("--motion-trims", type=Path)
+parser.add_argument("--current", type=Path)
 parser.add_argument("--recovery-record", type=Path)
 args = parse_args(parser=parser)
 required_images = (
@@ -35,6 +36,7 @@ required_images = (
     "reset_speed",
     "timer_buzzer",
     "platform",
+    "motion_trims",
     "current",
 )
 if (
@@ -49,7 +51,7 @@ if (
     ]
     if missing:
         parser.error(
-            "Complete lifecycle requires all seven images; missing "
+            "Complete lifecycle requires all eight images; missing "
             + ", ".join(missing)
         )
 work = args.work_dir
@@ -113,10 +115,11 @@ if args.timer_buzzer:
     command += [str(args.timer_buzzer.resolve())]
 if args.platform:
     command += [str(args.platform.resolve())]
+if args.motion_trims:
+    command += [str(args.motion_trims.resolve())]
 if args.current:
+    command += [str(args.recovery_record.resolve()) if args.recovery_record else "-"]
     command += [str(args.current.resolve())]
-if args.recovery_record:
-    command += [str(args.recovery_record.resolve())]
 with (work / "run.log").open("w") as log:
     subprocess.run(
         command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=60
@@ -128,8 +131,8 @@ if (
 ):
     raise SystemExit("Prior updater recovery record was not exercised")
 if args.platform:
-    identities = "TB01/FP01/TR01"
-    pairs = 49
+    identities = "TB01/FP01/TR01/BZ01"
+    pairs = 64
     expected = (
         f"{identities} exact preparation, {pairs} modeled transitions, 53-to-32 erase, final ACK loss, "
         "torn blocks 33/53 and repeated original recovery passed"
@@ -152,6 +155,7 @@ summary = dict(
     reset_speed_image=bool(args.reset_speed),
     timer_buzzer_image=bool(args.timer_buzzer),
     platform_image=bool(args.platform),
+    motion_trims_image=bool(args.motion_trims),
     current_image=bool(args.current),
     prior_recovery_record=bool(args.recovery_record),
     interrupted_image=interrupted,
@@ -166,6 +170,7 @@ for name in (
     "reset_speed",
     "timer_buzzer",
     "platform",
+    "motion_trims",
     "current",
     "interrupted",
 ):

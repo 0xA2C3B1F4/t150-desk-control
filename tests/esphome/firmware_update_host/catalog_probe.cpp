@@ -19,6 +19,8 @@ struct Probe : fw::FirmwareUpdate {
     const char* expected = "Cannot prepare the exact reset and speed source";
     if (!std::strcmp(source, fw::CURRENT_SHA)) {
       expected = "Current firmware failed its integrity check";
+    } else if (!std::strcmp(source, fw::TR01_SHA)) {
+      expected = "Cannot restore the exact reset and speed source from trim firmware";
     } else if (!std::strcmp(source, fw::FP01_SHA)) {
       expected = "Cannot restore the exact reset and speed source from platform firmware";
     } else if (!std::strcmp(source, fw::TB01_SHA)) {
@@ -42,12 +44,12 @@ struct Probe : fw::FirmwareUpdate {
   }
 };
 int main() {
-  const char* ids[] = {"stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"};
+  const char* ids[] = {"stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01", "bz01"};
   const char* hashes[] = {fw::STOCK_SHA, fw::DT02_SHA, fw::CL01_SHA, fw::RS01_SHA,
-                          fw::TB01_SHA,  fw::FP01_SHA, fw::TR01_SHA};
+                          fw::TB01_SHA,  fw::FP01_SHA, fw::TR01_SHA, fw::BZ01_SHA};
   Probe probe;
   std::cout << "{\"application_size\":" << fw::IMAGE_SIZE << ",\"images\":{";
-  for (unsigned i = 0; i < 7; ++i) {
+  for (unsigned i = 0; i < 8; ++i) {
     if (i)
       std::cout << ',';
     if (!fw::known(hashes[i]))
@@ -55,7 +57,7 @@ int main() {
     std::cout << '"' << ids[i] << "\":\"" << hashes[i] << '"';
   }
   std::cout << "},\"payload_sizes\":{";
-  for (unsigned i = 0; i < 7; ++i) {
+  for (unsigned i = 0; i < 8; ++i) {
     if (i)
       std::cout << ',';
     std::cout << '"' << ids[i] << "\":" << probe.payload(hashes[i]);
@@ -63,8 +65,8 @@ int main() {
   std::cout << "},\"erase_size\":" << desk_protocol::firmware_layout::ERASE_SIZE
             << ",\"install\":[";
   bool first = true;
-  for (unsigned i = 0; i < 7; ++i)
-    for (unsigned j = 0; j < 7; ++j) {
+  for (unsigned i = 0; i < 8; ++i)
+    for (unsigned j = 0; j < 8; ++j) {
       if (!probe.admits(hashes[i], hashes[j]))
         continue;
       if (!first)
@@ -77,7 +79,7 @@ int main() {
       return 2;
   std::cout << "],\"prepare\":{";
   const char* target = nullptr;
-  for (unsigned i = 0; i < 7; ++i) {
+  for (unsigned i = 0; i < 8; ++i) {
     if (!std::strcmp(hashes[i], fw::CURRENT_SHA)) {
       target = ids[i];
     }
@@ -87,7 +89,7 @@ int main() {
   }
   std::cout << "\"target\":\"" << target << "\",\"sources\":[";
   bool initial = true;
-  for (unsigned source = 0; source < 7; ++source) {
+  for (unsigned source = 0; source < 8; ++source) {
     if (!probe.prepares(hashes[source]))
       continue;
     if (!initial)

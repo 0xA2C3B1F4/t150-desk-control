@@ -27,14 +27,26 @@ from desk_test_support import (
 
 NUMBERS = {
     "tb01_timer_duration": ("Timer duration", 2, 720, 30, "desk_group_timer"),
-    "tb01_buzzer_length": ("Buzzer pulse length", 50, 2000, 200, "desk_group_buzzer"),
-    "tb01_buzzer_pause": ("Buzzer pause", 50, 5000, 300, "desk_group_buzzer"),
+    "tb01_buzzer_length": ("Buzzer pulse length", 5, 2000, 200, "desk_group_buzzer"),
+    "tb01_buzzer_pause": ("Buzzer pause", 5, 5000, 300, "desk_group_buzzer"),
     "tb01_buzzer_count": ("Buzzer repetitions", 1, 20, 3, "desk_group_buzzer"),
+    "tb01_buzzer_volume": ("Buzzer volume", 0, 100, 50, "desk_group_buzzer"),
+    "timer_sound_length": (
+        "Timer alarm pulse length",
+        5,
+        2000,
+        200,
+        "desk_group_timer",
+    ),
+    "timer_sound_pause": ("Timer alarm pause", 5, 5000, 300, "desk_group_timer"),
+    "timer_sound_count": ("Timer alarm repetitions", 1, 20, 3, "desk_group_timer"),
+    "timer_sound_volume": ("Timer alarm volume", 0, 100, 50, "desk_group_timer"),
 }
 BUTTONS = {
     "tb01_start_timer": ("Start timer", "desk_group_timer"),
     "tb01_cancel_timer": ("Cancel timer", "desk_group_timer"),
     "tb01_play_buzzer": ("Play buzzer", "desk_group_buzzer"),
+    "cancel_buzzer": ("Cancel buzzer", "desk_group_buzzer"),
 }
 LEGACY = (
     "timer_30min",
@@ -135,7 +147,7 @@ def validate_board_packages(work, env):
                 item["max_value"],
                 item["step"],
                 item["initial_value"],
-            ) == (name, low, high, 1, initial), item
+            ) == (name, low, high, 5 if key.endswith("volume") else 1, initial), item
             assert (
                 item["restore_value"]
                 and item["optimistic"]
@@ -242,7 +254,11 @@ desk_uart:
                     for frame in outgoing[processed:]:
                         events.append(frame)
                         if frame[0] == 0xD7:
-                            reply = bytes([0xD8, 1, frame[2], frame[3], frame[4], 0])
+                            reply = bytes(
+                                [0xD8, frame[1], frame[2], frame[3], frame[4], 0]
+                            )
+                            if frame[1] == 3:
+                                reply += bytes([0xF3, 0])
                         else:
                             reply = discovery_reply(frame, sequence)
                             if reply is not None:
@@ -262,7 +278,8 @@ desk_uart:
                 if attempt == 39:
                     raise
                 await asyncio.sleep(0.1)
-        entities, _ = await client.list_entities_services()
+        entities, services = await client.list_entities_services()
+        service = {item.name: item for item in services}
         keys = {e.name: e.key for e in entities}
         for entity in entities:
             if entity.name in [x[0] for x in (*NUMBERS.values(), *BUTTONS.values())]:
@@ -294,6 +311,10 @@ desk_uart:
                 latest(name) == initial for name, _, _, initial, _ in NUMBERS.values()
             )
         )
+        await wait_until(
+            lambda: any(frame[:3] == bytes([0xD7, 3, 0]) for frame in events)
+        )
+        await asyncio.sleep(0.1)
         assert not writes(), "Initialization or restored number values sent a mutation"
         for name, value in (
             ("Timer duration", 15),
@@ -306,9 +327,17 @@ desk_uart:
         await asyncio.sleep(0.25)
         assert not writes(), "Changing a number sent a mutation"
         expected = [
-            ("Start timer", 1, bytes([0, 15, 0, 0, 0])),
-            ("Cancel timer", 2, bytes(5)),
-            ("Play buzzer", 3, bytes([0, 250, 1, 144, 2])),
+            (
+                "Start timer",
+                10,
+                bytes([0x4E, 0x20, 50, 0, 200, 1, 44, 3, 0, 0, 0, 0, 0, 0, 0, 15]),
+            ),
+            ("Cancel timer", 2, b""),
+            (
+                "Play buzzer",
+                9,
+                bytes([0x4E, 0x20, 50, 0, 250, 1, 144, 2, 0, 0, 0, 0, 0, 0]),
+            ),
         ]
         for index, (name, operation, parameters) in enumerate(expected, 1):
             marker = len(states)
@@ -324,7 +353,7 @@ desk_uart:
             await asyncio.sleep(0.2)
             assert len(writes()) == index, "Button generated repeated writes"
             frame = writes()[-1]
-            assert frame[1:3] == bytes([1, operation]) and frame[5:10] == parameters, (
+            assert frame[1:3] == bytes([3, operation]) and frame[5:] == parameters, (
                 frame
             )
         for number, value, button, message in (
@@ -332,7 +361,7 @@ desk_uart:
                 "Timer duration",
                 30.5,
                 "Start timer",
-                "Enter a whole timer duration from 2 to 720 min",
+                "Use whole numbers within the timer and sound limits",
             ),
             (
                 "Buzzer repetitions",
@@ -353,6 +382,35 @@ desk_uart:
             )
             await asyncio.sleep(0.2)
             assert len(writes()) == 3, "Fractional values sent a mutation"
+        # Direct HA parameters must match the corresponding button frame exactly.
+        for action, data, expected_index in (
+            (
+                "custom_beep_profile",
+                dict(on_ms=250, off_ms=400, count=2, volume=50, soften=False),
+                2,
+            ),
+            (
+                "custom_timer_profile",
+                dict(
+                    minutes=15, on_ms=200, off_ms=300, count=3, volume=50, soften=False
+                ),
+                0,
+            ),
+        ):
+            before = len(writes())
+            await client.execute_service(service[action], data)
+            await wait_until(lambda: len(writes()) == before + 1)
+            await asyncio.sleep(0.1)
+            assert writes()[-1][:3] == writes()[expected_index][:3]
+            assert writes()[-1][5:] == writes()[expected_index][5:]
+        before = len(writes())
+        await client.execute_service(
+            service["custom_beep_profile"],
+            dict(on_ms=5, off_ms=5, count=1, volume=50, soften=True),
+        )
+        await wait_until(lambda: len(writes()) == before + 1)
+        assert writes()[-1][8:13] == bytes([0, 5, 0, 5, 1])
+        assert writes()[-1][13:] == bytes([2, 5, 20, 20, 80, 100])
         return [frame.hex(" ") for frame in writes()]
     finally:
         if client is not None:

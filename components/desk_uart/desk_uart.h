@@ -131,6 +131,9 @@ class DeskUART : public Component, public uart::UARTDevice {
   bool custom_set_timer(int minutes);
   bool custom_cancel_timer();
   bool custom_beep(int on_ms, int off_ms, int count);
+  bool custom_beep_profile(int on_ms, int off_ms, int count, int volume, bool soften);
+  bool custom_timer_profile(int minutes, int on_ms, int off_ms, int count, int volume, bool soften);
+  bool custom_cancel_buzzer();
   void set_custom_timer_buzzer_enabled(bool enabled) { custom_enabled_ = enabled; }
   void set_custom_command_result(text_sensor::TextSensor* s) { custom_result_ = s; }
   void set_custom_available(binary_sensor::BinarySensor* s) { custom_available_sensor_ = s; }
@@ -170,13 +173,15 @@ class DeskUART : public Component, public uart::UARTDevice {
   void custom_event_();
   void yield_custom_probe_();
   bool custom_write_pending_() const {
-    return this->custom_.pending() &&
-           this->custom_.operation() != desk_protocol::CustomTimerBuzzer::Probe;
+    return this->custom_.pending() && !this->custom_.is_probe();
   }
+  bool custom_profile_request_(desk_protocol::CustomTimerBuzzer::Operation op, int minutes,
+                               int on_ms, int off_ms, int count, int volume, bool soften);
   bool custom_request_(desk_protocol::CustomTimerBuzzer::Operation op, int a, int b, int count);
   void report_custom_result_(bool accepted, const char* message);
   desk_protocol::CustomTimerBuzzer custom_{};
   desk_protocol::CustomBuzzerDeferral custom_beep_deferral_{};
+  desk_protocol::CustomAlarmDeferral custom_alarm_deferral_{};
   text_sensor::TextSensor* custom_result_{nullptr};
   binary_sensor::BinarySensor* custom_available_sensor_{nullptr};
   uint32_t custom_last_probe_{0};

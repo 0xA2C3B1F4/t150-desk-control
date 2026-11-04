@@ -138,6 +138,7 @@ jobs:
           python3 tools/generate_platform_layout.py --check
           python3 tools/check_firmware_history.py
           python3 tools/embed_motion_trim_patch.py --check
+          python3 tools/embed_buzzer_patch.py --check
       - name: Test controller extensions against synthetic helpers
         if: matrix.build_type == 'Debug'
         env:
@@ -148,6 +149,8 @@ jobs:
           python3 -m pip install 'unicorn==2.1.4'
           python3 tools/test_tb01_patch.py
           python3 tools/test_platform_patch.py
+          python3 tools/test_buzzer_builder.py
+          python3 tools/test_buzzer_runtime.py
           python3 tools/test_motion_trim_runtime.py
           python3 tools/test_motion_trim_hooks.py
           python3 tools/test_motion_trim_controller.py

@@ -20,6 +20,12 @@ EXTRA_SOURCES = {
     "tools/test_tb01_core.c",
     "tools/patches/reset_speed.c",
     "tools/patches/uart_parser.c",
+    "tools/patches/buzzer_profile.h",
+    "tools/patches/buzzer_profile.c",
+    "tools/patches/buzzer_pwm.h",
+    "tools/patches/buzzer_pwm.c",
+    "tools/patches/buzzer_layout.h",
+    "tools/patches/buzzer_controller.c",
     "tools/patches/tb01.c",
     "tools/patches/tb01_core.c",
     "tools/patches/tb01_core.h",
@@ -54,6 +60,7 @@ EXCLUDED = {
     "components/desk_firmware_update/tb01_patch.h",
     "components/desk_firmware_update/platform_patch.h",
     "components/desk_firmware_update/motion_trim_patch.h",
+    "components/desk_firmware_update/buzzer_patch.h",
     "components/desk_uart/desk_protocol/firmware_layout.h",
 }
 

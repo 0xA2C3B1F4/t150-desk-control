@@ -1244,6 +1244,7 @@ void DeskUART::keep_awake_loop_(uint32_t now) {
       this->journal_recheck_pending_ || this->pending_preset_ || !this->keep_awake_enabled_ ||
       !this->target_enabled_ || this->keep_awake_fault_ || this->preset_settings_.busy() ||
       !this->preset_access_allowed_(now) || this->custom_beep_deferral_.active(now) ||
+      this->custom_alarm_deferral_.active(now) ||
       static_cast<uint32_t>(now - this->last_keep_awake_) < 30000)
     return;
   const auto height =
@@ -2735,6 +2736,7 @@ bool DeskUART::custom_request_(desk_protocol::CustomTimerBuzzer::Operation op, i
     this->report_custom_result_(false, "Invalid parameters");
     return false;
   }
+  this->yield_custom_probe_();
   if (!this->custom_.available()) {
     this->report_custom_result_(false, "Controller capability not confirmed; no request sent");
     return false;
@@ -2766,22 +2768,95 @@ bool DeskUART::custom_set_timer(int minutes) {
   return this->custom_request_(desk_protocol::CustomTimerBuzzer::SetTimer, minutes, 0, 0);
 }
 bool DeskUART::custom_cancel_timer() {
+  if (this->custom_.profiles_available()) {
+    return this->custom_profile_request_(desk_protocol::CustomTimerBuzzer::CancelProfileTimer, 0, 0,
+                                         0, 0, 0, false);
+  }
   return this->custom_request_(desk_protocol::CustomTimerBuzzer::CancelTimer, 0, 0, 0);
 }
 bool DeskUART::custom_beep(int on_ms, int off_ms, int count) {
   return this->custom_request_(desk_protocol::CustomTimerBuzzer::Beep, on_ms, off_ms, count);
 }
+bool DeskUART::custom_beep_profile(int on_ms, int off_ms, int count, int volume, bool soften) {
+  using Custom = desk_protocol::CustomTimerBuzzer;
+  if (!Custom::valid_profile(on_ms, off_ms, count, volume)) {
+    this->report_custom_result_(false, "Invalid sound parameters");
+    return false;
+  }
+  if (volume == 0) {
+    return this->custom_cancel_buzzer();
+  }
+  if (!this->custom_.profiles_available() && volume == 100 && !soften && on_ms >= 50 &&
+      off_ms >= 50) {
+    return this->custom_beep(on_ms, off_ms, count);
+  }
+  return this->custom_profile_request_(Custom::ProfileBeep, 0, on_ms, off_ms, count, volume,
+                                       soften);
+}
+bool DeskUART::custom_timer_profile(int minutes, int on_ms, int off_ms, int count, int volume,
+                                    bool soften) {
+  return this->custom_profile_request_(desk_protocol::CustomTimerBuzzer::ProfileTimer, minutes,
+                                       on_ms, off_ms, count, volume, soften);
+}
+bool DeskUART::custom_cancel_buzzer() {
+  return this->custom_profile_request_(desk_protocol::CustomTimerBuzzer::CancelBuzzer, 0, 0, 0, 0,
+                                       0, false);
+}
+bool DeskUART::custom_profile_request_(desk_protocol::CustomTimerBuzzer::Operation op, int minutes,
+                                       int on_ms, int off_ms, int count, int volume, bool soften) {
+  using Custom = desk_protocol::CustomTimerBuzzer;
+  const bool profile = op == Custom::ProfileBeep || op == Custom::ProfileTimer;
+  if (!this->custom_enabled_) {
+    this->report_custom_result_(false, "Experimental controls disabled");
+    return false;
+  }
+  if (profile && (!Custom::valid_profile(on_ms, off_ms, count, volume) ||
+                  (op == Custom::ProfileTimer ? minutes < 2 || minutes > 720 : minutes != 0))) {
+    this->report_custom_result_(false, "Invalid sound parameters");
+    return false;
+  }
+  this->yield_custom_probe_();
+  if (!this->custom_.profiles_available() ||
+      (op == Custom::ProfileTimer && !this->custom_.timer_profiles_available())) {
+    this->report_custom_result_(
+        false, "Sound profiles not supported or not yet confirmed; no request sent");
+    return false;
+  }
+  this->yield_child_lock_read_();
+  const uint32_t now = millis();
+  if (this->reset_speed_blocking_() || !this->reset_speed_access_allowed_(now) ||
+      this->custom_.pending()) {
+    const char* reason = this->control_reason_(now);
+    this->report_custom_result_(false, std::strcmp(reason, "Ready") == 0
+                                           ? "Desk busy or link not ready; no request sent"
+                                           : reason);
+    return false;
+  }
+  desk_protocol::Frame frame;
+  if (!this->custom_.begin_profile(op, minutes, on_ms, off_ms, count, volume, soften, now, frame)) {
+    this->report_custom_result_(false, "Request could not be started; no request sent");
+    return false;
+  }
+  this->send_(frame);
+  this->last_keep_awake_ = now;
+  if (op == Custom::ProfileBeep) {
+    this->custom_beep_deferral_.begin(on_ms, off_ms, count, now);
+  } else if (op == Custom::ProfileTimer) {
+    this->custom_alarm_deferral_.begin(minutes, on_ms, off_ms, count, now);
+  }
+  this->report_custom_result_(true, "Request sent; awaiting controller acknowledgement");
+  return true;
+}
 void DeskUART::yield_custom_probe_() {
-  if (this->custom_.pending() &&
-      this->custom_.operation() == desk_protocol::CustomTimerBuzzer::Probe) {
-    this->custom_.disconnect();
+  if (this->custom_.pending() && this->custom_.is_probe()) {
+    this->custom_.yield_probe();
     this->custom_last_probe_ = millis();
   }
 }
 void DeskUART::custom_event_() {
   using Event = desk_protocol::CustomTimerBuzzer::Event;
   const Event event = this->custom_.take_event();
-  if (this->custom_.operation() == desk_protocol::CustomTimerBuzzer::Probe) {
+  if (this->custom_.is_probe()) {
     // Background discovery has no user-write outcome. Preserve the last command
     // result even when a probe succeeds after an unacknowledged write.
     if (event != Event::None)
@@ -2792,6 +2867,10 @@ void DeskUART::custom_event_() {
     case Event::Available:
       break;
     case Event::Accepted:
+      if (this->custom_.operation() == desk_protocol::CustomTimerBuzzer::CancelProfileTimer ||
+          this->custom_.operation() == desk_protocol::CustomTimerBuzzer::CancelTimer) {
+        this->custom_alarm_deferral_.clear();
+      }
       this->report_custom_result_(true, "Controller accepted request");
       break;
     case Event::Invalid:
@@ -2821,6 +2900,7 @@ void DeskUART::custom_loop_(uint32_t now) {
   // Use its current clock before expiring either the hold or acknowledgement.
   now = millis();
   this->custom_beep_deferral_.expire(now);
+  this->custom_alarm_deferral_.expire(now);
   if (!this->height_seen_ || !this->monitor_.fresh(now) || !this->reset_speed_.supported())
     this->custom_.disconnect();
   this->custom_.tick(now);
@@ -2833,12 +2913,17 @@ void DeskUART::custom_loop_(uint32_t now) {
   }
   // Only a read-only probe may be retried. It is serialized with all existing
   // transactions and never initiated while the device is stale or moving.
-  if (!available && !this->custom_.pending() &&
+  if ((!available || !this->custom_.profiles_checked()) && !this->custom_.pending() &&
       static_cast<uint32_t>(now - this->custom_last_probe_) >= 15000 &&
       this->reset_speed_.supported() && !this->reset_speed_blocking_() && !this->available() &&
       this->reset_speed_access_allowed_(now)) {
     desk_protocol::Frame frame;
-    if (this->custom_.begin(desk_protocol::CustomTimerBuzzer::Probe, 0, 0, 0, now, frame)) {
+    const bool started =
+        available
+            ? this->custom_.begin_profile(desk_protocol::CustomTimerBuzzer::ProbeProfiles, 0, 0, 0,
+                                          0, 0, false, now, frame)
+            : this->custom_.begin(desk_protocol::CustomTimerBuzzer::Probe, 0, 0, 0, now, frame);
+    if (started) {
       this->custom_last_probe_ = now;
       this->send_(frame);
     }

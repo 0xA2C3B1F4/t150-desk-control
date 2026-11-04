@@ -3,6 +3,9 @@
  * authenticate an arbitrary STM32 or replace physical SRAM acceptance. */
 #include "platform_runtime.h"
 #include "tb01_core.h"
+#ifdef DESK_BUZZER_PROFILES
+#include "buzzer_pwm.h"
+#endif
 #define WORD(a) (*(volatile uint32_t*)(a))
 #define BYTE(a) (*(volatile uint8_t*)(a))
 typedef struct {
@@ -45,8 +48,12 @@ bool platform_profile_matches(void) {
 static void platform_release_locked(void) {
   /* The check and output release form one atomic native-ownership decision.
    * No corrupted state chooses the output or address. */
+#ifdef DESK_BUZZER_PROFILES
+  buzzer_platform_release();
+#else
   if (!BYTE(0x200008a8u) && !BYTE(0x2000014du))
     WORD(0x48001428u) = 0x80u;
+#endif
 }
 static void platform_fault(void) {
   uint32_t saved = platform_lock();

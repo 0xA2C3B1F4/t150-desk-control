@@ -26,6 +26,9 @@ typedef uint32_t u32;
 #ifndef TB01_ACCEPT_VERSION
 #define TB01_ACCEPT_VERSION(version) true
 #endif
+#ifndef TB01_ALARM_BLOCKED
+#define TB01_ALARM_BLOCKED() (B(0x8a8) != 0)
+#endif
 #define STATE ((tb_state*)TB01_STATE_ADDRESS)
 #define RTC_CR REG(0x40002808u)
 #define RTC_ISR REG(0x4000280cu)
@@ -52,9 +55,10 @@ static bool ready(void* unused) {
    * Only setting a timer requires the RTC alarm to be unarmed. */
   if (unused && *(const u8*)unused == 1 && (RTC_CR & 0x1100u))
     return false;
-  if (B(0x88d) || H(0x75a) || REG(0x4000043cu) || REG(0x40000440u) || B(0x14d) || B(0x8a8) ||
-      B(0x18c) || B(0x754) || B(0x88f) || B(0x890) || B(0x148) || B(0x8b8) || B(0x892) ||
-      B(0x894) || B(0xaa0) || B(0xaa1) || B(0x18e) || B(0x8ba) || B(0xfc8) || B(0xfc9) || B(0xfca))
+  if (B(0x88d) || H(0x75a) || REG(0x4000043cu) || REG(0x40000440u) || B(0x14d) ||
+      TB01_ALARM_BLOCKED() || B(0x18c) || B(0x754) || B(0x88f) || B(0x890) || B(0x148) ||
+      B(0x8b8) || B(0x892) || B(0x894) || B(0xaa0) || B(0xaa1) || B(0x18e) || B(0x8ba) ||
+      B(0xfc8) || B(0xfc9) || B(0xfca))
     return false;
   for (u32 i = 0x7ad; i <= 0x7b4; ++i)
     if (B(i))
@@ -146,6 +150,7 @@ static bool timer_set(void* unused, u16 minutes) {
   PB_SET = 4;
   return true;
 }
+#ifndef TB01_RTC_HELPERS_ONLY
 static bool buzzer_start(void* unused) {
   (void)unused;
   PF_SET = 0x80;
@@ -244,3 +249,5 @@ int tb01_route(void) {
   }
   return 1;
 }
+
+#endif /* TB01_RTC_HELPERS_ONLY */

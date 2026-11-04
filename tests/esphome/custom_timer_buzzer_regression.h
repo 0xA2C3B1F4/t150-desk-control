@@ -72,7 +72,11 @@ class CustomTimerBuzzerAccess : public esphome::desk_uart::DeskUART {
     }
     const bool probe =
         custom.pending() && custom.operation() == desk_protocol::CustomTimerBuzzer::Probe;
-    if (probe && std::strcmp(test, "probe_direct") == 0) {
+    if (custom.pending() && custom.operation() == desk_protocol::CustomTimerBuzzer::ProbeProfiles &&
+        std::strcmp(test, "probe_profile_direct") == 0) {
+      auto pending_member = &CustomTimerBuzzerAccess::custom_write_pending_;
+      finish(!(desk->*pending_member)() && desk->move_to_height(80) && !custom.pending());
+    } else if (probe && std::strcmp(test, "probe_direct") == 0) {
       finish(desk->move_to_height(80) && !custom.pending());
     } else if (probe && std::strcmp(test, "probe_timer") == 0) {
       const bool accepted = desk->set_timer(30);

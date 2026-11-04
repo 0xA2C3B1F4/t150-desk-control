@@ -22,6 +22,7 @@ from desk_test_support import (
 CASES = (
     "unsupported",
     "probe_direct",
+    "probe_profile_direct",
     "probe_timer",
     "probe_lock",
     "probe_maintenance",
@@ -120,7 +121,7 @@ desk_uart:
             raw, events, delayed = bytearray(), [], []
             processed = sequence = beeps = 0
             next_height = 0.05
-            probe_only = case.startswith("probe_")
+            probe_only = case.startswith("probe_") and case != "probe_profile_direct"
             with (run / "runtime.log").open("w") as log:
                 proc = subprocess.Popen(
                     [str(work / "build/.pioenvs/custom-arbitration-test/program")],
@@ -130,7 +131,9 @@ desk_uart:
                     stderr=subprocess.STDOUT,
                 )
                 start = time.monotonic()
-                while time.monotonic() - start < 9:
+                while time.monotonic() - start < (
+                    22 if case == "probe_profile_direct" else 9
+                ):
                     elapsed = time.monotonic() - start
                     assert proc.poll() is None, f"{case}: host exited"
                     if elapsed >= next_height:
