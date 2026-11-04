@@ -121,11 +121,37 @@
         "motion-trims"
       ],
       "validation": "docs/validation.md#tr01-motion-trims"
+    },
+    {
+      "id": "bz01",
+      "name": "T150 Desk Control with sound profiles",
+      "sha256": "e7b7392cb648209ca9b7eb0d5b02cd96f407bdfb73b2e5cfe5c5748398d13d25",
+      "application_size": 55296,
+      "application_offset": 10240,
+      "flash_size": 65536,
+      "payload_size": 54272,
+      "erase_size": 54272,
+      "features": [
+        "direct-height",
+        "sleep-fix",
+        "panel-lock",
+        "reset-control",
+        "motion-speed",
+        "uart-parser-fix",
+        "custom-timer",
+        "custom-buzzer",
+        "shared-firmware-platform",
+        "motion-trims",
+        "buzzer-volume",
+        "buzzer-envelope",
+        "timer-sound-profile"
+      ],
+      "validation": "docs/validation.md#custom-sound-profiles"
     }
   ],
   "prepare": {
-    "target": "tr01",
-    "sources": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
+    "target": "bz01",
+    "sources": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01", "bz01"]
   },
   "install": [
     ["stock", "stock"],
@@ -176,14 +202,29 @@
     ["tr01", "rs01-r7"],
     ["tr01", "tb01"],
     ["tr01", "fp01"],
-    ["tr01", "tr01"]
+    ["tr01", "tr01"],
+    ["stock", "bz01"],
+    ["bz01", "stock"],
+    ["dt02", "bz01"],
+    ["bz01", "dt02"],
+    ["cl01", "bz01"],
+    ["bz01", "cl01"],
+    ["rs01-r7", "bz01"],
+    ["bz01", "rs01-r7"],
+    ["tb01", "bz01"],
+    ["bz01", "tb01"],
+    ["fp01", "bz01"],
+    ["bz01", "fp01"],
+    ["tr01", "bz01"],
+    ["bz01", "tr01"],
+    ["bz01", "bz01"]
   ],
   "recovery": {
     "target": "stock",
     "documentation": "docs/firmware-update.md"
   },
   "current": {
-    "id": "tr01",
+    "id": "bz01",
     "profile": "STM32F030C8T6-8KiB-exact-R7"
   }
 }

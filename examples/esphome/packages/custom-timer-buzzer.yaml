@@ -1,4 +1,4 @@
-# Optional TB01 controls. Include after a supplied desk example as a package.
+# Optional custom timer and sound controls. Include after a supplied desk example as a package.
 # Changing a value never sends a command. Use Start timer or Play buzzer.
 web_server:
   sorting_groups:
@@ -55,7 +55,7 @@ number:
     name: Buzzer pulse length
     icon: mdi:volume-high
     unit_of_measurement: ms
-    min_value: 50
+    min_value: 5
     max_value: 2000
     step: 1
     initial_value: 200
@@ -70,7 +70,7 @@ number:
     name: Buzzer pause
     icon: mdi:timer-outline
     unit_of_measurement: ms
-    min_value: 50
+    min_value: 5
     max_value: 5000
     step: 1
     initial_value: 300
@@ -95,6 +95,101 @@ number:
       sorting_group_id: desk_group_buzzer
       sorting_weight: 30
 
+  - platform: template
+    id: tb01_buzzer_volume
+    name: Buzzer volume
+    icon: mdi:volume-high
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 5
+    initial_value: 50
+    optimistic: true
+    restore_value: true
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_buzzer
+      sorting_weight: 35
+  - platform: template
+    id: timer_sound_length
+    name: Timer alarm pulse length
+    icon: mdi:volume-high
+    unit_of_measurement: "ms"
+    min_value: 5
+    max_value: 2000
+    step: 1
+    initial_value: 200
+    optimistic: true
+    restore_value: true
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_timer
+      sorting_weight: 40
+  - platform: template
+    id: timer_sound_pause
+    name: Timer alarm pause
+    icon: mdi:timer-outline
+    unit_of_measurement: "ms"
+    min_value: 5
+    max_value: 5000
+    step: 1
+    initial_value: 300
+    optimistic: true
+    restore_value: true
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_timer
+      sorting_weight: 50
+  - platform: template
+    id: timer_sound_count
+    name: Timer alarm repetitions
+    icon: mdi:repeat
+    min_value: 1
+    max_value: 20
+    step: 1
+    initial_value: 3
+    optimistic: true
+    restore_value: true
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_timer
+      sorting_weight: 60
+  - platform: template
+    id: timer_sound_volume
+    name: Timer alarm volume
+    icon: mdi:volume-high
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 5
+    initial_value: 50
+    optimistic: true
+    restore_value: true
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_timer
+      sorting_weight: 70
+
+switch:
+  - platform: template
+    id: buzzer_soften
+    name: Buzzer soft start and stop
+    icon: mdi:volume-vibrate
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    web_server:
+      sorting_group_id: desk_group_buzzer
+      sorting_weight: 36
+  - platform: template
+    id: timer_sound_soften
+    name: Timer alarm soft start and stop
+    icon: mdi:volume-vibrate
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    web_server:
+      sorting_group_id: desk_group_timer
+      sorting_weight: 80
+
 button:
   - platform: template
     id: tb01_start_timer
@@ -106,10 +201,20 @@ button:
     on_press:
       - lambda: |-
           const float minutes = id(tb01_timer_duration).state;
-          if (minutes >= 2 && minutes <= 720 && minutes == std::floor(minutes)) {
-            id(desk)->custom_set_timer(static_cast<int>(minutes));
+          const float length = id(timer_sound_length).state;
+          const float pause = id(timer_sound_pause).state;
+          const float count = id(timer_sound_count).state;
+          const float volume = id(timer_sound_volume).state;
+          if (minutes >= 2 && minutes <= 720 && minutes == std::floor(minutes) &&
+              length >= 5 && length <= 2000 && length == std::floor(length) &&
+              pause >= 5 && pause <= 5000 && pause == std::floor(pause) &&
+              count >= 1 && count <= 20 && count == std::floor(count) &&
+              volume >= 0 && volume <= 100 && volume == std::floor(volume)) {
+            id(desk)->custom_timer_profile(static_cast<int>(minutes), static_cast<int>(length),
+                static_cast<int>(pause), static_cast<int>(count), static_cast<int>(volume),
+                id(timer_sound_soften).state);
           } else {
-            id(tb01_command_result).publish_state("Enter a whole timer duration from 2 to 720 min");
+            id(tb01_command_result).publish_state("Use whole numbers within the timer and sound limits");
           }
   - platform: template
     id: tb01_cancel_timer
@@ -132,14 +237,25 @@ button:
           const float length = id(tb01_buzzer_length).state;
           const float pause = id(tb01_buzzer_pause).state;
           const float count = id(tb01_buzzer_count).state;
-          if (length >= 50 && length <= 2000 && length == std::floor(length) &&
-              pause >= 50 && pause <= 5000 && pause == std::floor(pause) &&
-              count >= 1 && count <= 20 && count == std::floor(count)) {
-            id(desk)->custom_beep(static_cast<int>(length), static_cast<int>(pause),
-                                 static_cast<int>(count));
+          const float volume = id(tb01_buzzer_volume).state;
+          if (length >= 5 && length <= 2000 && length == std::floor(length) &&
+              pause >= 5 && pause <= 5000 && pause == std::floor(pause) &&
+              count >= 1 && count <= 20 && count == std::floor(count) &&
+              volume >= 0 && volume <= 100 && volume == std::floor(volume)) {
+            id(desk)->custom_beep_profile(static_cast<int>(length), static_cast<int>(pause),
+                static_cast<int>(count), static_cast<int>(volume), id(buzzer_soften).state);
           } else {
             id(tb01_command_result).publish_state("Use whole numbers within the buzzer limits");
           }
+  - platform: template
+    id: cancel_buzzer
+    name: Cancel buzzer
+    icon: mdi:volume-off
+    web_server:
+      sorting_group_id: desk_group_buzzer
+      sorting_weight: 50
+    on_press:
+      - lambda: id(desk)->custom_cancel_buzzer();
 
 api:
   actions:
@@ -158,3 +274,25 @@ api:
         count: int
       then:
         - lambda: id(desk)->custom_beep(on_ms, off_ms, count);
+    - action: custom_beep_profile
+      variables:
+        on_ms: int
+        off_ms: int
+        count: int
+        volume: int
+        soften: bool
+      then:
+        - lambda: id(desk)->custom_beep_profile(on_ms, off_ms, count, volume, soften);
+    - action: custom_timer_profile
+      variables:
+        minutes: int
+        on_ms: int
+        off_ms: int
+        count: int
+        volume: int
+        soften: bool
+      then:
+        - lambda: id(desk)->custom_timer_profile(minutes, on_ms, off_ms, count, volume, soften);
+    - action: custom_buzzer_cancel
+      then:
+        - lambda: id(desk)->custom_cancel_buzzer();

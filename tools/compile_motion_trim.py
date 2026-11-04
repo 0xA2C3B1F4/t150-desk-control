@@ -51,7 +51,7 @@ SOURCES = (
 )
 
 
-def compile_patch(llvm_bin=None, *, boot_profile=None):
+def compile_patch(llvm_bin=None, *, boot_profile=None, buzzer=False):
     """Return linked sections, symbols and provenance for offline integration tests."""
     boot_fields = {
         "timing": 0xFFFFFFFF,
@@ -80,6 +80,16 @@ def compile_patch(llvm_bin=None, *, boot_profile=None):
         versions[name] = subprocess.check_output([tool, "--version"], text=True)
         if not re.search(r"\b23\.1\.0\b", versions[name]):
             raise ValueError("Trim integration requires LLVM 23.1.0")
+    sources = SOURCES
+    if buzzer:
+        sources = tuple(
+            "buzzer_controller.c"
+            if name == "platform_tb01.c"
+            else "buzzer_hooks.S"
+            if name == "tb01_hooks.S"
+            else name
+            for name in SOURCES
+        ) + ("buzzer_profile.c", "buzzer_pwm.c")
     commands = []
     with tempfile.TemporaryDirectory(
         prefix="t150-trim-link-", dir=os.environ["TMPDIR"]
@@ -99,7 +109,7 @@ def compile_patch(llvm_bin=None, *, boot_profile=None):
 
         objects = []
         frames = {}
-        for name in SOURCES:
+        for name in sources:
             obj = work / (name + ".o")
             flags = ["--target=arm-none-eabi", "-mcpu=cortex-m0", "-mthumb"]
             if name.endswith(".c"):
@@ -116,6 +126,8 @@ def compile_patch(llvm_bin=None, *, boot_profile=None):
                     "-Werror",
                     "-fstack-usage",
                 ]
+            if buzzer and name == "platform_runtime.c":
+                flags += ["-DDESK_BUZZER_PROFILES"]
             if name == "motion_trim_boot.c" and boot_profile is not None:
                 flags += [
                     f"-DTRIM_BOOT_{field.upper()}={boot_profile[field]}u"
@@ -133,7 +145,7 @@ def compile_patch(llvm_bin=None, *, boot_profile=None):
                 "-L",
                 PATCHES,
                 "-T",
-                PATCHES / "motion_trim_patch.ld",
+                PATCHES / ("buzzer_patch.ld" if buzzer else "motion_trim_patch.ld"),
                 *objects,
                 "-o",
                 elf,
@@ -148,7 +160,10 @@ def compile_patch(llvm_bin=None, *, boot_profile=None):
             if len(fields := line.split()) == 3
         }
         sections = {}
-        for name in (*platform.HOOKS, "candidate", *TARGET_HOOKS, *STORAGE_HOOKS):
+        section_names = (*platform.HOOKS, "candidate", *TARGET_HOOKS, *STORAGE_HOOKS)
+        if buzzer:
+            section_names += ("hook_buzzer_timer",)
+        for name in section_names:
             output = work / (name + ".bin")
             run(
                 [
@@ -161,9 +176,12 @@ def compile_patch(llvm_bin=None, *, boot_profile=None):
                 ]
             )
             sections[name] = output.read_bytes()
-    dependencies = set(platform.SOURCE_FILES) | set(SOURCES)
+    dependencies = set(platform.SOURCE_FILES) | set(sources)
     dependencies.update(path.name for path in PATCHES.glob("motion_trim_*.h"))
     dependencies.add("motion_trim_patch.ld")
+    if buzzer:
+        dependencies.update(path.name for path in PATCHES.glob("buzzer_*.h"))
+        dependencies.add("buzzer_patch.ld")
     manifest = {
         "toolchain": versions,
         "commands": commands,

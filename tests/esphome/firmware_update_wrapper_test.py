@@ -22,6 +22,7 @@ class WrapperArgumentsTest(unittest.TestCase):
             "--reset-speed",
             "--timer-buzzer",
             "--platform",
+            "--motion-trims",
             "--current",
         )
         with tempfile.TemporaryDirectory(
@@ -52,7 +53,7 @@ class WrapperArgumentsTest(unittest.TestCase):
                         result.returncode, 2, result.stdout + result.stderr
                     )
                     self.assertIn(
-                        "requires all seven images; missing " + missing, result.stderr
+                        "requires all eight images; missing " + missing, result.stderr
                     )
                     self.assertFalse((work / "include").exists())
                     self.assertFalse((work / "update-test").exists())
