@@ -54,6 +54,34 @@ static Frame begin(DirectTarget& d, uint16_t s = 8, uint32_t now = 0) {
 }
 int main() {
   Frame f;
+  for (int8_t trim = -3; trim <= 3; ++trim) {
+    for (bool up : {false, true}) {
+      for (bool wrong : {false, true}) {
+        DirectTarget d;
+        const uint16_t requested = up ? 200 : 50;
+        CHECK(d.begin(requested, 100, 0, up ? trim : 0, up ? 0 : trim));
+        CHECK(d.take_frame(f));
+        d.accept(reply(f), 1);
+        CHECK(d.take_frame(f));
+        const int32_t committed = up ? 207 + trim : 44 - trim;
+        d.accept(reply(f, committed + (wrong ? 1 : 0)), 2);
+        CHECK(d.active() == !wrong);
+        CHECK(d.take_brake() == wrong);
+      }
+    }
+  }
+  CHECK(direct_committed_target(104, 100, 3, -3) == 104);
+  CHECK(direct_committed_target(96, 100, 3, -3) == 96);
+  CHECK(direct_committed_target(742, 100, -3, 0) == 747);
+  CHECK(direct_committed_target(8, 100, 0, -3) == 6);
+  CHECK(direct_committed_target(740, 100, 3, 0) == 747);
+  CHECK(direct_committed_target(12, 100, 0, 3) == 6);
+  {
+    DirectTarget d;
+    CHECK(!d.begin(100, 50, 0, 4, 0));
+    CHECK(!d.begin(100, 50, 0, 0, -4));
+    CHECK(!d.take_frame(f));
+  }
   {
     DirectTarget d;
     d.seed(0xFFFF);

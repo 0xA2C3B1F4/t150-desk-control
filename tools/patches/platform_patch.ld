@@ -1,6 +1,8 @@
 INCLUDE platform_layout.ld
 ENTRY(platform_startup)
 __aeabi_uidiv = 0x080028f5;
+/* The exact native helper returns r0/r1 quotient/remainder for nonzero divisors. */
+__aeabi_uidivmod = __aeabi_uidiv;
 SECTIONS {
   .hook_sound 0x08003408 : { *(.hook_sound) }
   .hook_boot 0x080085f4 : { *(.hook_boot) }

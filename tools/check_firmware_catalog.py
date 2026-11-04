@@ -83,6 +83,7 @@ def validate(catalog, probe):
         raise ValueError("Install pairs differ from production admission")
     # Exact builder source/output pins, not catalog-to-schema self-consistency.
     import build_child_lock_patch as cl
+    import build_motion_trim_patch as tr
     import build_platform_patch as fp
     import build_reset_speed_patch as rs
     import build_tb01_patch as tb
@@ -95,6 +96,8 @@ def validate(catalog, probe):
         or tb.SOURCE_APP_SHA256 != rs.OUTPUT_APP_SHA256
         or tb.OUTPUT_APP_SHA256 != probe["images"]["tb01"]
         or fp.SOURCE_APP_SHA256 != rs.OUTPUT_APP_SHA256
+        or tr.OUTPUT_APP_SHA256 != probe["images"]["tr01"]
+        or tr.PAYLOAD_SIZE != probe["payload_sizes"]["tr01"]
         or fp.OUTPUT_APP_SHA256 != probe["images"]["fp01"]
         or tb.PAYLOAD_SIZE != probe["payload_sizes"]["tb01"]
         or fp.PAYLOAD_SIZE != probe["payload_sizes"]["fp01"]

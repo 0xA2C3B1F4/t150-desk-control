@@ -37,7 +37,7 @@ and cannot be combined with this build. A rejected OTA attempt logs
 `OTA refused: firmware operation active or queued`; retry after the operation ends.
 The OTA guard checks the reviewed ESPHome source. If a different ESPHome version
 fails with `Unreviewed ESPHome OTA source`, use the supported version above.
-After installing CL01, RS01, TB01 or FP01, keep the
+After installing CL01, RS01, TB01, FP01 or TR01, keep the
 [panel-lock package](child-lock.md) enabled so you can unlock the panel.
 
 ## Read, patch and verify
@@ -60,8 +60,9 @@ Follow the active instruction panel. Keep the ESP32 powered throughout.
    **Prepare custom timer and buzzer** adds [timer and sound controls](custom-timer-buzzer.md).
    **Prepare shared firmware foundation** includes those features on the
    [STM32F030C8T6 platform](firmware-platform.md).
+   **Prepare motion trims** adds [independent stopping adjustments](motion-trims.md).
    Alternatively, select a saved application and **Prepare selected file**.
-   CL01, RS01, TB01 and FP01 initially lock physical buttons, including local stopping; configure
+   CL01, RS01, TB01, FP01 and TR01 initially lock physical buttons, including local stopping; configure
    the panel-lock controls before installation.
 5. Confirm and select **Arm installation**, then power-cycle only the controller.
    Leave power connected throughout writing.
@@ -78,13 +79,16 @@ keep both devices powered until status returns. Writes never retry automatically
 
 ## Accepted images and storage
 
-Writing accepts only the exact original, DT02, CL01, RS01 R7, TB01 and FP01
+Writing accepts only the exact original, DT02, CL01, RS01 R7, TB01, FP01 and TR01
 applications. Each preparation action accepts the supported earlier images;
-FP01 preparation accepts TB01 directly. FP01 requires the documented STM32F030C8T6
+FP01 preparation accepts TB01 directly. TR01 accepts all six earlier supported
+images. FP01 and TR01 require the documented STM32F030C8T6
 controller with 8 KiB SRAM. A fresh read identifies an installed patch.
 Other images need a separately reviewed patch; profile recognition alone does
 not authorize writing.
 
+To remove trims, install and verify a saved FP01 or earlier supported image.
+The saved trim bytes remain available for a later TR01 installation.
 To remove FP01, install and verify a saved TB01, R7, CL01, DT02 or original image.
 To remove custom timer and buzzer support as well, choose R7 or earlier.
 To remove reset and speed support, install a saved CL01, DT02 or original image.

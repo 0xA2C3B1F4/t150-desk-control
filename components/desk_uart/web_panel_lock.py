@@ -1,6 +1,6 @@
 """Confirmed-state controls in generated ESPHome 2026.10.1 local v3 assets.
 
-Only builds opting into child_lock or motion_speed use this hook. No installed ESPHome files
+Only builds opting into child_lock, motion_speed or motion trims use this hook. No installed ESPHome files
 are changed. Unknown upstream formats fail the build rather than silently
 shipping misleading controls. Explicit on/off commands remain available.
 """
@@ -10,6 +10,21 @@ import re
 
 MARKER = "<!-- desk-confirmed-switch-v1 -->"
 SPEED_MARKER = "<!-- desk-confirmed-speed-v1 -->"
+TRIM_MARKER = "<!-- desk-confirmed-trim-v1 -->"
+OLD_NUMBER = "render_number(){if(this.entity)return D`${this._range(this.entity,`set`,`value`,this.entity.value,this.entity.min_value,this.entity.max_value,this.entity.step)} ${this.entity.uom}`}"
+NUMBER = """render_number(){
+  if(!this.entity)return;
+  if(!this.entity.desk_motion_trim)return D`${this._range(this.entity,'set','value',this.entity.value,this.entity.min_value,this.entity.max_value,this.entity.step)} ${this.entity.uom}`;
+  const entity=this.entity,actioner=this.actioner,confirmed=Number(entity.value);
+  const known=entity.value!==null&&entity.value!==undefined&&Number.isInteger(confirmed)&&confirmed>=-3&&confirmed<=3;
+  if(!known)return D`<span aria-live="polite">Unknown</span>`;
+  const send=event=>{
+    const raw=event.target.value,value=Number(raw);
+    if(raw.trim()!==''&&Number.isInteger(value)&&value>=-3&&value<=3)actioner?.restAction(entity,'set?value='+encodeURIComponent(value));
+    event.target.value=String(confirmed);
+  };
+  return D`<input type="number" aria-label="${entity.name}" min="-3" max="3" step="1" .value="${String(confirmed)}" @change="${send}">`;
+}"""
 OLD_SELECT = "render_select(){if(this.entity)return this._select(this.entity,`set`,`option`,this.entity.option||[],this.entity.value)}"
 SELECT = """render_select(){
   if(!this.entity)return;
@@ -59,6 +74,7 @@ window.source?.addEventListener('error',()=>{
   for(const entity of table.entities){
     if(entity.desk_panel_lock)entity.state='UNKNOWN';
     if(entity.desk_motion_speed){entity.state='UNKNOWN';entity.value=null;}
+    if(entity.desk_motion_trim){entity.state='UNKNOWN';entity.value=null;}
   }
   table.requestUpdate();
 });
@@ -84,6 +100,20 @@ NEW_SELECT_JSON = (
     + """
   if (desk_uart::MotionSpeedSelect::is_instance(obj)) {
     root[ESPHOME_F("desk_motion_speed")] = true;
+    if (!obj->has_state()) {
+      root[ESPHOME_F("state")] = "UNKNOWN";
+      root[ESPHOME_F("value")] = nullptr;
+    }
+  }"""
+)
+OLD_NUMBER_JSON = (
+    'set_json_icon_state_value(root, obj, "number", state_str, val_str, start_config);'
+)
+NEW_NUMBER_JSON = (
+    OLD_NUMBER_JSON
+    + """
+  if (desk_uart::MotionTrimNumber::is_instance(obj)) {
+    root[ESPHOME_F("desk_motion_trim")] = true;
     if (!obj->has_state()) {
       root[ESPHOME_F("state")] = "UNKNOWN";
       root[ESPHOME_F("value")] = nullptr;
@@ -125,6 +155,12 @@ def decorate_header(source):
     else:
         html = replace_once(html, OLD_SELECT, SELECT)
         html = replace_once(html, "</body>", SPEED_MARKER + "</body>")
+    if TRIM_MARKER in html:
+        if NUMBER not in html:
+            raise ValueError("Inconsistent confirmed-trim decoration")
+    else:
+        html = replace_once(html, OLD_NUMBER, NUMBER)
+        html = replace_once(html, "</body>", TRIM_MARKER + "</body>")
     data = gzip.compress(html.encode(), compresslevel=9, mtime=0)
     lines = [
         "    " + ", ".join(f"0x{x:02x}" for x in data[i : i + 16]) + ","
@@ -142,4 +178,6 @@ def decorate_server(source):
         source = INCLUDE + replace_once(source, OLD_JSON, NEW_JSON)
     if NEW_SELECT_JSON not in source:
         source = replace_once(source, OLD_SELECT_JSON, NEW_SELECT_JSON)
+    if NEW_NUMBER_JSON not in source:
+        source = replace_once(source, OLD_NUMBER_JSON, NEW_NUMBER_JSON)
     return source

@@ -28,7 +28,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01"]
+            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
           },
           "name": {
             "type": "string",
@@ -76,13 +76,13 @@
     "prepare": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["dt02", "cl01", "rs01-r7", "tb01", "fp01"],
+      "required": ["dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"],
       "properties": {
         "dt02": {
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01"]
+            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
           },
           "uniqueItems": true
         },
@@ -90,7 +90,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01"]
+            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
           },
           "uniqueItems": true
         },
@@ -98,7 +98,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01"]
+            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
           },
           "uniqueItems": true
         },
@@ -106,7 +106,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01"]
+            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
           },
           "uniqueItems": true
         },
@@ -114,7 +114,15 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01"]
+            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
+          },
+          "uniqueItems": true
+        },
+        "tr01": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
           },
           "uniqueItems": true
         }
@@ -129,7 +137,7 @@
         "maxItems": 2,
         "items": {
           "type": "string",
-          "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01"]
+          "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
         }
       }
     },
@@ -140,7 +148,7 @@
       "properties": {
         "target": {
           "type": "string",
-          "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01"]
+          "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
         },
         "documentation": {
           "type": "string",

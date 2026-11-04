@@ -54,9 +54,29 @@
       "size": 96
     },
     {
-      "name": "future",
+      "name": "trim_owner",
       "offset": 256,
-      "size": 752
+      "size": 80
+    },
+    {
+      "name": "trim_record",
+      "offset": 336,
+      "size": 40
+    },
+    {
+      "name": "trim_i2c",
+      "offset": 376,
+      "size": 160
+    },
+    {
+      "name": "trim_adapter",
+      "offset": 536,
+      "size": 128
+    },
+    {
+      "name": "future",
+      "offset": 664,
+      "size": 344
     },
     {
       "name": "guard",

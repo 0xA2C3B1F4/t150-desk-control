@@ -54,6 +54,8 @@ TimerButton = ns.class_("TimerButton", button.Button)
 ChildLockSwitch = ns.class_("ChildLockSwitch", switch.Switch)
 ResetButton = ns.class_("ResetButton", button.Button)
 MotionSpeedSelect = ns.class_("MotionSpeedSelect", select.Select)
+MotionTrimNumber = ns.class_("MotionTrimNumber", number.Number)
+MOTION_TRIMS = ("normal_up_trim", "normal_down_trim", "slow_up_trim", "slow_down_trim")
 
 
 def validate_motion(config):
@@ -110,6 +112,11 @@ def validate_motion(config):
     if config["min_height"] >= config["max_height"]:
         raise cv.Invalid("min_height must be less than max_height")
     unit = config["display_unit"]
+    for key in MOTION_TRIMS:
+        if key in config:
+            entity = config[key]
+            if entity.get("unit_of_measurement", ""):
+                raise cv.Invalid(f"{key} is unitless")
     for key in (
         "height",
         "target_height",
@@ -262,6 +269,23 @@ CONFIG_SCHEMA = cv.All(
                 entity_category="diagnostic"
             ),
             **{
+                cv.Optional(key): number.number_schema(
+                    MotionTrimNumber,
+                    icon="mdi:tune-vertical",
+                    entity_category="config",
+                ).extend(
+                    {
+                        cv.Optional("mode", default="BOX"): cv.enum(
+                            {"BOX": number.NUMBER_MODES["BOX"]}, upper=True
+                        )
+                    }
+                )
+                for key in MOTION_TRIMS
+            },
+            cv.Optional("motion_trim_status"): text_sensor.text_sensor_schema(
+                entity_category="diagnostic"
+            ),
+            **{
                 cv.Optional(key): text_sensor.text_sensor_schema(
                     entity_category="diagnostic"
                 )
@@ -399,6 +423,7 @@ async def to_code(config):
         "target_height_backend",
         "child_lock_status",
         "reset_status",
+        "motion_trim_status",
         "controller_model",
         "controller_manufacturer",
         "controller_identifiers",
@@ -451,6 +476,14 @@ async def to_code(config):
                 await binary_sensor.new_binary_sensor(config["motion_speed_available"])
             )
         )
+    for index, key in enumerate(MOTION_TRIMS):
+        if key in config:
+            trim = await number.new_number(
+                config[key], min_value=-3, max_value=3, step=1
+            )
+            cg.add(trim.set_parent(var))
+            cg.add(trim.set_index(index))
+            cg.add(var.set_motion_trim_number(index, trim))
     cg.add(var.set_motion_enabled(config["experimental_preset_buttons"]))
     cg.add(var.set_uart_observation_enabled(config["uart_observation"]))
     cg.add(var.set_auto_target_mode(config["target_height_mode"] == "auto"))

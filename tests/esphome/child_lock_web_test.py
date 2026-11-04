@@ -57,7 +57,9 @@ class WebTest(unittest.TestCase):
             decode(patched)
             .replace(web.RENDER, web.OLD_RENDER)
             .replace(web.SELECT, web.OLD_SELECT)
+            .replace(web.NUMBER, web.OLD_NUMBER)
             .replace(web.SPEED_MARKER, "")
+            .replace(web.TRIM_MARKER, "")
             .replace(web.DISCONNECT, ""),
             decode(self.header),
         )
@@ -67,6 +69,7 @@ class WebTest(unittest.TestCase):
         self.assertEqual(
             server.replace(web.NEW_JSON, web.OLD_JSON)
             .replace(web.NEW_SELECT_JSON, web.OLD_SELECT_JSON)
+            .replace(web.NEW_NUMBER_JSON, web.OLD_NUMBER_JSON)
             .removeprefix(web.INCLUDE),
             self.server,
         )
@@ -141,6 +144,39 @@ console.log('PASS: speed selection confirmation, unknown placeholder, row bindin
             ["node", "-e", script], input=json.dumps(web.SELECT), text=True, check=True
         )
 
+    def test_confirmed_trim_boxes(self):
+        """Keep trim boxes on confirmed values and reject invalid edits locally."""
+        script = r"""
+const assert=require('node:assert/strict');
+const input=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+const S=(strings,...values)=>({strings,values});
+const Renderer=new Function('D','return class {'+input+'}')(S);
+const r=new Renderer(),sent=[];
+r.actioner={restAction:(entity,action)=>sent.push([entity.name,action])};
+for(const value of [null,undefined,'NaN',-4,0,3,-3]){
+ r.entity={name:'Normal up trim',desk_motion_trim:true,value};
+ const t=r.render_number(),known=Number.isInteger(value)&&value>=-3&&value<=3;
+ if(!known){assert.match(t.strings.join(''),/>Unknown<\/span>/);continue;}
+ assert.match(t.strings.join(''),/type="number"/);
+ assert.match(t.strings.join(''),/min="-3" max="3" step="1"/);
+ const send=t.values.find(x=>typeof x==='function');
+ r.entity={name:'Unrelated number',value:99};
+ const event={target:{value:'2'}};send(event);
+ assert.deepEqual(sent.at(-1),['Normal up trim','set?value=2']);
+ assert.equal(event.target.value,String(value));
+ for(const invalid of ['','NaN','Infinity','1.5','4','-4']){
+  const count=sent.length;send({target:{value:invalid}});assert.equal(sent.length,count);
+ }
+}
+r.entity={name:'Ordinary number',value:1,min_value:0,max_value:10,step:1,uom:'s'};
+r._range=(...args)=>args;
+assert.deepEqual(r.render_number().values[0],[r.entity,'set','value',1,0,10,1]);
+console.log('PASS: confirmed trim boxes, unknown state, numeric bounds, row binding');
+"""
+        subprocess.run(
+            ["node", "-e", script], input=json.dumps(web.NUMBER), text=True, check=True
+        )
+
     def test_actual_render_and_disconnect(self):
         """Verify lock rows stay bound and only desk controls become unknown."""
         # Execute the exact renderer inserted into the bundled Lit application.
@@ -180,7 +216,9 @@ const entities=[{domain:'switch',assumed_state:true,desk_panel_lock:true,state:'
  {domain:'switch',assumed_state:true,state:'OFF'},
  {domain:'switch',assumed_state:false,state:'ON'},
  {domain:'select',desk_motion_speed:true,state:'Slow',value:'Slow'},
- {domain:'select',state:'Normal',value:'Normal'}];
+ {domain:'select',state:'Normal',value:'Normal'},
+ {domain:'number',desk_motion_trim:true,state:'2',value:2},
+ {domain:'number',state:'100',value:100}];
 let updates=0,listener;
 const table={entities,requestUpdate:()=>updates++};
 const app={updateComplete:Promise.resolve(),shadowRoot:{querySelector:()=>table}};
@@ -188,8 +226,9 @@ const run=new Function('customElements','document','window', 'return (async()=>{
 run({whenDefined:()=>Promise.resolve()},{querySelector:()=>app},
  {source:{addEventListener:(type,fn)=>{assert.equal(type,'error');listener=fn;}}}).then(()=>{
  listener();assert.equal(updates,1);
- assert.deepEqual(entities.map(e=>e.state),['UNKNOWN','UNKNOWN','73.0','OFF','ON','UNKNOWN','Normal']);
+ assert.deepEqual(entities.map(e=>e.state),['UNKNOWN','UNKNOWN','73.0','OFF','ON','UNKNOWN','Normal','UNKNOWN','100']);
  assert.equal(entities[5].value,null);assert.equal(entities[6].value,'Normal');
+ assert.equal(entities[7].value,null);assert.equal(entities[8].value,100);
  assert.deepEqual(sent,[{name:'Panel lock',action:'turn_on'},{name:'Panel lock',action:'turn_off'}]);
  console.log('PASS: confirmed colors, explicit actions, unknown state, disconnect, ordinary switch');
 }).catch(e=>{console.error(e);process.exitCode=1;});

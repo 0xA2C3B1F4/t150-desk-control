@@ -19,6 +19,29 @@ namespace esphome {
 namespace desk_uart {
 static const char* const TAG = "desk_uart";
 
+MotionTrimNumber* MotionTrimNumber::first_ = nullptr;
+MotionTrimNumber::MotionTrimNumber() : next_(first_) {
+  first_ = this;
+}
+bool MotionTrimNumber::is_instance(const number::Number* candidate) {
+  for (auto* item = first_; item != nullptr; item = item->next_) {
+    if (item == candidate) {
+      return true;
+    }
+  }
+  return false;
+}
+void MotionTrimNumber::invalidate() {
+  if (!this->has_state()) {
+    return;
+  }
+  this->set_has_state(false);
+  this->state = NAN;
+#if defined(USE_CONTROLLER_REGISTRY) && defined(USE_NUMBER)
+  ControllerRegistry::notify_number_update(this);
+#endif
+}
+
 ChildLockSwitch* ChildLockSwitch::first_ = nullptr;
 ChildLockSwitch::ChildLockSwitch() : next_(first_) {
   first_ = this;
@@ -94,6 +117,7 @@ void DeskUART::invalidate_load_raw_() {
 
 bool DeskUART::begin_firmware_export(bool motor_isolated) {
   const uint32_t now = millis();
+  this->cancel_motion_trim_("Trim change cancelled by firmware maintenance");
   this->yield_child_lock_read_();
   const bool reset_link_stale = !this->height_seen_ || !this->monitor_.fresh(now) ||
                                 static_cast<uint32_t>(now - this->last_height_received_) > 750;
@@ -125,6 +149,7 @@ bool DeskUART::begin_firmware_export(bool motor_isolated) {
   // Isolated maintenance may start while the application is absent. Drop
   // queued work without transmitting anything; never replay it on exit.
   this->firmware_export_active_ = true;
+  this->cancel_motion_trim_("Trim settings unavailable during firmware maintenance", true);
   this->reset_speed_confirmed_ = false;
   if (motor_isolated) {
     this->discard_pending_preset_("Pending preset cancelled by firmware maintenance");
@@ -156,6 +181,7 @@ bool DeskUART::begin_firmware_export(bool motor_isolated) {
     this->connected_sensor_->publish_state(false);
   this->height_sensor_->publish_state(NAN);
   this->invalidate_load_raw_();
+  this->publish_motion_trim_(millis());
   if (this->control_status_)
     this->control_status_->publish_state("Firmware read active; desk controls paused");
   this->last_control_status_ = nullptr;
@@ -189,9 +215,12 @@ void DeskUART::end_firmware_export() {
   this->firmware_export_active_ = false;
 }
 
-void DeskUART::send_(const desk_protocol::Frame& frame) {
+bool DeskUART::send_(const desk_protocol::Frame& frame) {
   if (this->firmware_export_active_)
-    return;
+    return false;
+  if (this->motion_trim_busy_() && !this->motion_trim_sending_) {
+    this->cancel_motion_trim_("Trim change cancelled by another control");
+  }
   // Any competing transaction preempts the D7 reply wait. Never hold Stop or
   // a button release behind it; its final state becomes unknown, with no retry.
   this->custom_.observe_outgoing(frame);
@@ -205,7 +234,7 @@ void DeskUART::send_(const desk_protocol::Frame& frame) {
       this->reset_speed_.operation() == desk_protocol::ResetSpeed::Get)
     this->reset_speed_.yield_read();
   if (this->firmware_export_active_)
-    return;
+    return false;
   desk_protocol::Packet wire;
   if (desk_protocol::encode_resync(frame, wire)) {
     if (frame.size == 10 && frame.bytes[0] == 0xD5 &&
@@ -214,7 +243,9 @@ void DeskUART::send_(const desk_protocol::Frame& frame) {
       this->last_reset_lease_tx_ = millis();
     this->uart_observation_.transmitted();
     this->write_array(wire.bytes, wire.size);
+    return true;
   }
+  return false;
 }
 // Optional, bounded background reads. No identity query participates in motion
 // interlocks, ACK trackers, preset recovery or the keep-awake mechanism.
@@ -285,6 +316,9 @@ void DeskUART::setup() {
   this->child_lock_.seed(static_cast<uint16_t>(boot >> 16));
   this->reset_speed_.seed(static_cast<uint16_t>(boot ^ (boot >> 16)));
   this->custom_.seed(static_cast<uint16_t>(boot ^ (boot >> 16)));
+  this->motion_trim_.seed(static_cast<uint16_t>((boot >> 8) ^ boot));
+  this->motion_trim_dt_probe_.seed(static_cast<uint16_t>(boot >> 8));
+  this->publish_motion_trim_(millis());
   if (this->custom_available_sensor_)
     this->custom_available_sensor_->publish_state(false);
   if (this->custom_result_)
@@ -368,6 +402,7 @@ void DeskUART::loop() {
       this->invalidate_reset_speed_(
           "No recent controller reply; new reset and speed status required");
       this->invalidate_child_lock_("No recent controller reply; panel-lock state unknown");
+      this->cancel_motion_trim_("No recent controller reply; trim settings unknown", true);
       this->invalidate_detection_();
       if (this->firmware_export_active_)
         return;
@@ -391,6 +426,10 @@ void DeskUART::loop() {
     }
     if (parsed != desk_protocol::ParseResult::FrameReady)
       continue;
+    this->motion_trim_frame_(frame, now);
+    if (this->firmware_export_active_) {
+      return;
+    }
     if (this->auto_target_mode_)
       this->detection_.accept(frame, now);
     if (this->direct_mode_)
@@ -434,11 +473,13 @@ void DeskUART::loop() {
         this->invalidate_reset_speed_(
             "Controller status changed; new reset and speed status required");
         this->invalidate_child_lock_("Controller status changed; panel lock must be checked again");
+        this->cancel_motion_trim_("Controller restarted; trim settings must be checked", true);
         if (this->firmware_export_active_)
           return;
       }
       this->child_lock_.observe_sequence(this->monitor_.height().sequence);
       this->reset_speed_.observe_sequence(this->monitor_.height().sequence);
+      this->motion_trim_.observe_sequence(this->monitor_.height().sequence);
       const uint16_t q = this->monitor_.height().q;
       this->uart_observation_.observe_height(millis(), q, this->monitor_.height().sequence);
       if (this->height_seen_ && static_cast<uint32_t>(now - this->last_height_received_) > 750)
@@ -511,6 +552,7 @@ void DeskUART::loop() {
   this->pending_preset_loop_(now);
   this->timer_loop_(now);
   this->child_lock_loop_(now);
+  this->motion_trim_loop_(millis());
   if (this->firmware_export_active_)
     return;
   this->preset_settings_loop_(now);
@@ -554,6 +596,7 @@ void DeskUART::loop() {
   this->custom_loop_(now);
 }
 bool DeskUART::recall_preset(uint8_t slot) {
+  this->cancel_motion_trim_("Trim change cancelled by a movement request");
   if (this->auto_target_mode_ && !this->auto_target_ready_)
     return this->result_(false, "Checking height control support; preset recall unavailable");
   this->yield_reset_speed_read_();
@@ -649,6 +692,7 @@ bool DeskUART::pending_preset_loop_(uint32_t now) {
 bool DeskUART::stop() {
   if (this->firmware_export_active_)
     return this->result_(false, "Firmware read active; desk controls paused");
+  this->cancel_motion_trim_("Trim change cancelled by Stop");
   // Reserve a fail-safe reset cancellation before any callback can issue work.
   const bool reset_cancel_requested = this->reset_speed_.cancel(millis());
   // A rejected reply may have ended the transaction earlier in this RX batch.
@@ -879,9 +923,10 @@ void DeskUART::limit_loop_(uint32_t now) {
   }
 }
 bool DeskUART::preset_access_allowed_(uint32_t now) const {
-  return !this->custom_.pending() && !this->reset_speed_blocking_() && !this->child_lock_busy_() &&
-         !this->detection_.busy() && !this->journal_error_() && !this->journal_recheck_pending_ &&
-         !this->pending_preset_ && !this->firmware_export_active_ && this->monitor_.fresh(now) &&
+  return !this->motion_trim_busy_() && !this->custom_.pending() && !this->reset_speed_blocking_() &&
+         !this->child_lock_busy_() && !this->detection_.busy() && !this->journal_error_() &&
+         !this->journal_recheck_pending_ && !this->pending_preset_ &&
+         !this->firmware_export_active_ && this->monitor_.fresh(now) &&
          this->stable_ms_(now) >= 1500 &&
          static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
          static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000 &&
@@ -1216,6 +1261,7 @@ void DeskUART::keep_awake_loop_(uint32_t now) {
   ESP_LOGD(TAG, "Keep-awake: reading current raw position and borrowing preset 3");
 }
 bool DeskUART::move_to_height(float cm) {
+  this->cancel_motion_trim_("Trim change cancelled by a movement request");
   this->yield_reset_speed_read_();
   if (this->custom_write_pending_())
     return this->result_(false, "Custom timer/buzzer transaction pending");
@@ -1407,10 +1453,10 @@ bool DeskUART::discovery_access_allowed_(uint32_t now) const {
   // Read-only capability discovery must not depend on a dormant journal, its
   // load errors, or whether a target-height number is exposed. A real borrow
   // still owns the bus until its write/brake/cleanup is resolved.
-  return !this->custom_.pending() && !this->reset_speed_blocking_() && !this->child_lock_busy_() &&
-         !this->legacy_ownership_active_() && !this->keep_awake_active_ &&
-         !this->firmware_export_active_ && this->monitor_.fresh(now) && this->height_seen_ &&
-         static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
+  return !this->motion_trim_busy_() && !this->custom_.pending() && !this->reset_speed_blocking_() &&
+         !this->child_lock_busy_() && !this->legacy_ownership_active_() &&
+         !this->keep_awake_active_ && !this->firmware_export_active_ && this->monitor_.fresh(now) &&
+         this->height_seen_ && static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
          this->stable_ms_(now) >= 1500 && !this->stop_latched_ && !this->release_fault_ &&
          !this->timer_.busy() && !this->preset_settings_.busy() && !this->pulse_.active() &&
          !this->release_ack_.pending() && !this->stop_ack_.pending() && !this->pending_preset_ &&
@@ -1418,10 +1464,11 @@ bool DeskUART::discovery_access_allowed_(uint32_t now) const {
          static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000;
 }
 bool DeskUART::direct_access_allowed_(uint32_t now) const {
-  return !this->custom_.pending() && !this->reset_speed_blocking_() && !this->child_lock_busy_() &&
-         this->target_enabled_ && !this->journal_error_() && !this->journal_recheck_pending_ &&
-         !this->accept_current_active_ && !this->recovery_check_active_ &&
-         !this->restore_requested_ && !this->target_move_.dirty() && !this->target_move_.busy() &&
+  return !this->motion_trim_busy_() && !this->custom_.pending() && !this->reset_speed_blocking_() &&
+         !this->child_lock_busy_() && this->target_enabled_ && !this->journal_error_() &&
+         !this->journal_recheck_pending_ && !this->accept_current_active_ &&
+         !this->recovery_check_active_ && !this->restore_requested_ &&
+         !this->target_move_.dirty() && !this->target_move_.busy() &&
          !this->firmware_export_active_ && this->monitor_.fresh(now) && this->height_seen_ &&
          static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
          this->stable_ms_(now) >= 1500 && !this->stop_latched_ && !this->release_fault_ &&
@@ -1462,7 +1509,18 @@ bool DeskUART::direct_move_(float cm, uint32_t now) {
   }
   if (!this->direct_access_allowed_(now))
     return this->result_(false, this->control_reason_(now));
-  if (!this->direct_.begin(raw, this->last_q_, now))
+  int8_t up_trim = 0;
+  int8_t down_trim = 0;
+  if (this->motion_trim_.supported()) {
+    if (!this->motion_trim_.state_known() || this->motion_trim_.reply().flags ||
+        !this->reset_speed_.fresh(now)) {
+      return this->result_(false, "Trim settings or motion speed unknown; target not sent");
+    }
+    const uint8_t index = 2 * this->reset_speed_.reply().speed;
+    up_trim = this->motion_trim_.reply().active.trim[index];
+    down_trim = this->motion_trim_.reply().active.trim[index + 1];
+  }
+  if (!this->direct_.begin(raw, this->last_q_, now, up_trim, down_trim))
     return this->result_(false, "Direct request blocked");
   this->direct_probe_done_ = true;
   this->last_direct_error_ = nullptr;
@@ -1477,8 +1535,8 @@ bool DeskUART::reset_speed_access_allowed_(uint32_t now, bool reset, bool read,
   const bool recovery_read = read && this->reset_stop_pending_;
   // Only availability publication skips read-only bus occupancy. Command
   // admission and polling always use the default, fully serialized path.
-  return !this->custom_write_pending_() && (!this->custom_.pending() || read || presentation) &&
-         !this->firmware_export_active_ &&
+  return !this->motion_trim_busy_() && !this->custom_write_pending_() &&
+         (!this->custom_.pending() || read || presentation) && !this->firmware_export_active_ &&
          (!this->reset_speed_.busy() ||
           (presentation && this->reset_speed_.operation() == desk_protocol::ResetSpeed::Get)) &&
          !this->detection_.busy() &&
@@ -1523,6 +1581,7 @@ void DeskUART::invalidate_reset_speed_(const char* reason) {
     this->motion_speed_select_->invalidate();
 }
 bool DeskUART::reset_desk(bool resume) {
+  this->cancel_motion_trim_("Trim change cancelled by a reset request");
   this->yield_child_lock_read_();
   const uint32_t now = millis();
   // The same user command resumes a paused reset. Cached status cannot choose
@@ -1575,6 +1634,21 @@ void DeskUART::reset_speed_result_() {
   const bool completed = this->reset_speed_.take_completed();
   const auto& reply = this->reset_speed_.reply();
   const uint8_t operation = this->reset_speed_.operation();
+  if (completed && operation == desk_protocol::ResetSpeed::Get && !reply.result &&
+      this->motion_trim_rs_replies_ < 2) {
+    ++this->motion_trim_rs_replies_;
+  }
+  if (this->motion_trim_token_pending_ && (completed || failure)) {
+    this->motion_trim_token_pending_ = false;
+    const bool admitted =
+        completed && !failure && !reply.result && reply.outputs_off() && !reply.mode &&
+        !reply.previous && (reply.state == 0 || reply.state == 4) &&
+        this->child_lock_.state_known() && !this->child_lock_.reply().storage_fault;
+    if (!admitted || !this->motion_trim_.provide_token(reply.token, reply.sequence)) {
+      this->cancel_motion_trim_("Trim change blocked by the controller; try again when idle");
+      this->result_(false, "Trim change blocked by the controller; change not queued");
+    }
+  }
   if (completed) {
     this->reset_speed_confirmed_ = true;
     ESP_LOGD(
@@ -1713,6 +1787,328 @@ const char* DeskUART::reset_speed_status_(uint32_t now) const {
   }
   return status;
 }
+bool DeskUART::motion_trim_access_allowed_(uint32_t now) const {
+  return !this->firmware_export_active_ && !this->custom_.pending() &&
+         !this->reset_speed_.blocking() &&
+         (!this->reset_speed_.busy() || this->motion_trim_token_pending_) &&
+         !this->child_lock_busy_() && !this->detection_.busy() && !this->direct_.busy() &&
+         !this->legacy_ownership_active_() && !this->keep_awake_active_ &&
+         !this->target_move_.busy() && !this->target_move_.dirty() &&
+         !this->preset_settings_.busy() && this->limit_phase_ == LimitPhase::Idle &&
+         this->identity_pending_ == 255 && !this->timer_.busy() && !this->pulse_.active() &&
+         !this->release_ack_.pending() && !this->stop_ack_.pending() && !this->pending_preset_ &&
+         !this->stop_latched_ && !this->release_fault_ && this->height_seen_ &&
+         this->monitor_.fresh(now) &&
+         static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
+         this->stable_ms_(now) >= 1500 &&
+         static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000;
+}
+
+void DeskUART::cancel_motion_trim_(const char* reason, bool disconnect) {
+  if (!this->motion_trim_enabled_()) {
+    return;
+  }
+  const bool busy = this->motion_trim_busy_();
+  const bool editing = this->motion_trim_edit_active_;
+  if (this->motion_trim_token_pending_) {
+    this->reset_speed_.yield_read();
+    this->motion_trim_token_pending_ = false;
+    this->last_reset_speed_query_ = millis();
+  }
+  this->motion_trim_.cancel();
+  this->motion_trim_dt_probe_.cancel();
+  this->motion_trim_edit_active_ = false;
+  this->motion_trim_busy_refused_ = false;
+  this->motion_trim_readback_active_ = false;
+  if (editing) {
+    this->motion_trim_readback_attempts_ = 0;
+  }
+  this->motion_trim_readback_pending_ =
+      !disconnect && this->motion_trim_.supported() && !this->motion_trim_.state_known() &&
+      !this->motion_trim_.reply().flags && this->motion_trim_readback_attempts_ < 3;
+  if (disconnect) {
+    this->motion_trim_.disconnect();
+    this->motion_trim_dt_probe_.disconnect();
+    this->motion_trim_attempts_ = this->motion_trim_dt_attempts_ = this->motion_trim_dt_replies_ =
+        this->motion_trim_rs_attempts_ = this->motion_trim_rs_replies_ = 0;
+    this->motion_trim_readback_attempts_ = 0;
+  }
+  if (busy || disconnect) {
+    this->motion_trim_message_ = reason;
+  }
+  // Publish later, after the preempting command has acquired the UART.
+}
+
+bool DeskUART::redetect_motion_trim() {
+  if (!this->motion_trim_enabled_() || this->motion_trim_busy_()) {
+    return this->result_(false, "Trim settings busy; detection not restarted");
+  }
+  this->cancel_motion_trim_("Checking trim support", true);
+  this->last_motion_trim_probe_ = this->last_motion_trim_dt_probe_ = millis() - 1000;
+  return true;
+}
+
+bool DeskUART::set_motion_trim(uint8_t index, float value) {
+  if (this->motion_trim_busy_()) {
+    this->motion_trim_busy_refused_ = true;
+    this->result_(false, "Trim settings busy; change not queued");
+    this->publish_motion_trim_(millis());
+    return false;
+  }
+  if (index >= 4 || !this->motion_trim_numbers_[index] || !std::isfinite(value) || value < -3 ||
+      value > 3 || value != static_cast<int>(value)) {
+    return this->result_(false, "Trim must be a whole number from -3 to 3");
+  }
+  if (!this->motion_trim_.supported()) {
+    return this->result_(false, "Trim support not detected on this connection");
+  }
+  if (const char* fault = this->motion_trim_fault_status_()) {
+    return this->result_(false, fault);
+  }
+  this->yield_child_lock_read_();
+  if (!this->motion_trim_access_allowed_(millis()) || !this->child_lock_.state_known() ||
+      this->child_lock_.reply().storage_fault) {
+    return this->result_(false, "Trim change blocked; wait for the desk to be idle and try again");
+  }
+  if (this->motion_trim_.edit(index, value) != desk_protocol::MotionTrim::RequestStatus::Started) {
+    return this->result_(false, "Trim change unavailable; check trim status");
+  }
+  this->motion_trim_edit_active_ = true;
+  this->motion_trim_readback_pending_ = this->motion_trim_readback_active_ = false;
+  this->motion_trim_readback_attempts_ = 0;
+  this->motion_trim_busy_refused_ = false;
+  this->motion_trim_message_ = nullptr;
+  // Transmit before invoking entity callbacks that may Stop or enter maintenance.
+  this->motion_trim_loop_(millis());
+  if (this->motion_trim_.busy()) {
+    return this->result_(true, "Trim change requested; awaiting confirmation");
+  }
+  return false;
+}
+
+void DeskUART::motion_trim_frame_(const desk_protocol::Frame& frame, uint32_t now) {
+  if (!this->motion_trim_enabled_()) {
+    return;
+  }
+  if (this->motion_trim_.accept(frame, now)) {
+    this->motion_trim_result_();
+  }
+  if (this->motion_trim_dt_probe_.busy()) {
+    this->motion_trim_dt_probe_.accept(frame, now);
+    if (!this->motion_trim_dt_probe_.busy() && this->motion_trim_dt_probe_.known() &&
+        !this->motion_trim_dt_probe_.reply().status &&
+        this->motion_trim_.observe_sequence(desk_protocol::be16(frame.bytes + 35))) {
+      if (this->motion_trim_dt_replies_ < 2) {
+        ++this->motion_trim_dt_replies_;
+      }
+    }
+  }
+  desk_protocol::ResetSpeedReply reset;
+  desk_protocol::ChildLockReply lock;
+  desk_protocol::DirectReply direct;
+  if (desk_protocol::reset_speed_reply(frame, reset)) {
+    this->motion_trim_.observe_sequence(reset.sequence);
+  } else if (desk_protocol::child_lock_reply(frame, lock)) {
+    this->motion_trim_.observe_sequence(lock.sequence);
+  } else if (desk_protocol::direct_reply(frame, direct)) {
+    this->motion_trim_.observe_sequence(desk_protocol::be16(frame.bytes + 35));
+  }
+}
+
+void DeskUART::motion_trim_result_() {
+  if (this->motion_trim_.busy()) {
+    return;
+  }
+  using Outcome = desk_protocol::MotionTrim::Outcome;
+  const Outcome outcome = this->motion_trim_.outcome();
+  if (this->motion_trim_readback_active_) {
+    this->motion_trim_readback_active_ = false;
+    const bool retryable =
+        outcome == Outcome::Timeout ||
+        (outcome == Outcome::Rejected &&
+         this->motion_trim_.reply().result == desk_protocol::MotionTrimCodec::Busy);
+    this->motion_trim_readback_pending_ =
+        retryable && !this->motion_trim_.reply().flags && this->motion_trim_readback_attempts_ < 3;
+    if (retryable) {
+      // Retry only the read. The failed edit's index, tuple and token are gone.
+      this->last_motion_trim_probe_ = millis();
+      if (this->motion_trim_readback_attempts_ >= 3) {
+        this->motion_trim_message_ = "Trim settings unknown; readback attempts exhausted";
+      }
+    }
+    return;
+  }
+  if (!this->motion_trim_edit_active_) {
+    return;
+  }
+  this->motion_trim_edit_active_ = false;
+  this->motion_trim_busy_refused_ = false;
+  const bool saved = outcome == Outcome::Saved;
+  // Recover current values through a bounded series of reads, never another SET.
+  this->motion_trim_readback_pending_ = !saved && !this->motion_trim_.reply().flags;
+  this->motion_trim_readback_attempts_ = 0;
+  const char* message = saved ? "Trim value confirmed"
+                        : outcome == Outcome::Timeout
+                            ? "Trim change not confirmed; current settings unknown, no retry"
+                        : outcome == Outcome::InvalidReply
+                            ? "Trim confirmation did not match; current settings unknown"
+                            : "Trim change rejected; no retry";
+  this->motion_trim_message_ = saved ? nullptr : message;
+  this->result_(saved, message);
+}
+
+const char* DeskUART::motion_trim_fault_status_() const {
+  if (!this->motion_trim_.supported()) {
+    return nullptr;
+  }
+  if (this->motion_trim_.reply().flags & desk_protocol::MotionTrimCodec::ControlsLocked) {
+    return "Trim storage fault; desk controls locked, service required";
+  }
+  if (this->motion_trim_.reply().flags & desk_protocol::MotionTrimCodec::PlatformFault) {
+    return "Trim platform fault; trim controls unavailable";
+  }
+  return nullptr;
+}
+
+void DeskUART::publish_motion_trim_(uint32_t now) {
+  if (!this->motion_trim_enabled_()) {
+    return;
+  }
+  const bool exporting_at_entry = this->firmware_export_active_;
+  const bool fresh = !exporting_at_entry && this->height_seen_ && this->monitor_.fresh(now) &&
+                     static_cast<uint32_t>(now - this->last_height_received_) <= 750;
+  const char* fault = this->motion_trim_fault_status_();
+  for (size_t i = 0; i < 4; ++i) {
+    auto* number = this->motion_trim_numbers_[i];
+    if (!number) {
+      continue;
+    }
+    if (!fresh || !this->motion_trim_.supported() || !this->motion_trim_.state_known() || fault) {
+      number->invalidate();
+    } else {
+      const float value = this->motion_trim_.last_confirmed().active.trim[i];
+      if (!number->has_state() || number->state != value) {
+        number->publish_state(value);
+      }
+    }
+    if (!exporting_at_entry && this->firmware_export_active_) {
+      return;
+    }
+  }
+  const char* status = this->motion_trim_message_;
+  if (!fresh) {
+    status = "Trim settings unavailable; no recent controller reply";
+  } else if (fault) {
+    status = fault;
+  } else if (this->motion_trim_.busy()) {
+    status = this->motion_trim_busy_refused_  ? "Trim settings busy; change not queued"
+             : this->motion_trim_edit_active_ ? "Updating trim settings; awaiting confirmation"
+                                              : "Checking trim settings";
+  } else if (!this->motion_trim_.supported()) {
+    status = this->motion_trim_attempts_ >= 3 ? "TR01 not detected on this connection"
+                                              : "Trim support not detected on this connection";
+  } else if (this->motion_trim_.state_known()) {
+    switch (this->motion_trim_.last_confirmed().storage) {
+      case desk_protocol::MotionTrimCodec::Default:
+        status = "Some trims use defaults";
+        break;
+      case desk_protocol::MotionTrimCodec::Verified:
+        status = "Trim settings verified";
+        break;
+      case desk_protocol::MotionTrimCodec::Fault:
+        status = "Trim storage fault; saved settings unavailable";
+        break;
+      case desk_protocol::MotionTrimCodec::Uncertain:
+        status = "Active trims read; saved settings uncertain";
+        break;
+    }
+  }
+  if (!status) {
+    status = "Current trim settings unknown";
+  }
+  if (status != this->last_motion_trim_status_) {
+    this->last_motion_trim_status_ = status;
+    if (this->motion_trim_status_) {
+      this->motion_trim_status_->publish_state(status);
+    }
+  }
+}
+
+void DeskUART::motion_trim_loop_(uint32_t now) {
+  if (!this->motion_trim_enabled_()) {
+    return;
+  }
+  const bool fresh = !this->firmware_export_active_ && this->height_seen_ &&
+                     this->monitor_.fresh(now) &&
+                     static_cast<uint32_t>(now - this->last_height_received_) <= 750;
+  if (!fresh && (this->motion_trim_.supported() || this->motion_trim_busy_() ||
+                 this->motion_trim_attempts_ || this->motion_trim_rs_replies_)) {
+    this->cancel_motion_trim_("Controller disconnected; trim settings unknown", true);
+  }
+  this->motion_trim_.tick(now);
+  this->motion_trim_dt_probe_.tick(now, fresh, this->stable_ms_(now));
+  this->motion_trim_result_();
+  if (this->motion_trim_busy_() && !this->motion_trim_access_allowed_(now)) {
+    this->cancel_motion_trim_("Trim change cancelled; desk no longer idle");
+  }
+  if (this->motion_trim_.awaiting_token() && !this->motion_trim_token_pending_) {
+    if (this->reset_speed_.probe(now)) {
+      this->motion_trim_token_pending_ = true;
+      this->last_reset_speed_query_ = now;
+      desk_protocol::Frame request;
+      if (this->reset_speed_.take_frame(request)) {
+        this->motion_trim_sending_ = this->reset_speed_sending_ = true;
+        this->send_(request);
+        this->motion_trim_sending_ = this->reset_speed_sending_ = false;
+      }
+    }
+  }
+  if (!this->motion_trim_busy_() && this->motion_trim_access_allowed_(now)) {
+    if (!this->motion_trim_.supported() && this->motion_trim_dt_replies_ < 2 &&
+        this->motion_trim_dt_attempts_ < 3 && this->child_lock_dt02_ &&
+        static_cast<uint32_t>(now - this->last_motion_trim_dt_probe_) >= 1000) {
+      if (this->motion_trim_dt_probe_.probe(now)) {
+        ++this->motion_trim_dt_attempts_;
+        this->last_motion_trim_dt_probe_ = now;
+        desk_protocol::Frame request;
+        if (this->motion_trim_dt_probe_.take_frame(request)) {
+          this->motion_trim_sending_ = true;
+          this->send_(request);
+          this->motion_trim_sending_ = false;
+        }
+      }
+    } else if ((this->motion_trim_readback_pending_ ||
+                (!this->motion_trim_.supported() && this->motion_trim_attempts_ < 3 &&
+                 this->motion_trim_dt_replies_ >= 2 && this->motion_trim_rs_replies_ >= 2)) &&
+               static_cast<uint32_t>(now - this->last_motion_trim_probe_) >= 1000) {
+      if (this->motion_trim_.probe() == desk_protocol::MotionTrim::RequestStatus::Started) {
+        const bool readback = this->motion_trim_readback_pending_;
+        this->motion_trim_readback_pending_ = false;
+        this->motion_trim_readback_active_ = readback;
+        if (readback) {
+          ++this->motion_trim_readback_attempts_;
+        } else {
+          ++this->motion_trim_attempts_;
+        }
+        this->last_motion_trim_probe_ = now;
+      }
+    }
+  }
+  desk_protocol::Frame request;
+  if (this->motion_trim_.pending_frame(request)) {
+    this->motion_trim_sending_ = true;
+    const uint32_t transmitted = millis();
+    const bool sent = this->send_(request);
+    this->motion_trim_sending_ = false;
+    if (sent && this->motion_trim_.busy()) {
+      this->motion_trim_.mark_transmitted(transmitted);
+    } else {
+      this->cancel_motion_trim_("Trim request could not be sent");
+    }
+  }
+  this->publish_motion_trim_(millis());
+}
+
 void DeskUART::reset_speed_loop_(uint32_t now) {
   if (!this->reset_speed_enabled_())
     return;
@@ -1727,13 +2123,18 @@ void DeskUART::reset_speed_loop_(uint32_t now) {
   this->reset_speed_result_();
   // GET discovers status and rotates a challenge. It never acquires or renews
   // an operation. Reconnection only makes an explicit Reset command available.
-  if (fresh && !this->reset_speed_.busy() && !this->reset_speed_.owned() &&
-      this->child_lock_dt02_ && this->child_lock_.supported() &&
-      this->reset_speed_access_allowed_(now, false, true) && !this->available() &&
+  const bool trim_discovery = this->motion_trim_enabled_() && this->motion_trim_rs_replies_ < 2 &&
+                              this->motion_trim_rs_attempts_ < 3;
+  if ((this->reset_speed_controls_enabled_() || trim_discovery) && fresh &&
+      !this->reset_speed_.busy() && !this->reset_speed_.owned() && this->child_lock_dt02_ &&
+      this->child_lock_.supported() && this->reset_speed_access_allowed_(now, false, true) &&
+      !this->available() &&
       static_cast<uint32_t>(now - this->last_reset_speed_query_) >=
           ((this->reset_speed_.supported() || this->reset_stop_pending_) ? 500U : 5000U)) {
     this->last_reset_speed_query_ = now;
-    this->reset_speed_.probe(now);
+    if (this->reset_speed_.probe(now) && this->motion_trim_enabled_()) {
+      ++this->motion_trim_rs_attempts_;
+    }
   }
   desk_protocol::Frame frame;
   if (this->reset_speed_.take_frame(frame)) {
@@ -1746,7 +2147,8 @@ void DeskUART::reset_speed_loop_(uint32_t now) {
 
 bool DeskUART::child_lock_access_allowed_(uint32_t now, bool read, bool presentation) const {
   const bool recovery_read = read && this->reset_stop_pending_;
-  return !this->custom_write_pending_() && (!this->custom_.pending() || read || presentation) &&
+  return !this->motion_trim_busy_() && !this->custom_write_pending_() &&
+         (!this->custom_.pending() || read || presentation) &&
          (!this->reset_speed_blocking_() ||
           (!this->reset_speed_.owned() && !this->reset_speed_.busy()) ||
           (presentation && !this->reset_speed_.blocking() &&
@@ -1892,6 +2294,8 @@ void DeskUART::child_lock_loop_(uint32_t now) {
     return;
   const bool fresh = this->height_seen_ && this->monitor_.fresh(now) &&
                      static_cast<uint32_t>(now - this->last_height_received_) <= 750;
+  const bool child_polling = this->child_lock_switch_ || this->child_lock_status_ ||
+                             this->child_lock_available_ || this->reset_speed_controls_enabled_();
   if (!fresh)
     this->invalidate_child_lock_("No recent controller reply; panel-lock state unknown");
   this->child_lock_.tick(now, fresh);
@@ -1903,7 +2307,8 @@ void DeskUART::child_lock_loop_(uint32_t now) {
         "Panel-lock request interrupted by changed movement conditions; lock state unknown, request not retried");
   // Reuse auto detection, including a conclusive stock/preset result.
   // Polling a validated DT02 prerequisite never implies CL01 support.
-  if (!this->child_lock_dt02_ && this->child_lock_probed_ && this->child_lock_detection_.error() &&
+  if (child_polling && !this->child_lock_dt02_ && this->child_lock_probed_ &&
+      this->child_lock_detection_.error() &&
       static_cast<uint32_t>(now - this->last_child_lock_query_) >= 5000) {
     // A lost prerequisite reply must not strand an installed, locked CL01.
     // Retry the complete read-only identity/profile transaction after backoff.
@@ -1951,8 +2356,9 @@ void DeskUART::child_lock_loop_(uint32_t now) {
       }
     }
   }
-  if (fresh && this->child_lock_dt02_ && !this->child_lock_busy_() &&
-      this->child_lock_access_allowed_(now, true) && !this->available() &&
+  if ((child_polling || !this->child_lock_probed_) && fresh && this->child_lock_dt02_ &&
+      !this->child_lock_busy_() && this->child_lock_access_allowed_(now, true) &&
+      !this->available() &&
       ((!this->child_lock_probed_ &&
         static_cast<uint32_t>(now - this->last_child_lock_query_) >= 800) ||
        static_cast<uint32_t>(now - this->last_child_lock_query_) >= 5000)) {
@@ -2089,10 +2495,11 @@ bool DeskUART::restore_temporary_preset() {
                                         : "No failed preset transaction to restore");
 }
 bool DeskUART::recovery_access_allowed_(uint32_t now) const {
-  return !this->custom_.pending() && !this->reset_speed_blocking_() && !this->child_lock_busy_() &&
-         !this->detection_.busy() && !this->journal_error_() && !this->direct_.busy() &&
-         !this->firmware_export_active_ && !this->preset_settings_.busy() && !this->timer_.busy() &&
-         !this->release_fault_ && this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
+  return !this->motion_trim_busy_() && !this->custom_.pending() && !this->reset_speed_blocking_() &&
+         !this->child_lock_busy_() && !this->detection_.busy() && !this->journal_error_() &&
+         !this->direct_.busy() && !this->firmware_export_active_ &&
+         !this->preset_settings_.busy() && !this->timer_.busy() && !this->release_fault_ &&
+         this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
          static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
          static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000 && !this->pulse_.active() &&
          !this->release_ack_.pending() && !this->stop_ack_.pending() &&
@@ -2451,6 +2858,9 @@ const char* DeskUART::control_reason_(uint32_t now, bool presentation) const {
     return error;
   if (this->custom_write_pending_())
     return "Custom timer/buzzer transaction pending";
+  if (this->motion_trim_.busy() && this->motion_trim_edit_active_) {
+    return "Updating trim settings; awaiting confirmation";
+  }
   if (this->reset_speed_.blocking())
     return this->reset_speed_.busy() &&
                    this->reset_speed_.operation() == desk_protocol::ResetSpeed::Speed
@@ -2594,6 +3004,7 @@ void DeskUART::uart_observation_log_() {
 }
 
 void DeskUART::on_shutdown() {
+  this->cancel_motion_trim_("ESPHome shutting down; trim settings unknown", true);
   if (this->reset_speed_.owned() || this->reset_speed_.blocking())
     this->stop();
   this->invalidate_reset_speed_("ESPHome shutting down; new reset and speed status required");
@@ -2637,6 +3048,10 @@ void DeskUART::dump_config() {
   LOG_SENSOR("  ", "Height", this->height_sensor_);
   LOG_SENSOR("  ", "Load (raw)", this->load_raw_sensor_);
   LOG_SELECT("  ", "Motion speed", this->motion_speed_select_);
+  for (auto* number : this->motion_trim_numbers_) {
+    LOG_NUMBER("  ", "Motion trim", number);
+  }
+  LOG_TEXT_SENSOR("  ", "Motion trim status", this->motion_trim_status_);
   LOG_TEXT_SENSOR("  ", "Reset status", this->reset_status_);
   LOG_BINARY_SENSOR("  ", "Reset available", this->reset_available_);
   LOG_BINARY_SENSOR("  ", "Motion speed available", this->motion_speed_available_);

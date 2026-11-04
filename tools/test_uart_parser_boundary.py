@@ -933,11 +933,12 @@ def rx_reset_call_result(image):
     return result
 
 
-def run(image, stock_image=None):
+def run(image, stock_image=None, *, unknown_command=0xD7):
     """Run receive-boundary, resynchronization and optional stock comparisons offline.
 
     Return completed case descriptions. RX chunks and memory overwrites are
     controlled fixtures, without DMA timing or physical-controller behavior.
+    Select an unassigned command for images that add a handler for the default.
     """
     completed = []
 
@@ -987,8 +988,8 @@ def run(image, stock_image=None):
     # FE quotes all three reserved values. In particular, a received FE FD
     # pair is payload and cannot terminate the frame.
     escaped_cases = {
-        "reserved payload": bytes((0xD7, 0xFA, 0xFD, 0xFE)),
-        "escaped FD checksum": bytes((0xD7, 0x2A)),
+        "reserved payload": bytes((unknown_command, 0xFA, 0xFD, 0xFE)),
+        "escaped FD checksum": bytes((unknown_command, unknown_command ^ 0xFD)),
     }
     for label, escaped_body in escaped_cases.items():
         escaped = frame(escaped_body)

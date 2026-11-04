@@ -5,6 +5,21 @@ Host tests and successful builds do not establish physical behavior.
 
 ## Hardware validation
 
+### TR01 motion trims
+
+TR01 passed maintenance-page installation, complete application readback,
+independent trim writes and retention after a controller power cycle. With the matching ESPHome
+adapter, adjusted direct target moves were repeated in both directions at Normal
+and Slow speed. Reported endpoints matched the requested heights at the display's
+resolution. Short target moves and native preset returns also completed at both
+speeds. Short upward moves retained a small undershoot. These are controller
+readings, not external height measurements.
+
+The fixed-profile builder reproduces the installed image from both supported R7
+input formats. Host installer tests cover preparation from all six earlier images,
+all 49 supported image transitions, full readback, lost final acknowledgements
+and interrupted original-image recovery.
+
 ### RS01 R7 with the current ESPHome adapter
 
 These checks used the R7 image and the updated `FA FA` sender together.
@@ -300,8 +315,34 @@ python tools/test_platform_patch.py --llvm-bin /path/to/llvm/bin
 The instruction tests cover startup, profile rejection, RAM guards and the moved
 TB01 state. Installer tests cover the accepted image transitions, full readback,
 interrupted writes and repeated original-image recovery. The complete installer
-matrix requires private images for all six supported versions. These checks model RAM
+matrix requires private images for all seven supported versions. These checks model RAM
 and peripherals; they do not measure physical SRAM or reset behavior.
+
+### TR01 reproduction
+
+Use the same LLVM toolchain and Unicorn version as FP01:
+
+```sh
+python tools/embed_motion_trim_patch.py --check --llvm-bin /path/to/llvm/bin
+python tools/test_motion_trim_builder.py --llvm-bin /path/to/llvm/bin
+```
+
+Build from an exact saved R7 full-flash or application image with LLVM 23.1.0:
+
+```sh
+python tools/build_motion_trim_patch.py saved-r7.bin tr01-output \
+  --llvm-bin /path/to/llvm/bin --require-clean-source
+```
+
+The new output directory contains the application, install payload and a hash
+manifest. A full-flash input also produces a full-flash output. The builder
+does not access a device. Install the application through
+[firmware maintenance](firmware-update.md).
+
+The fixed-profile checks reject unknown source images, changed patch sections,
+missing identity pins and overwritten output directories. Instruction tests in CI
+cover trim transactions, independent storage and the original firmware's EEPROM
+writers.
 
 ## ESPHome 2026.10.1
 

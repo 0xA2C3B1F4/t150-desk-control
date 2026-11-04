@@ -44,6 +44,29 @@ class WrapperArgumentsTest(unittest.TestCase):
                     self.assertFalse((work / "include").exists())
                     self.assertFalse((work / "update-test").exists())
 
+    def test_trims_require_platform_images(self):
+        """Reject a trim-only request before any host compilation or image read."""
+        with tempfile.TemporaryDirectory(
+            dir=os.environ["TMPDIR"], prefix="desk-trim-wrapper-"
+        ) as directory:
+            work = Path(directory) / "work"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "tests/esphome/firmware_update_lifecycle.py"),
+                    "--work-dir",
+                    str(work),
+                    "--motion-trims",
+                    "unused-private-image.bin",
+                ],
+                text=True,
+                capture_output=True,
+                timeout=10,
+            )
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("--motion-trims requires --platform", result.stderr)
+            self.assertFalse((work / "include").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

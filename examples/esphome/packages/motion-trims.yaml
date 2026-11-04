@@ -1,0 +1,38 @@
+# Optional persistent, unitless stopping adjustments for the desk examples.
+# Changing a trim does not move the desk. No startup action or ESP-side restore.
+web_server:
+  sorting_groups:
+    - id: desk_group_trims
+      name: Motion trims
+      sorting_weight: 45
+desk_uart:
+  id: desk
+  normal_up_trim:
+    name: Normal up trim
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_trims
+      sorting_weight: 50
+  normal_down_trim:
+    name: Normal down trim
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_trims
+      sorting_weight: 51
+  slow_up_trim:
+    name: Slow up trim
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_trims
+      sorting_weight: 52
+  slow_down_trim:
+    name: Slow down trim
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_trims
+      sorting_weight: 53
+  motion_trim_status:
+    name: Motion trim status
+    web_server:
+      sorting_group_id: desk_group_diagnostics
+      sorting_weight: 50

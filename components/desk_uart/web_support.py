@@ -13,7 +13,17 @@ def patch_features(full_config):
     """Return the enabled control, maintenance and OTA source-patch flags, in order."""
     web = full_config.get("web_server", {})
     controls = any(
-        "child_lock" in desk or "motion_speed" in desk
+        any(
+            key in desk
+            for key in (
+                "child_lock",
+                "motion_speed",
+                "normal_up_trim",
+                "normal_down_trim",
+                "slow_up_trim",
+                "slow_down_trim",
+            )
+        )
         for desk in full_config.get("desk_uart", [])
     )
     local_v3 = web.get("version") == 3 and web.get("local")

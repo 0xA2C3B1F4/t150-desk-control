@@ -36,12 +36,20 @@ inline bool direct_reply(const Frame& f, DirectReply& out) {
   out = r;
   return true;
 }
-inline int32_t direct_committed_target(uint16_t s, uint16_t c) {
+inline int32_t direct_committed_target(uint16_t s, uint16_t c, int8_t up_trim = 0,
+                                       int8_t down_trim = 0) {
   int32_t t = s;
-  if (static_cast<int32_t>(s) > static_cast<int32_t>(c) + 4)
+  if (static_cast<int32_t>(s) > static_cast<int32_t>(c) + 4) {
     t += 7;
-  else if (static_cast<int32_t>(s) < static_cast<int32_t>(c) - 4)
+    if (t >= 6 && t <= 747) {
+      t += up_trim;
+    }
+  } else if (static_cast<int32_t>(s) < static_cast<int32_t>(c) - 4) {
     t -= 6;
+    if (t >= 6 && t <= 747) {
+      t -= down_trim;
+    }
+  }
   return t < 6 ? 6 : t > 747 ? 747 : t;
 }
 
@@ -60,9 +68,13 @@ class DirectTarget {
     request_(0, 0, Phase::Probe, now);
     return true;
   }
-  bool begin(uint16_t s, uint16_t q, uint32_t now) {
-    if (busy() || s < 6 || s > 747)
+  bool begin(uint16_t s, uint16_t q, uint32_t now, int8_t up_trim = 0, int8_t down_trim = 0) {
+    if (busy() || s < 6 || s > 747 || up_trim < -3 || up_trim > 3 || down_trim < -3 ||
+        down_trim > 3)
       return false;
+    // Bind acknowledgement validation to the confirmed settings at admission.
+    up_trim_ = up_trim;
+    down_trim_ = down_trim;
     requested_ = s;
     baseline_q_ = q;
     motion_seen_ = false;
@@ -114,7 +126,7 @@ class DirectTarget {
       return;
     }
     if (r.current < 6 || r.current > 747 || r.guards || r.mode != 1 || r.previous ||
-        r.target != direct_committed_target(requested_, r.current)) {
+        r.target != direct_committed_target(requested_, r.current, up_trim_, down_trim_)) {
       fail_("Target height confirmation does not match the request; braking");
       return;
     }
@@ -207,6 +219,7 @@ class DirectTarget {
   DirectReply reply_{};
   Phase phase_{Phase::Unknown};
   uint16_t next_nonce_{0}, nonce_{0}, requested_{0}, baseline_q_{0};
+  int8_t up_trim_{0}, down_trim_{0};
   uint32_t sent_at_{0}, accepted_at_{0};
   bool queued_{false}, known_{false}, set_sent_{false}, brake_{false}, accepted_{false},
       motion_seen_{false};
