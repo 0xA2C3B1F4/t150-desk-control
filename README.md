@@ -66,6 +66,7 @@ Firmware tools are separate optional builds:
 | Read, patch, install and verify               | [Firmware maintenance](docs/firmware-update.md) |
 | Enable CL01 lock controls                     | [Panel lock](docs/child-lock.md)                |
 | Enable RS01 R7 calibration and speed controls | [Reset and motion speed](docs/reset-speed.md)   |
+| Adjust stopping for each speed and direction  | [Motion trims](docs/motion-trims.md)            |
 
 ## Use the C++ library elsewhere
 

@@ -57,7 +57,7 @@ async function page() {
         io.actions.push(action);
         if (action === "exit") io.status = { ...base };
         if (action === "claim") io.status.claimed = true;
-        return { ok: true };
+        return { ok: true, json: async () => ({ revision: io.status.revision }) };
       }
       return { ok: true, json: async () => ({ ...io.status }) };
     },
@@ -86,6 +86,7 @@ async function page() {
   for (const [identity, header] of [
     ["TB01", "tb01_patch.h"],
     ["FP01", "platform_patch.h"],
+    ["TR01", "motion_trim_patch.h"],
   ]) {
     const source = readFileSync(
       join(__dirname, "../../components/desk_firmware_update", header),
@@ -190,7 +191,23 @@ async function page() {
   assert.match(e.guidanceTitle.textContent, /foundation.*already installed/);
   assert.equal(e.patchPlatform.disabled, true);
   assert.equal(e.patchTimerBuzzer.disabled, true);
-  for (const identity of ["TB01", "FP01"]) {
+  for (const identity of ["STOCK", "DT02", "CL01", "RS01", "TB01", "FP01"]) {
+    await p.state({
+      state: "read_complete",
+      sha256: p.run(identity),
+      source_sha256: p.run(identity),
+    });
+    assert.equal(e.patchMotionTrims.disabled, false);
+  }
+  p.run("original=new Uint8Array(55296);originalHash=FP01");
+  e.saved.checked = true;
+  p.io.actions = [];
+  await e.patchMotionTrims.onclick();
+  assert.deepEqual(p.io.actions, ["backup", "patch_motion_trims"]);
+  await p.state({ state: "read_complete", sha256: p.run("TR01") });
+  assert.match(e.guidanceTitle.textContent, /Motion trims.*already installed/);
+  assert.equal(e.patchMotionTrims.disabled, true);
+  for (const identity of ["TB01", "FP01", "TR01"]) {
     await p.state({ state: "verified", sha256: p.run(identity) });
     assert.match(e.guidanceDetail.textContent, /unlock the panel remotely/i);
   }
@@ -202,6 +219,7 @@ async function page() {
     await p.state(status);
     assert.equal(e.patchPlatform.disabled, true);
     assert.equal(e.patchTimerBuzzer.disabled, true);
+    assert.equal(e.patchMotionTrims.disabled, true);
   }
   await p.state({ state: "read_complete", sha256: "unknown" });
   assert.equal(e.patchChildLock.disabled, true);
@@ -250,6 +268,17 @@ async function page() {
   e.file.files = [{ size: 55296, arrayBuffer: async () => new ArrayBuffer(55296) }];
   await e.file.onchange();
   assert.equal(e.message.textContent, "");
+  await p.state({ state: "read_complete", sha256: p.run("TR01"), source_sha256: p.run("TR01") });
+  p.io.reject = false;
+  p.run("original=new Uint8Array(55296);originalHash=TR01");
+  e.saved.checked = true;
+  assert.equal(e.stage.disabled, false);
+  p.io.actions = [];
+  await e.stage.onclick();
+  assert.equal(p.io.actions[0], "backup");
+  assert.equal(p.io.actions[1], "stage");
+  assert.equal(p.io.actions.filter((a) => a === "chunk").length, 432);
+  assert.equal(p.io.actions.at(-1), "seal");
   const fresh = await page();
   fresh.io.offline = true;
   fresh.run("status=null");

@@ -34,6 +34,7 @@ Contents:
 - [Temporary target transaction](#temporary-target-transaction)
 - [T-key timer transaction](#t-key-timer-transaction)
 - [TB01 timer and buzzer transaction](#tb01-timer-and-buzzer-transaction)
+- [TR01 motion trims](#tr01-motion-trims)
 - [Test fixtures](#test-fixtures)
 
 ## Headers
@@ -52,6 +53,7 @@ Each header includes the one it builds on, so including `presets.h` also makes
 | `desk_protocol/presets.h`             | `target.h`                      | Preset height conversion (`preset_height`), preset reads, and the `PresetSettings` read/write transaction                                               |
 | `desk_protocol/timer.h`               | `protocol.h`                    | The `TimerSequence` T-key transaction                                                                                                                   |
 | `desk_protocol/custom_timer_buzzer.h` | `protocol.h`                    | TB01 capability discovery and custom timer/buzzer transactions                                                                                          |
+| `desk_protocol/motion_trim.h`         | `protocol.h`                    | TR01 trim reads and token-bound updates                                                                                                                 |
 | `desk_protocol/identity.h`            | `protocol.h`                    | Bounded text-identity query builder and fixed-width ASCII decoder                                                                                       |
 
 The caller obtains outgoing frames from `take_frame()` or a `begin()` output
@@ -704,6 +706,49 @@ cut output and leave explicit continuation to the user. The Slow cap is applied
 after the stock speed-request limit and excludes reset and its return movement.
 See [controls](reset-speed.md) and the source in `tools/patches/reset_speed.c`.
 
+## TR01 motion trims
+
+The four signed adjustments are Normal up, Normal down, Slow up and Slow down,
+in that order. Each value is -3..+3 in controller units. See
+[motion trims](motion-trims.md) for setup and use.
+
+Requests have 17 decoded body bytes, including the kind and excluding XOR:
+
+| Offset | Meaning                                           |
+| ------ | ------------------------------------------------- |
+| 0–2    | `D9 01 op`, with GET `00` or SET `01`             |
+| 3–4    | Nonce, big-endian                                 |
+| 5–8    | RS01 token, big-endian; zero for GET              |
+| 9–12   | Expected active tuple, signed bytes; zero for GET |
+| 13–16  | Desired tuple, signed bytes; zero for GET         |
+
+Replies have 16 decoded body bytes:
+
+| Offset | Meaning                                                                                  |
+| ------ | ---------------------------------------------------------------------------------------- |
+| 0–2    | `DA 01 03`, with the required capability value `03`                                      |
+| 3      | Echoed operation                                                                         |
+| 4      | Result: OK `00`, bad request `01`, stale `02`, busy `03`, guard `04`, storage error `05` |
+| 5      | Storage: Default `00`, Verified `01`, Fault `02`, Uncertain `03`                         |
+| 6      | Speed: Normal `00`, Slow `01`                                                            |
+| 7      | Bit 0: persistent storage fault blocks desk controls; bit 1: platform-health fault       |
+| 8–9    | Echoed nonce, big-endian                                                                 |
+| 10–11  | Shared controller sequence, big-endian                                                   |
+| 12–15  | Active RAM tuple, signed bytes                                                           |
+
+SET requires an idle controller, a fresh RS01 token and matching expected values.
+It accepts at most one changed trim, writes it and verifies the saved value.
+GET and unchanged SET requests do not write EEPROM. Each invalid saved value
+defaults to zero on startup without rewriting storage.
+
+The returned values describe active RAM. Confirm an edit only from a matching
+successful SET reply with Default or Verified storage and no fault flags.
+Reject unknown fields and out-of-range values. Either fault flag prevents
+editing; only bit 0 indicates that desk controls are blocked.
+
+The response timeout is 2,000 ms. A lost reply or cancellation does not undo an
+accepted write. Read the current state rather than retrying SET.
+
 ## Firmware maintenance
 
 The maintenance adapter accepts only these 55,296-byte application hashes:
@@ -716,9 +761,10 @@ The maintenance adapter accepts only these 55,296-byte application hashes:
 | RS01 R7, including DT02 and CL01 | `ad1f321c570de25abef0f106175a5722d709b92e5db6d3da792bed9cc55fe78b` |
 | TB01                             | `eb4ea2ff574aab412d5b7c5b4d6a74a3515ab6329d5459fae2143baec2356f07` |
 | FP01                             | `7ae194172863a9cff9847b671bfe24a1d33399d5fa3a90eabb158992f70a0adb` |
+| TR01                             | `2493c4b1d24e1ed6b1e5fa478224a4466068d50b7d52781bc004e3b0d928dcc9` |
 
 The pinned loader erases 53 application pages, writes 25 blocks for original/DT02,
-26 for CL01, 32 for RS01/TB01, or 53 for FP01. It leaves the final flash page untouched. Admission
+26 for CL01, 32 for RS01/TB01, or 53 for FP01/TR01. It leaves the final flash page untouched. Admission
 requires an erased final page; verification covers the full 54 KiB application, including
 unwritten bytes. Replacement headers contain our patch code, not vendor images.
 
@@ -726,7 +772,7 @@ Before installation, the ESP saves source/target block fingerprints. Interrupted
 original-image recovery retains a third fingerprint set so it can be retried.
 Every 1 KiB block must match a recorded identity or be erased, except at most one
 partial block within the write payload. After the exact original is uploaded and
-hashed, the adapter reconstructs original/DT02/CL01/RS01/TB01/FP01 candidates and requires the
+hashed, the adapter reconstructs original/DT02/CL01/RS01/TB01/FP01/TR01 candidates and requires the
 partial block to match a halfword-aligned programmed prefix followed by erased
 bytes. This recovery path permits only original-image restoration. Multiple
 partial blocks, programmed halfwords outside that pattern or a damaged final

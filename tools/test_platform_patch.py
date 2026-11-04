@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import struct
+import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -221,6 +222,9 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(builder.APP_SIZE, 54 * 1024)
         self.assertEqual(self.symbols["PLATFORM_RAM_ABI"], 1)
         self.assertEqual(self.symbols["PLATFORM_LAYOUT_VERSION"], 1)
+        self.assertEqual(
+            self.symbols["__aeabi_uidivmod"], self.symbols["__aeabi_uidiv"]
+        )
 
     def test_layout_rejects_overlap(self):
         """The generator rejects overlapping RAM slots before generating constants."""
@@ -231,6 +235,50 @@ class PlatformTests(unittest.TestCase):
             path.write_text(json.dumps(layout))
             with self.assertRaises(ValueError):
                 layout_generator.load_layout(path)
+
+    def test_layout_preserves_existing_abi_slots(self):
+        """Reject contiguous reallocations that silently change an ABI 1 consumer."""
+        for index, current in enumerate(builder.LAYOUT["slots"][:-1]):
+            if current["name"] not in layout_generator.ABI1_SLOTS:
+                continue
+            with self.subTest(slot=current["name"]):
+                layout = copy.deepcopy(builder.LAYOUT)
+                slot, following = layout["slots"][index : index + 2]
+                slot["size"] += 4
+                following["offset"] += 4
+                following["size"] -= 4
+                with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
+                    path = Path(directory) / "layout.json"
+                    path.write_text(json.dumps(layout))
+                    with self.assertRaisesRegex(ValueError, "Existing RAM ABI"):
+                        layout_generator.load_layout(path)
+
+    def test_trim_allocations_fit_cortex_m0(self):
+        """Check actual target sizes and alignments as well as the host build."""
+        subprocess.run(
+            [
+                self.toolchain["clang"]["path"],
+                "--target=arm-none-eabi",
+                "-mcpu=cortex-m0",
+                "-mthumb",
+                "-std=c11",
+                "-ffreestanding",
+                "-Wall",
+                "-Wextra",
+                "-Wpedantic",
+                "-Werror",
+                "-I",
+                str(builder.PATCHES),
+                "-x",
+                "c",
+                "-fsyntax-only",
+                "-",
+            ],
+            input='#include "motion_trim_layout.h"\n',
+            text=True,
+            capture_output=True,
+            check=True,
+        )
 
     def test_inverse_and_protected_bytes(self):
         """Only named hooks, code and descriptor change; the last page stays erased."""

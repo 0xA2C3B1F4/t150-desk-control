@@ -26,6 +26,25 @@ EXTRA_SOURCES = {
     "tools/patches/platform_runtime.c",
     "tools/patches/platform_runtime.h",
     "tools/patches/platform_tb01.c",
+    "tools/patches/motion_trim_core.c",
+    "tools/patches/motion_trim_core.h",
+    "tools/patches/motion_trim_storage.c",
+    "tools/patches/motion_trim_storage.h",
+    "tools/patches/motion_trim_owner.c",
+    "tools/patches/motion_trim_owner.h",
+    "tools/patches/motion_trim_i2c.c",
+    "tools/patches/motion_trim_i2c.h",
+    "tools/patches/motion_trim_layout.h",
+    "tools/patches/motion_trim_adapter.c",
+    "tools/patches/motion_trim_adapter.h",
+    "tools/patches/motion_trim_runtime.c",
+    "tools/patches/motion_trim_motion.c",
+    "tools/patches/motion_trim_motion.h",
+    "tools/patches/motion_trim_controller.c",
+    "tools/patches/motion_trim_controller.h",
+    "tools/patches/motion_trim_boot.c",
+    "tools/patches/motion_trim_native.c",
+    "tools/patches/motion_trim_native.h",
 }
 EXCLUDED = {
     "components/desk_firmware_update/ui.h",
@@ -34,6 +53,7 @@ EXCLUDED = {
     "components/desk_firmware_update/dt02_patch.h",
     "components/desk_firmware_update/tb01_patch.h",
     "components/desk_firmware_update/platform_patch.h",
+    "components/desk_firmware_update/motion_trim_patch.h",
     "components/desk_uart/firmware_layout.h",
 }
 

@@ -25,6 +25,7 @@ parser.add_argument("--child-lock", type=Path)
 parser.add_argument("--reset-speed", type=Path)
 parser.add_argument("--timer-buzzer", type=Path)
 parser.add_argument("--platform", type=Path)
+parser.add_argument("--motion-trims", type=Path)
 args = parse_args(parser=parser)
 if bool(args.timer_buzzer) != bool(args.platform):
     parser.error("--timer-buzzer and --platform must be provided together")
@@ -38,6 +39,8 @@ if args.reset_speed and not args.child_lock:
     parser.error("--reset-speed requires --child-lock and private images")
 if args.timer_buzzer and not args.reset_speed:
     parser.error("--timer-buzzer requires --reset-speed and private images")
+if args.motion_trims and not args.platform:
+    parser.error("--motion-trims requires --platform and private images")
 work = args.work_dir
 host = ROOT / "tests/esphome/firmware_export_host"
 update = ROOT / "tests/esphome/firmware_update_host"
@@ -99,16 +102,22 @@ if args.timer_buzzer:
     command += [str(args.timer_buzzer.resolve())]
 if args.platform:
     command += [str(args.platform.resolve())]
+if args.motion_trims:
+    command += [str(args.motion_trims.resolve())]
 with (work / "run.log").open("w") as log:
     subprocess.run(
         command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=60
     )
 run_output = (work / "run.log").read_text()
-if args.platform and (
-    "TB01/FP01 exact preparation, 36 modeled transitions, 53-to-32 erase, final ACK loss, "
-    "torn blocks 33/53 and repeated original recovery passed" not in run_output
-):
-    raise SystemExit("TB01/FP01 extended lifecycle suite was not exercised")
+if args.platform:
+    identities = "TB01/FP01/TR01" if args.motion_trims else "TB01/FP01"
+    pairs = 49 if args.motion_trims else 36
+    expected = (
+        f"{identities} exact preparation, {pairs} modeled transitions, 53-to-32 erase, final ACK loss, "
+        "torn blocks 33/53 and repeated original recovery passed"
+    )
+    if expected not in run_output:
+        raise SystemExit("Extended lifecycle suite was not exercised")
 interrupted = None
 if args.interrupted:
     # The test strips a 0x2800 loader prefix from full-flash dumps; hash the same bytes.
@@ -125,6 +134,7 @@ summary = dict(
     reset_speed_image=bool(args.reset_speed),
     timer_buzzer_image=bool(args.timer_buzzer),
     platform_image=bool(args.platform),
+    motion_trims_image=bool(args.motion_trims),
     interrupted_image=interrupted,
     hardware_access=False,
     boundary="Real adapter and SHA; host stand-ins for IDF, HTTP transport, UART, heap and preferences",
@@ -137,6 +147,7 @@ for name in (
     "reset_speed",
     "timer_buzzer",
     "platform",
+    "motion_trims",
     "interrupted",
 ):
     path = getattr(args, name)

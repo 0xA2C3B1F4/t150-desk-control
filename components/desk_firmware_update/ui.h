@@ -168,6 +168,7 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
         <button disabled id="patchResetSpeed">Prepare reset and speed controls</button>
         <button disabled id="patchTimerBuzzer">Prepare custom timer and buzzer</button>
         <button disabled id="patchPlatform">Prepare shared firmware foundation</button>
+        <button disabled id="patchMotionTrims">Prepare motion trims</button>
         <p class="note"
           >The reset and speed option includes panel lock, direct height control, reset calibration,
           Normal/Slow movement speeds and a fix for receiving controller messages. Use the ESPHome
@@ -236,8 +237,8 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
     >
     <p
       >Installation erases application flash. A failed transfer may require restoring the original
-      file. Only exact supported 55,296-byte original, DT02, CL01, RS01, TB01 or FP01 application
-      files can be installed. Unknown versions can be saved for research.</p
+      file. Only exact supported 55,296-byte original, DT02, CL01, RS01, TB01, FP01 or TR01
+      application files can be installed. Unknown versions can be saved for research.</p
     >
     <p>Files in this page are temporary. The computer download is your persistent backup.</p>
   </details>
@@ -261,7 +262,8 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
       CL01 = "81933d93b8bc28ef0eb8b29bf7ae1c7b9104f0a8e03c1c2f8096d509de0f75d3",
       RS01 = "ad1f321c570de25abef0f106175a5722d709b92e5db6d3da792bed9cc55fe78b",
       TB01 = "eb4ea2ff574aab412d5b7c5b4d6a74a3515ab6329d5459fae2143baec2356f07",
-      FP01 = "7ae194172863a9cff9847b671bfe24a1d33399d5fa3a90eabb158992f70a0adb";
+      FP01 = "7ae194172863a9cff9847b671bfe24a1d33399d5fa3a90eabb158992f70a0adb",
+      TR01 = "2493c4b1d24e1ed6b1e5fa478224a4466068d50b7d52781bc004e3b0d928dcc9";
     const lockNotice =
       "Without a valid saved panel-lock setting, the panel starts locked. All physical buttons are blocked while locked, including buttons used to stop movement. Unlock the panel remotely to enable the buttons.";
     let status = null,
@@ -376,6 +378,7 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
         "patchResetSpeed",
         "patchTimerBuzzer",
         "patchPlatform",
+        "patchMotionTrims",
         "stage",
         "install",
         "verify",
@@ -420,6 +423,12 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
         !status.preflight_seconds ||
         status.state !== "read_complete" ||
         ![STOCK, DT02, CL01, RS01, TB01].includes(status.sha256);
+      $("patchMotionTrims").disabled =
+        locked ||
+        status.pending ||
+        !status.preflight_seconds ||
+        status.state !== "read_complete" ||
+        ![STOCK, DT02, CL01, RS01, TB01, FP01].includes(status.sha256);
       $("install").disabled =
         locked || status.pending || !status.preflight_seconds || status.state !== "staged";
       $("verify").disabled =
@@ -500,7 +509,7 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
         title = "All application bytes verified";
         detail =
           "Select Finish maintenance to resume normal desk communication and operation. Reconnect the motor only with controller power off." +
-          ([CL01, RS01, TB01, FP01].includes(status.sha256) ? " " + lockNotice : "");
+          ([CL01, RS01, TB01, FP01, TR01].includes(status.sha256) ? " " + lockNotice : "");
         attention = true;
       } else if (expired) {
         title = "Preflight expired. Read the controller again";
@@ -512,27 +521,33 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
           alreadyLocked = status.sha256 === CL01,
           alreadyReset = status.sha256 === RS01,
           alreadyTimer = status.sha256 === TB01,
-          alreadyPlatform = status.sha256 === FP01;
+          alreadyPlatform = status.sha256 === FP01,
+          alreadyTrims = status.sha256 === TR01;
         const known =
+          alreadyTrims ||
           alreadyPlatform ||
           alreadyTimer ||
           alreadyReset ||
           alreadyPatched ||
           alreadyLocked ||
           status.sha256 === STOCK;
-        title = alreadyPlatform
-          ? "Shared firmware foundation is already installed"
-          : alreadyTimer
-            ? "Custom timer and buzzer are already installed"
-            : alreadyReset
-              ? "Reset and speed controls are already installed"
-              : alreadyLocked
-                ? "Panel lock is already installed"
-                : alreadyPatched
-                  ? "Direct height control is already installed"
-                  : "Read complete. Save the controller backup";
-        detail =
-          alreadyPlatform || alreadyTimer
+        title = alreadyTrims
+          ? "Motion trims are already installed"
+          : alreadyPlatform
+            ? "Shared firmware foundation is already installed"
+            : alreadyTimer
+              ? "Custom timer and buzzer are already installed"
+              : alreadyReset
+                ? "Reset and speed controls are already installed"
+                : alreadyLocked
+                  ? "Panel lock is already installed"
+                  : alreadyPatched
+                    ? "Direct height control is already installed"
+                    : "Read complete. Save the controller backup";
+        detail = alreadyTrims
+          ? "Motion trims, custom timer, buzzer, reset calibration, speed selection, panel lock and direct height control are installed. Save this backup before selecting another supported firmware file. " +
+            lockNotice
+          : alreadyPlatform || alreadyTimer
             ? "Custom timer, buzzer, reset calibration, speed selection, panel lock and direct height control are installed. Save this backup before selecting another supported firmware file. " +
               lockNotice
             : alreadyReset
@@ -560,7 +575,7 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
         title = "Image prepared. Confirm and arm installation";
         detail =
           "Installation erases application flash; a failed transfer may require restoring the original file. Confirm installation below and select Arm installation. Leave controller power on until the instruction changes to OFF, then ON." +
-          ([CL01, RS01, TB01, FP01].includes(status.sha256) ? " " + lockNotice : "");
+          ([CL01, RS01, TB01, FP01, TR01].includes(status.sha256) ? " " + lockNotice : "");
       } else if (normalBootNeeded && status.state === "idle" && !status.claimed) {
         title = "Maintenance finished. Restart the controller for normal use";
         detail =
@@ -715,6 +730,11 @@ static const char FIRMWARE_UI[] = R"DESKUI(<!doctype html>
       task(async () => {
         await confirmBackup();
         await action("patch_platform");
+      });
+    $("patchMotionTrims").onclick = () =>
+      task(async () => {
+        await confirmBackup();
+        await action("patch_motion_trims");
       });
     $("file").onchange = async () => {
       const f = $("file").files[0];

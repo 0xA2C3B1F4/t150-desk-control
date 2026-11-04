@@ -36,6 +36,27 @@ desk_uart:
 """
 cases = [
     (
+        "motion_trim_boxes",
+        base
+        + "  normal_up_trim:\n    name: Normal up trim\n  normal_down_trim:\n    name: Normal down trim\n  slow_up_trim:\n    name: Slow up trim\n  slow_down_trim:\n    name: Slow down trim\n  motion_trim_status:\n    name: Motion trim status\n",
+        True,
+    ),
+    (
+        "motion_trim_rejects_slider",
+        base + "  normal_up_trim:\n    name: Trim\n    mode: slider\n",
+        False,
+    ),
+    (
+        "motion_trim_rejects_unit",
+        base + "  normal_up_trim:\n    name: Trim\n    unit_of_measurement: mm\n",
+        False,
+    ),
+    (
+        "motion_trim_rejects_restore",
+        base + "  normal_up_trim:\n    name: Trim\n    restore_value: true\n",
+        False,
+    ),
+    (
         "recovery_without_motion",
         base
         + "  restore_preset_3:\n    name: Restore preset\n  accept_current_preset_3:\n    name: Accept current preset\n  preset_restore_pending:\n    name: Backup pending\n",
@@ -263,6 +284,17 @@ for name, text, expected in cases:
     if name == "child_lock":
         lock = yaml.safe_load(result.stdout)["desk_uart"][0]["child_lock"]
         assert lock["restore_mode"] == "DISABLED", lock
+    if name == "motion_trim_boxes":
+        desk = yaml.safe_load(result.stdout)["desk_uart"][0]
+        for key in (
+            "normal_up_trim",
+            "normal_down_trim",
+            "slow_up_trim",
+            "slow_down_trim",
+        ):
+            assert desk[key]["mode"] == "BOX", desk[key]
+            assert desk[key]["entity_category"] == "config", desk[key]
+            assert not desk[key].get("unit_of_measurement"), desk[key]
     if name in ("raw_load_monitoring", "raw_load_inch_monitoring"):
         raw = yaml.safe_load(result.stdout)["desk_uart"][0]["load_raw"]
         assert raw["accuracy_decimals"] == 0, raw

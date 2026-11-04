@@ -7,6 +7,7 @@
 #include "target_detection.h"
 #include "child_lock.h"
 #include "reset_speed.h"
+#include "motion_trim.h"
 #include "uart_observation.h"
 #include "timer.h"
 #include "custom_timer_buzzer.h"
@@ -29,6 +30,7 @@ namespace desk_uart {
 
 class ChildLockSwitch;
 class MotionSpeedSelect;
+class MotionTrimNumber;
 
 class DeskUART : public Component, public uart::UARTDevice {
  public:
@@ -83,6 +85,14 @@ class DeskUART : public Component, public uart::UARTDevice {
   // true retains the legacy continuation-only command.
   bool reset_desk(bool resume = false);
   bool set_motion_speed(bool slow);
+  void set_motion_trim_number(uint8_t index, MotionTrimNumber* number) {
+    if (index < 4) {
+      motion_trim_numbers_[index] = number;
+    }
+  }
+  void set_motion_trim_status(text_sensor::TextSensor* sensor) { motion_trim_status_ = sensor; }
+  bool set_motion_trim(uint8_t index, float value);
+  bool redetect_motion_trim();
   void set_direct_mode(bool enabled) { direct_mode_ = enabled; }
   void set_uart_observation_enabled(bool enabled) { uart_observation_enabled_ = enabled; }
   void set_keep_awake_auto(bool enabled) { keep_awake_auto_ = enabled; }
@@ -133,7 +143,7 @@ class DeskUART : public Component, public uart::UARTDevice {
   // transactions.
   const desk_protocol::HeightProfile height_profile_{desk_protocol::HeightProfile::known_t150()};
   bool firmware_export_active_{false};
-  void send_(const desk_protocol::Frame& frame);
+  bool send_(const desk_protocol::Frame& frame);
   void identity_loop_(uint32_t now);
   void identity_frame_(const desk_protocol::Frame& frame, uint32_t now);
   text_sensor::TextSensor *source_version_{nullptr}, *source_revision_{nullptr};
@@ -180,12 +190,40 @@ class DeskUART : public Component, public uart::UARTDevice {
   void direct_loop_(uint32_t now);
   void child_lock_loop_(uint32_t now);
   void reset_speed_loop_(uint32_t now);
+  void motion_trim_loop_(uint32_t now);
+  void motion_trim_frame_(const desk_protocol::Frame& frame, uint32_t now);
+  void motion_trim_result_();
+  void publish_motion_trim_(uint32_t now);
+  const char* motion_trim_fault_status_() const;
+  void cancel_motion_trim_(const char* reason, bool disconnect = false);
+  bool motion_trim_access_allowed_(uint32_t now) const;
+  bool motion_trim_enabled_() const {
+    return motion_trim_status_ || motion_trim_numbers_[0] || motion_trim_numbers_[1] ||
+           motion_trim_numbers_[2] || motion_trim_numbers_[3];
+  }
+  bool motion_trim_busy_() const {
+    return motion_trim_.busy() || motion_trim_dt_probe_.busy() || motion_trim_token_pending_;
+  }
+  desk_protocol::MotionTrim motion_trim_{};
+  desk_protocol::DirectTarget motion_trim_dt_probe_{};
+  MotionTrimNumber* motion_trim_numbers_[4]{nullptr, nullptr, nullptr, nullptr};
+  text_sensor::TextSensor* motion_trim_status_{nullptr};
+  const char *motion_trim_message_{nullptr}, *last_motion_trim_status_{nullptr};
+  uint32_t last_motion_trim_probe_{0}, last_motion_trim_dt_probe_{0};
+  uint8_t motion_trim_attempts_{0}, motion_trim_dt_attempts_{0}, motion_trim_dt_replies_{0},
+      motion_trim_rs_attempts_{0}, motion_trim_rs_replies_{0}, motion_trim_readback_attempts_{0};
+  bool motion_trim_sending_{false}, motion_trim_edit_active_{false},
+      motion_trim_token_pending_{false}, motion_trim_readback_pending_{false},
+      motion_trim_readback_active_{false}, motion_trim_busy_refused_{false};
   void reset_speed_result_();
   void publish_reset_speed_(uint32_t now);
   const char* reset_speed_status_(uint32_t now) const;
   void invalidate_reset_speed_(const char* reason);
   void yield_reset_speed_read_();
   bool reset_speed_enabled_() const {
+    return reset_speed_controls_enabled_() || motion_trim_enabled_();
+  }
+  bool reset_speed_controls_enabled_() const {
     return custom_enabled_ || reset_enabled_ || reset_status_ || reset_available_ ||
            motion_speed_select_ || motion_speed_available_;
   }
@@ -335,6 +373,22 @@ class DeskUART : public Component, public uart::UARTDevice {
   uint32_t last_subscribe_{0}, last_stop_{0};
   bool stop_latched_{false}, stop_acknowledged_{false};
   bool connected_{false}, motion_enabled_{false}, release_fault_{false};
+};
+
+class MotionTrimNumber : public number::Number {
+ public:
+  MotionTrimNumber();
+  static bool is_instance(const number::Number* candidate);
+  void set_parent(DeskUART* parent) { parent_ = parent; }
+  void set_index(uint8_t index) { index_ = index; }
+  void invalidate();
+
+ protected:
+  void control(float value) override { parent_->set_motion_trim(index_, value); }
+  DeskUART* parent_{nullptr};
+  uint8_t index_{0};
+  static MotionTrimNumber* first_;
+  MotionTrimNumber* next_{nullptr};
 };
 
 class ChildLockSwitch : public switch_::Switch {

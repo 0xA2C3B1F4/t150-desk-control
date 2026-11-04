@@ -7,6 +7,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PATCHES = ROOT / "tools/patches"
+# ABI 1 consumers retain their addresses. New allocations use only the former
+# future reservation; they do not move the header, active modules or guard.
+# RAM ABI alone does not identify enabled features; use the image identity.
+ABI1_SLOTS = {
+    "header": (0, 32),
+    "buzzer": (32, 16),
+    "display": (48, 16),
+    "volume": (64, 16),
+    "trim": (80, 16),
+    "transaction": (96, 64),
+    "abi_reserve": (160, 96),
+    "guard": (1008, 16),
+}
 
 
 def load_layout(path=None):
@@ -45,6 +58,9 @@ def load_layout(path=None):
             or slot["size"] % 4
         ):
             raise ValueError("Overlapping, unaligned or unnamed RAM allocation")
+        position = (slot["offset"], slot["size"])
+        if slot["name"] in ABI1_SLOTS and position != ABI1_SLOTS[slot["name"]]:
+            raise ValueError("Existing RAM ABI allocation moved or resized")
         names.add(slot["name"])
         end += slot["size"]
     if end != layout["ram_size"] or names != {
@@ -55,6 +71,10 @@ def load_layout(path=None):
         "trim",
         "transaction",
         "abi_reserve",
+        "trim_owner",
+        "trim_record",
+        "trim_i2c",
+        "trim_adapter",
         "future",
         "guard",
     }:

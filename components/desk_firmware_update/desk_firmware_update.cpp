@@ -4,6 +4,7 @@
 #include "reset_speed_patch.h"
 #include "tb01_patch.h"
 #include "platform_patch.h"
+#include "motion_trim_patch.h"
 #include "partial_recovery.h"
 #include "ui.h"
 #include <cstdio>
@@ -23,11 +24,14 @@ static_assert(TB01_PAYLOAD_SIZE == desk_protocol::FirmwareInstall::RESET_SPEED_P
               "TB01 transfer profile mismatch");
 static_assert(FP01_PAYLOAD_SIZE == desk_protocol::FirmwareInstall::PLATFORM_PAYLOAD_SIZE,
               "FP01 transfer profile mismatch");
+static_assert(TR01_PAYLOAD_SIZE == desk_protocol::FirmwareInstall::PLATFORM_PAYLOAD_SIZE,
+              "TR01 transfer profile mismatch");
 constexpr uint32_t RECOVERY_TAG = 0x44543032;
 bool known(const char* hash) {
   return !std::strcmp(hash, STOCK_SHA) || !std::strcmp(hash, DT02_SHA) ||
          !std::strcmp(hash, CL01_SHA) || !std::strcmp(hash, RS01_SHA) ||
-         !std::strcmp(hash, TB01_SHA) || !std::strcmp(hash, FP01_SHA);
+         !std::strcmp(hash, TB01_SHA) || !std::strcmp(hash, FP01_SHA) ||
+         !std::strcmp(hash, TR01_SHA);
 }
 bool hex_string(const std::string& s, size_t length) {
   if (s.size() != length)
@@ -161,7 +165,8 @@ bool FirmwareUpdate::validate_partial_recovery_() const {
   // A failed recovery attempt rewrites write_target before erase, so derive
   // all pinned candidates from the uploaded original. Each is admitted only
   // through the block hash recorded for the same persistent identity.
-  for (const char* identity : {STOCK_SHA, DT02_SHA, CL01_SHA, RS01_SHA, TB01_SHA, FP01_SHA}) {
+  for (const char* identity :
+       {STOCK_SHA, DT02_SHA, CL01_SHA, RS01_SHA, TB01_SHA, FP01_SHA, TR01_SHA}) {
     const uint8_t* recorded =
         !std::strcmp(recovery_record_.source, identity)
             ? recovery_record_.source_blocks[partial_block_]
@@ -175,7 +180,8 @@ bool FirmwareUpdate::validate_partial_recovery_() const {
     uint8_t expected[1024], digest[32];
     for (size_t i = 0; i < 1024; ++i) {
       const uint8_t stock = buffer_.get()[base + i];
-      expected[i] = !std::strcmp(identity, FP01_SHA)   ? fp01_byte(base + i, stock)
+      expected[i] = !std::strcmp(identity, TR01_SHA)   ? tr01_byte(base + i, stock)
+                    : !std::strcmp(identity, FP01_SHA) ? fp01_byte(base + i, stock)
                     : !std::strcmp(identity, TB01_SHA) ? tb01_byte(base + i, stock)
                     : !std::strcmp(identity, RS01_SHA) ? rs01_byte(base + i, stock)
                     : !std::strcmp(identity, CL01_SHA) ? cl01_byte(base + i, stock)
@@ -193,14 +199,17 @@ bool FirmwareUpdate::validate_partial_recovery_() const {
   return false;
 }
 size_t FirmwareUpdate::payload_size_() const {
-  return !std::strcmp(hash_, FP01_SHA)   ? FP01_PAYLOAD_SIZE
+  return !std::strcmp(hash_, TR01_SHA)   ? TR01_PAYLOAD_SIZE
+         : !std::strcmp(hash_, FP01_SHA) ? FP01_PAYLOAD_SIZE
          : !std::strcmp(hash_, TB01_SHA) ? TB01_PAYLOAD_SIZE
          : !std::strcmp(hash_, RS01_SHA) ? RS01_PAYLOAD_SIZE
          : !std::strcmp(hash_, CL01_SHA) ? 26624
                                          : PAYLOAD_SIZE;
 }
 size_t FirmwareUpdate::recovery_payload_size_() const {
-  if (!std::strcmp(recovery_record_.source, FP01_SHA) ||
+  if (!std::strcmp(recovery_record_.source, TR01_SHA) ||
+      !std::strcmp(recovery_record_.target, TR01_SHA) ||
+      !std::strcmp(recovery_record_.source, FP01_SHA) ||
       !std::strcmp(recovery_record_.target, FP01_SHA))
     return FP01_PAYLOAD_SIZE;
   if (!std::strcmp(recovery_record_.source, RS01_SHA) ||
@@ -335,13 +344,15 @@ void FirmwareUpdate::execute_(const std::string& action) {
     return;
   }
   if ((action == "patch" || action == "patch_child_lock" || action == "patch_reset_speed" ||
-       action == "patch_timer_buzzer" || action == "patch_platform" || action == "stage") &&
+       action == "patch_timer_buzzer" || action == "patch_platform" ||
+       action == "patch_motion_trims" || action == "stage") &&
       buffer_ && buffer_.use_count() > 1) {
     error_ = "Wait for the image download to finish";
     return;
   }
   if ((action == "patch" || action == "patch_child_lock" || action == "patch_reset_speed" ||
-       action == "patch_timer_buzzer" || action == "patch_platform" || action == "stage") &&
+       action == "patch_timer_buzzer" || action == "patch_platform" ||
+       action == "patch_motion_trims" || action == "stage") &&
       recovery_ && known(source_hash_)) {
     fail_(
         "Read image is not recorded for this recovery; read a recorded complete image or use external recovery");
@@ -406,20 +417,27 @@ void FirmwareUpdate::execute_(const std::string& action) {
     phase_ = Phase::Staged;
     return;
   }
-  if (action == "patch_timer_buzzer" || action == "patch_platform") {
+  if (action == "patch_timer_buzzer" || action == "patch_platform" ||
+      action == "patch_motion_trims") {
+    const bool trims = action == "patch_motion_trims";
+    const bool platform_source = !std::strcmp(hash_, FP01_SHA);
     const bool platform = action == "patch_platform";
     const bool timer_source = !std::strcmp(hash_, TB01_SHA);
     if (phase_ != Phase::Ready || !backup_ || !preflight_ || !tail_erased_ ||
         uint32_t(millis() - preflight_at_) > 300000 ||
         (std::strcmp(hash_, STOCK_SHA) && std::strcmp(hash_, DT02_SHA) &&
          std::strcmp(hash_, CL01_SHA) && std::strcmp(hash_, RS01_SHA) &&
-         !(platform && timer_source))) {
-      fail_("Timer and platform firmware require a supported source and a saved backup");
+         !((platform || trims) && timer_source) && !(trims && platform_source))) {
+      fail_("Firmware preparation requires a supported source and a saved backup");
       return;
     }
-    // Restore only the existing TB01 hook spans and code reservation. Hash the
-    // complete intermediate R7 image before applying the shared foundation.
-    if (timer_source) {
+    // Verify the complete intermediate R7 image before applying the new payload.
+    if (platform_source) {
+      if (!remove_platform_for_motion_trim(buffer_.get(), size_)) {
+        fail_("Cannot restore the exact reset and speed source from platform firmware");
+        return;
+      }
+    } else if (timer_source) {
       if (!remove_tb01(buffer_.get(), size_)) {
         fail_("Cannot restore the exact reset and speed source from timer firmware");
         return;
@@ -436,13 +454,16 @@ void FirmwareUpdate::execute_(const std::string& action) {
       fail_("Intermediate reset and speed firmware failed its integrity check");
       return;
     }
-    if (!(platform ? apply_platform(buffer_.get(), size_) : apply_tb01(buffer_.get(), size_))) {
-      fail_("Cannot prepare timer or platform firmware from this source");
+    const bool applied = trims      ? apply_motion_trim(buffer_.get(), size_)
+                         : platform ? apply_platform(buffer_.get(), size_)
+                                    : apply_tb01(buffer_.get(), size_);
+    if (!applied) {
+      fail_("Cannot prepare firmware from this source");
       return;
     }
     digest_();
-    if (std::strcmp(hash_, platform ? FP01_SHA : TB01_SHA)) {
-      fail_("Prepared timer or platform firmware failed its integrity check");
+    if (std::strcmp(hash_, trims ? TR01_SHA : platform ? FP01_SHA : TB01_SHA)) {
+      fail_("Prepared firmware failed its integrity check");
       return;
     }
     phase_ = Phase::Staged;
@@ -496,7 +517,8 @@ void FirmwareUpdate::execute_(const std::string& action) {
     }
     error_baseline_ = errors_();
     const auto profile =
-        !std::strcmp(hash_, FP01_SHA)   ? desk_protocol::FirmwareInstall::Profile::PlatformFP01
+        (!std::strcmp(hash_, FP01_SHA) || !std::strcmp(hash_, TR01_SHA))
+            ? desk_protocol::FirmwareInstall::Profile::PlatformFP01
         : !std::strcmp(hash_, TB01_SHA) ? desk_protocol::FirmwareInstall::Profile::TimerBuzzerTB01
         : !std::strcmp(hash_, RS01_SHA) ? desk_protocol::FirmwareInstall::Profile::ResetSpeedRS01
         : !std::strcmp(hash_, CL01_SHA) ? desk_protocol::FirmwareInstall::Profile::ChildLockCL01
@@ -836,8 +858,9 @@ void FirmwareUpdate::handleRequest(AsyncWebServerRequest* request) {
   }
   if (action != "read" && action != "backup" && action != "patch" && action != "patch_child_lock" &&
       action != "patch_reset_speed" && action != "patch_timer_buzzer" &&
-      action != "patch_platform" && action != "stage" && action != "seal" && action != "install" &&
-      action != "verify" && action != "cancel" && action != "exit") {
+      action != "patch_platform" && action != "patch_motion_trims" && action != "stage" &&
+      action != "seal" && action != "install" && action != "verify" && action != "cancel" &&
+      action != "exit") {
     send(409, "text/plain", "Unknown action");
     return;
   }

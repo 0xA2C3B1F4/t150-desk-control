@@ -41,6 +41,8 @@ TESTS = [
     "backend_journal_integration",
     "child_lock_integration",
     "reset_speed_integration",
+    "motion_trim_integration",
+    "motion_trim_target_integration",
     "direct_target_integration",
     "direct_target_review_integration",
     "preset_settings_integration",

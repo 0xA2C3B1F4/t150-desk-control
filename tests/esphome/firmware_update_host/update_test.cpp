@@ -4,6 +4,7 @@
 #include "reset_speed_patch.h"
 #include "tb01_patch.h"
 #include "platform_patch.h"
+#include "motion_trim_patch.h"
 #include "partial_recovery.h"
 #include "esphome/components/sha256/sha256.h"
 #include <algorithm>
@@ -297,17 +298,27 @@ std::vector<uint8_t> load(const char* path) {
 }
 void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_t>& direct,
                      const std::vector<uint8_t>& child, const std::vector<uint8_t>& reset,
-                     const std::vector<uint8_t>& timer, const std::vector<uint8_t>& platform) {
+                     const std::vector<uint8_t>& timer, const std::vector<uint8_t>& platform,
+                     const std::vector<uint8_t>& trims) {
   for (size_t i = 0; i < stock.size(); ++i) {
     CHECK(fw::tb01_byte(i, stock[i]) == timer[i]);
     CHECK(fw::fp01_byte(i, stock[i]) == platform[i]);
+    if (!trims.empty())
+      CHECK(fw::tr01_byte(i, stock[i]) == trims[i]);
   }
   const std::vector<std::vector<uint8_t>> old{stock, direct, child, reset};
-  for (const char* action : {"patch_timer_buzzer", "patch_platform"}) {
+  for (const char* action : {"patch_timer_buzzer", "patch_platform", "patch_motion_trims"}) {
+    const bool motion = !std::strcmp(action, "patch_motion_trims");
+    if (motion && trims.empty())
+      continue;
     auto sources = old;
-    if (!std::strcmp(action, "patch_platform"))
+    if (!std::strcmp(action, "patch_platform") || motion)
       sources.push_back(timer);
-    const auto& expected = !std::strcmp(action, "patch_platform") ? platform : timer;
+    if (motion)
+      sources.push_back(platform);
+    const auto& expected = motion                                   ? trims
+                           : !std::strcmp(action, "patch_platform") ? platform
+                                                                    : timer;
     for (const auto& source : sources) {
       export_host::reset();
       Rig r;
@@ -331,7 +342,9 @@ void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_
   auto all = old;
   all.push_back(timer);
   all.push_back(platform);
-  // All 36 source/target pairs include same-image reinstalls and shorter
+  if (!trims.empty())
+    all.push_back(trims);
+  // All source/target pairs include same-image reinstalls and shorter
   // downgrades. Compare every byte of modeled flash with the exact target.
   for (const auto& source : all)
     for (const auto& target : all) {
@@ -350,7 +363,10 @@ void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_
       CHECK(r.state() == "verified");
       CHECK(!r.recovery_required());
     }
-  for (const auto& target : {timer, platform}) {
+  auto extended = std::vector<std::vector<uint8_t>>{timer, platform};
+  if (!trims.empty())
+    extended.push_back(trims);
+  for (const auto& target : extended) {
     export_host::reset();
     {
       Rig r;
@@ -370,105 +386,111 @@ void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_
       CHECK(!r.recovery_required());
     }
   }
-  // Torn block 33 and descriptor block 53 survive adapter restarts and repeated
-  // interrupted original recovery. A damaged image never admits a patched target.
-  for (size_t block : {size_t(32), size_t(52)}) {
-    const size_t start = block * 1024;
-    size_t cut = start + 2;
-    while (cut < start + 1024 && std::all_of(
-                                     platform.begin() + start, platform.begin() + cut,
-                                     [](uint8_t b) {
-                                       return b == 255;
-                                     }))
-      cut += 2;
-    CHECK(cut < start + 1024);
-    export_host::reset();
-    {
-      Rig r;
-      r.claim();
-      r.read(timer);
-      r.backup();
-      r.upload(platform);
-      r.install();
-      r.feed({0xfa, 0x30, 0, 1, 0x31, 0xfd});
-      r.post("cancel");
-    }
-    auto torn = platform;
-    std::fill(torn.begin() + cut, torn.end(), 255);
-    for (unsigned attempt = 0; attempt < 3; ++attempt) {
+  for (const auto& high_image : extended) {
+    if (high_image == timer)
+      continue;
+    // Torn block 33 and descriptor block 53 survive adapter restarts and repeated
+    // interrupted original recovery. A damaged image never admits a patched target.
+    for (size_t block : {size_t(32), size_t(52)}) {
+      const size_t start = block * 1024;
+      size_t cut = start + 2;
+      while (cut < start + 1024 && std::all_of(
+                                       high_image.begin() + start, high_image.begin() + cut,
+                                       [](uint8_t b) {
+                                         return b == 255;
+                                       }))
+        cut += 2;
+      CHECK(cut < start + 1024);
       export_host::reset();
-      Rig r;
-      CHECK(r.recovery_required());
-      r.claim();
-      r.read(torn);
-      r.backup();
-      r.upload(platform);
-      CHECK(r.state() == "error");
-      r.read(torn);
-      r.backup();
-      r.upload(stock);
-      CHECK(r.state() == "staged");
-      r.install();
-      r.feed({0xfa, 0x30, 0, 1, 0x31, 0xfd});
-      r.post("cancel");
-      CHECK(r.original_recorded());
-      // Re-observe the same high torn block, then a torn original recovery.
-      // Both histories must remain valid after each persisted retry.
-      if (attempt == 1) {
-        torn = stock;
-        std::fill(torn.begin() + 0x5dfa, torn.end(), 255);
+      {
+        Rig r;
+        r.claim();
+        r.read(timer);
+        r.backup();
+        r.upload(high_image);
+        r.install();
+        r.feed({0xfa, 0x30, 0, 1, 0x31, 0xfd});
+        r.post("cancel");
+      }
+      auto torn = high_image;
+      std::fill(torn.begin() + cut, torn.end(), 255);
+      for (unsigned attempt = 0; attempt < 3; ++attempt) {
+        export_host::reset();
+        Rig r;
+        CHECK(r.recovery_required());
+        r.claim();
+        r.read(torn);
+        r.backup();
+        r.upload(high_image);
+        CHECK(r.state() == "error");
+        r.read(torn);
+        r.backup();
+        r.upload(stock);
+        CHECK(r.state() == "staged");
+        r.install();
+        r.feed({0xfa, 0x30, 0, 1, 0x31, 0xfd});
+        r.post("cancel");
+        CHECK(r.original_recorded());
+        // Re-observe the same high torn block, then a torn original recovery.
+        // Both histories must remain valid after each persisted retry.
+        if (attempt == 1) {
+          torn = stock;
+          std::fill(torn.begin() + 0x5dfa, torn.end(), 255);
+        }
+      }
+      export_host::reset();
+      {
+        Rig r;
+        r.claim();
+        r.read(torn);
+        r.backup();
+        r.upload(stock);
+        CHECK(r.state() == "staged");
+        r.install();
+        CHECK(r.complete_write_model(torn) == stock);
+        r.post("verify");
+        r.export_image(stock);
+        CHECK(r.state() == "verified");
+        CHECK(!r.recovery_required());
       }
     }
+    // A matching descriptor without a matching whole-image hash grants nothing.
+    for (int damage : {0, 1}) {
+      export_host::reset();
+      Rig r;
+      r.claim();
+      r.read(reset);
+      r.backup();
+      auto bad = high_image;
+      bad[damage ? bad.size() - 1 : 0] ^= 1;
+      r.upload(bad);
+      CHECK(r.state() == "error");
+      CHECK(!r.recovery_required());
+    }
+    // Verification covers the untouched page as well as all 53 written blocks.
     export_host::reset();
     {
       Rig r;
       r.claim();
-      r.read(torn);
+      r.read(reset);
       r.backup();
-      r.upload(stock);
-      CHECK(r.state() == "staged");
+      r.upload(high_image);
       r.install();
-      CHECK(r.complete_write_model(torn) == stock);
+      r.complete_write();
       r.post("verify");
-      r.export_image(stock);
-      CHECK(r.state() == "verified");
+      auto damaged = high_image;
+      damaged.back() = 0;
+      r.export_image(damaged);
+      CHECK(r.state() == "error");
+      CHECK(r.recovery_required());
+      r.read(high_image);
       CHECK(!r.recovery_required());
     }
   }
-  // A matching descriptor without a matching whole-image hash grants nothing.
-  for (int damage : {0, 1}) {
-    export_host::reset();
-    Rig r;
-    r.claim();
-    r.read(reset);
-    r.backup();
-    auto bad = platform;
-    bad[damage ? bad.size() - 1 : 0] ^= 1;
-    r.upload(bad);
-    CHECK(r.state() == "error");
-    CHECK(!r.recovery_required());
-  }
-  // Verification covers the untouched page as well as all 53 written blocks.
-  export_host::reset();
-  {
-    Rig r;
-    r.claim();
-    r.read(reset);
-    r.backup();
-    r.upload(platform);
-    r.install();
-    r.complete_write();
-    r.post("verify");
-    auto damaged = platform;
-    damaged.back() = 0;
-    r.export_image(damaged);
-    CHECK(r.state() == "error");
-    CHECK(r.recovery_required());
-    r.read(platform);
-    CHECK(!r.recovery_required());
-  }
   std::cout
-      << "TB01/FP01 exact preparation, 36 modeled transitions, 53-to-32 erase, final ACK loss, torn blocks 33/53 and repeated original recovery passed\n";
+      << (trims.empty() ? "TB01/FP01" : "TB01/FP01/TR01") << " exact preparation, "
+      << all.size() * all.size()
+      << " modeled transitions, 53-to-32 erase, final ACK loss, torn blocks 33/53 and repeated original recovery passed\n";
 }
 int main(int argc, char** argv) {
   {
@@ -1369,7 +1391,8 @@ int main(int argc, char** argv) {
           CHECK(r.state() == "error");
         }
         if (argc >= 8)
-          extended_images(stock, patched, child, reset, load(argv[6]), load(argv[7]));
+          extended_images(stock, patched, child, reset, load(argv[6]), load(argv[7]),
+                          argc >= 9 ? load(argv[8]) : std::vector<uint8_t>{});
         std::cout
             << "RS01 exact bytes, chained preparation, sixteen image transitions and extended-block recovery passed\n";
       }

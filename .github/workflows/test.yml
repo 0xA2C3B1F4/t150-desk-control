@@ -141,6 +141,7 @@ jobs:
           python3 tools/generate_platform_layout.py --check
           python3 tools/embed_tb01_patch.py --check
           python3 tools/embed_platform_patch.py --check
+          python3 tools/embed_motion_trim_patch.py --check
       - name: Test controller extensions against synthetic helpers
         if: matrix.build_type == 'Debug'
         env:
@@ -151,6 +152,13 @@ jobs:
           python3 -m pip install 'unicorn==2.1.4'
           python3 tools/test_tb01_patch.py
           python3 tools/test_platform_patch.py
+          python3 tools/test_motion_trim_runtime.py
+          python3 tools/test_motion_trim_hooks.py
+          python3 tools/test_motion_trim_controller.py
+          python3 tools/test_motion_trim_native.py
+          python3 tools/test_motion_trim_foreground.py
+          python3 tools/test_motion_trim_assembly.py
+          python3 tools/test_motion_trim_builder.py
       - name: C++11 ${{ matrix.build_type }} with ASan and UBSan
         run: |
           cmake -S . -B "$RUNNER_TEMP/native" -DDESK_SANITIZERS=ON -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
@@ -189,6 +197,8 @@ jobs:
             backend_journal_integration,
             child_lock_integration,
             reset_speed_integration,
+            motion_trim_integration,
+            motion_trim_target_integration,
             direct_target_integration,
             direct_target_review_integration,
             preset_settings_integration,
