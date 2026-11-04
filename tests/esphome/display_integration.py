@@ -5,9 +5,12 @@ import asyncio
 import json
 import os
 import select
+import signal
 import socket
+import struct
 import subprocess
 import time
+import zlib
 
 from aioesphomeapi import APIClient
 
@@ -30,7 +33,7 @@ def host_config(work):
   build_path: {work}/build
 host:
 preferences:
-  flash_write_interval: 0s
+  flash_write_interval: 100ms
 logger:
   level: DEBUG
 api:
@@ -310,13 +313,25 @@ async def exercise(scenario, work, env):
                 if scenario == "reconnect_lost":
                     assert latest("Display timeout").missing_state
             if scenario in ("boot_restore", "boot_same"):
-                # Restart the real host process with its saved preferences intact.
-                await asyncio.sleep(0.2)
+                # SIGTERM is abrupt in the shared harness. SIGINT runs ESPHome's
+                # shutdown sync instead of interrupting a host file rewrite.
                 actor.cancel()
                 await asyncio.gather(actor, return_exceptions=True)
                 await client.disconnect()
-                proc.terminate()
-                proc.wait(timeout=5)
+                proc.send_signal(signal.SIGINT)
+                deadline = time.monotonic() + 5
+                while proc.poll() is None:
+                    # Keep shutdown UART tcdrain bounded after stopping the peer.
+                    if select.select([master], [], [], 0)[0]:
+                        os.read(master, 4096)
+                    assert time.monotonic() < deadline, "Host shutdown timed out"
+                    await asyncio.sleep(0.005)
+                assert proc.returncode == 0, proc.returncode
+                preferences = case / "prefs/.esphome/prefs/desk-display-test.prefs"
+                expected = struct.pack(
+                    "=IBHBB", zlib.crc32(b"desk-display-v1:desk"), 4, 1, 0, 1
+                )
+                assert preferences.read_bytes() == expected
                 if scenario == "boot_restore":
                     mode, seconds = 0, 60
                 before = len(events)
