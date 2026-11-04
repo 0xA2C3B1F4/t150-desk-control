@@ -18,6 +18,8 @@ def patch_features(full_config):
             for key in (
                 "child_lock",
                 "motion_speed",
+                "display_mode",
+                "display_timeout",
                 "normal_up_trim",
                 "normal_down_trim",
                 "slow_up_trim",

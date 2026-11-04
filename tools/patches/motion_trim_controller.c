@@ -1,3 +1,6 @@
+#ifdef DESK_DISPLAY_TIMEOUT
+#include "display_controller.h"
+#endif
 #include "motion_trim_controller.h"
 #include "motion_trim_motion.h"
 #include "motion_trim_native.h"
@@ -134,6 +137,20 @@ uint32_t trim_controller_send_native(volatile uint8_t* ring, const volatile uint
   return checksum;
 }
 
+#ifdef DESK_DISPLAY_TIMEOUT
+bool trim_controller_reply_room(uint8_t needed) {
+  unsigned reserve = trim_controller_tx_reserved() ? TRIM_REPLY_RESERVE : 0;
+  return room() >= needed + reserve;
+}
+
+void trim_controller_reply(const uint8_t* reply, uint8_t length) {
+  uint8_t reserve = trim_controller_tx_reserved() ? TRIM_REPLY_RESERVE : 0;
+  if (enqueue(reply, length, reserve)) {
+    HALF(0x120)++;
+  }
+}
+#endif
+
 static void snapshot(uint8_t* reply, uint8_t operation, uint16_t nonce, uint8_t result,
                      const TrimAdapterView* view) {
   reply[0] = 0xda;
@@ -248,6 +265,11 @@ static bool native_request_allowed(const volatile uint8_t* request, uint8_t leng
 }
 
 int trim_controller_route(void) {
+#ifdef DESK_DISPLAY_TIMEOUT
+  if (display_controller_route()) {
+    return 1;
+  }
+#endif
   const volatile uint8_t* request = (const volatile uint8_t*)WORD(0xe8);
   if (request[0] != 0xd9) {
     return trim_controller_blocks_native() && !native_request_allowed(request, BYTE(0x124));

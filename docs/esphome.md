@@ -67,6 +67,8 @@ packages:
 This replaces the panel-timer shortcuts with an adjustable timer and adds buzzer
 controls to the web interface and Home Assistant. See [TB01 setup](custom-timer-buzzer.md).
 
+For adjustable height-display timing, add the [display package](display.md).
+
 ### Source diagnostics
 
 Optional `source_version` and `source_revision` entries under `desk_uart` create

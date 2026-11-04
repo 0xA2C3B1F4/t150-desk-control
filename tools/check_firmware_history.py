@@ -14,6 +14,7 @@ HEADERS = (
     "tb01_patch.h",
     "platform_patch.h",
     "motion_trim_patch.h",
+    "buzzer_patch.h",
 )
 
 

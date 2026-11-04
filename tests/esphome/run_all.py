@@ -30,6 +30,7 @@ TESTS = [
     "firmware_update_config",
     "firmware_profile_integration",
     "display_units_integration",
+    "display_integration",
     "integration",
     "stop_integration",
     "load_limits_integration",

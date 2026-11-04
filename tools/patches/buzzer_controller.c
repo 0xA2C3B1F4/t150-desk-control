@@ -1,3 +1,6 @@
+#ifdef DESK_DISPLAY_TIMEOUT
+#include "display_controller.h"
+#endif
 #include "buzzer_layout.h"
 #include "buzzer_pwm.h"
 #include "platform_runtime.h"
@@ -192,6 +195,9 @@ void tb01_init(void) {
     VOLUME->output = BUZZER_OUTPUT_NONE;
     ALARM->state = BUZZER_ALARM_NONE;
     platform_modules_ready();
+#ifdef DESK_DISPLAY_TIMEOUT
+    display_controller_init();
+#endif
   }
   unlock(saved);
   FN(0x080094a1u, void (*)(void))();
@@ -219,6 +225,9 @@ void tb01_watchdog(void) {
 }
 
 void tb01_sleep(void) {
+#ifdef DESK_DISPLAY_TIMEOUT
+  display_controller_sleep();
+#endif
   tb01_abort();
   FN(0x08007569u, void (*)(void))();
 }
@@ -352,5 +361,8 @@ __attribute__((noinline)) int buzzer_extension_route(void) {
 
 int tb01_route(void) {
   int original = FN(0x080097e1u, int (*)(void))();
+#ifdef DESK_DISPLAY_TIMEOUT
+  display_controller_reset_stop(original);
+#endif
   return original ? original : buzzer_extension_route();
 }

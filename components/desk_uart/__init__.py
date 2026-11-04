@@ -55,6 +55,8 @@ TimerButton = ns.class_("TimerButton", button.Button)
 ChildLockSwitch = ns.class_("ChildLockSwitch", switch.Switch)
 ResetButton = ns.class_("ResetButton", button.Button)
 MotionSpeedSelect = ns.class_("MotionSpeedSelect", select.Select)
+DisplayModeSelect = ns.class_("DisplayModeSelect", select.Select)
+DisplayTimeoutNumber = ns.class_("DisplayTimeoutNumber", number.Number)
 MotionTrimNumber = ns.class_("MotionTrimNumber", number.Number)
 MOTION_TRIMS = ("normal_up_trim", "normal_down_trim", "slow_up_trim", "slow_down_trim")
 
@@ -264,6 +266,16 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional("reset_available"): binary_sensor.binary_sensor_schema(
                 entity_category="diagnostic"
             ),
+            cv.Optional("display_mode"): select.select_schema(
+                DisplayModeSelect, icon="mdi:monitor", entity_category="config"
+            ),
+            cv.Optional("display_timeout"): number.number_schema(
+                DisplayTimeoutNumber,
+                icon="mdi:timer-outline",
+                unit_of_measurement="s",
+                entity_category="config",
+            ),
+            cv.Optional("display_status"): text_sensor.text_sensor_schema(),
             cv.Optional("motion_speed"): select.select_schema(
                 MotionSpeedSelect, icon="mdi:speedometer", entity_category="config"
             ),
@@ -428,6 +440,7 @@ async def to_code(config):
         "child_lock_status",
         "reset_status",
         "motion_trim_status",
+        "display_status",
         "controller_model",
         "controller_manufacturer",
         "controller_identifiers",
@@ -468,6 +481,23 @@ async def to_code(config):
                 await binary_sensor.new_binary_sensor(config["reset_available"])
             )
         )
+    if "display_mode" in config:
+        mode = await select.new_select(
+            config["display_mode"], options=["Auto blank", "Normal"]
+        )
+        cg.add(mode.set_parent(var))
+        cg.add(var.set_display_mode_select(mode))
+    if "display_timeout" in config:
+        timeout = await number.new_number(
+            config["display_timeout"], min_value=1, max_value=65535, step=1
+        )
+        cg.add(timeout.set_parent(var))
+        cg.add(var.set_display_timeout_number(timeout))
+    cg.add(
+        var.set_display_preference_key(
+            zlib.crc32(("desk-display-v1:" + str(config[CONF_ID])).encode())
+        )
+    )
     if "motion_speed" in config:
         speed = await select.new_select(
             config["motion_speed"], options=["Normal", "Slow"]

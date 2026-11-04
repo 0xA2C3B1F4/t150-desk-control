@@ -19,6 +19,7 @@
       "components/desk_uart/desk_protocol/child_lock.h",
       "components/desk_uart/desk_protocol/custom_timer_buzzer.h",
       "components/desk_uart/desk_protocol/direct_target.h",
+      "components/desk_uart/desk_protocol/display_settings.h",
       "components/desk_uart/desk_protocol/firmware_export.h",
       "components/desk_uart/desk_protocol/firmware_install.h",
       "components/desk_uart/desk_protocol/firmware_layout.h",

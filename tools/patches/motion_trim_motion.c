@@ -1,3 +1,6 @@
+#ifdef DESK_DISPLAY_TIMEOUT
+#include "display_controller.h"
+#endif
 #include "motion_trim_motion.h"
 #include "platform_runtime.h"
 
@@ -20,6 +23,9 @@ bool trim_motion_publish(const int8_t values[TRIM_COUNT]) {
 }
 
 uint32_t trim_motion_target(uint32_t requested, uint32_t current) {
+#ifdef DESK_DISPLAY_TIMEOUT
+  display_controller_restart();
+#endif
   int8_t values[TRIM_COUNT] = {0};
   uint8_t speed = 0;
   bool admitted = false;

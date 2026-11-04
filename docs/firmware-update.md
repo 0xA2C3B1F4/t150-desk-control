@@ -37,7 +37,7 @@ and cannot be combined with this build. A rejected OTA attempt logs
 `OTA refused: firmware operation active or queued`; retry after the operation ends.
 The OTA guard checks the reviewed ESPHome source. If a different ESPHome version
 fails with `Unreviewed ESPHome OTA source`, use the supported version above.
-After installing CL01, RS01, TB01, FP01 or TR01, keep the
+With patched controller firmware, keep the
 [panel-lock package](child-lock.md) enabled so you can unlock the panel.
 
 ## Read, patch and verify
@@ -55,7 +55,7 @@ Follow the active instruction panel. Keep the ESP32 powered throughout.
    page loses its browser-memory copy.
 4. Select **Prepare current firmware**. This includes direct height control,
    panel locking, calibration, Normal/Slow speeds, timer and buzzer controls,
-   and [motion trims](motion-trims.md). The page shows the target version.
+   [motion trims](motion-trims.md), and [display timing](display.md). The page shows the target version.
    If it is already installed, the same action prepares a reinstall.
    To restore an older supported image, use **Prepare selected file**.
    Configure the panel-lock controls before installation. Without a valid saved

@@ -1,0 +1,24 @@
+# Optional height-display controls for controller firmware with display support.
+web_server:
+  sorting_groups:
+    - id: desk_group_display
+      name: Display
+      sorting_weight: 47
+desk_uart:
+  id: desk
+  display_mode:
+    name: Display mode
+    web_server:
+      sorting_group_id: desk_group_display
+      sorting_weight: 10
+  display_timeout:
+    name: Display timeout
+    mode: box
+    web_server:
+      sorting_group_id: desk_group_display
+      sorting_weight: 20
+  display_status:
+    name: Display status
+    web_server:
+      sorting_group_id: desk_group_display
+      sorting_weight: 30
