@@ -4,6 +4,7 @@ import re
 
 from esphome import codegen as cg, config_validation as cv
 from esphome.components import desk_firmware_export, desk_uart
+from esphome.components.desk_uart.source_metadata import read_version
 from esphome.const import CONF_ID
 import esphome.final_validate as fv
 
@@ -53,3 +54,4 @@ async def to_code(config):
     await cg.register_component(var, config)
     cg.add(var.set_desk(await cg.get_variable(config["desk_id"])))
     cg.add(var.set_research_url(config["research_url"]))
+    cg.add(var.set_target_version(read_version()))

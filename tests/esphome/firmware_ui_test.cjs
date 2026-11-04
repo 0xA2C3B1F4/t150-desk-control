@@ -20,6 +20,10 @@ const base = {
   research_url: "",
   sha256: "",
   source_sha256: "",
+  target_name: "T150 Desk Control controller firmware",
+  target_version: "2026.11.0",
+  target_sha256: "2493c4b1d24e1ed6b1e5fa478224a4466068d50b7d52781bc004e3b0d928dcc9",
+  prepare_available: false,
 };
 async function page() {
   const elements = {};
@@ -57,6 +61,7 @@ async function page() {
         io.actions.push(action);
         if (action === "exit") io.status = { ...base };
         if (action === "claim") io.status.claimed = true;
+        if (action === "backup") io.status.prepare_available = true;
         return { ok: true, json: async () => ({ revision: io.status.revision }) };
       }
       return { ok: true, json: async () => ({ ...io.status }) };
@@ -111,122 +116,52 @@ async function page() {
   await p.state({ state: "staged", recovery_required: true });
   assert.equal(e.verify.hidden, false);
   assert.equal(e.verify.disabled, false);
-  await p.state({
-    state: "read_complete",
-    sha256: "e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff",
-  });
-  assert.equal(e.guidanceTitle.textContent, "Direct height control is already installed");
-  assert.equal(e.patch.disabled, true);
-  assert.equal(e.patchChildLock.disabled, false);
+  for (const id of [
+    "patch",
+    "patchChildLock",
+    "patchResetSpeed",
+    "patchTimerBuzzer",
+    "patchPlatform",
+    "patchMotionTrims",
+  ])
+    assert.equal(e[id], undefined);
+  for (const identity of ["STOCK", "DT02", "CL01", "RS01", "TB01", "FP01", "TR01"]) {
+    await p.state({
+      state: "read_complete",
+      sha256: p.run(identity),
+      source_sha256: p.run(identity),
+      prepare_available: true,
+    });
+    assert.equal(e.prepareCurrent.disabled, false);
+    assert.equal(e.guidanceTitle.textContent.includes("already installed"), identity === "TR01");
+    assert.match(e.targetFirmware.textContent, /target version 2026.11.0/);
+  }
   await p.state({ state: "read_complete", sha256: p.run("STOCK"), source_sha256: p.run("STOCK") });
-  assert.equal(e.patchChildLock.disabled, false);
-  assert.equal(e.patch.disabled, false);
+  assert.equal(e.prepareCurrent.disabled, true);
   p.io.actions = [];
-  await e.patchChildLock.onclick();
+  await e.prepareCurrent.onclick();
   assert.match(e.message.textContent, /saved backup/);
   assert.deepEqual(p.io.actions, []);
   p.run("original=new Uint8Array(55296);originalHash=STOCK");
   e.saved.checked = true;
-  await e.patchChildLock.onclick();
-  assert.deepEqual(p.io.actions, ["backup", "patch_child_lock"]);
-  await p.state({ state: "read_complete", sha256: p.run("CL01") });
-  assert.equal(e.guidanceTitle.textContent, "Panel lock is already installed");
-  assert.equal(e.patchChildLock.disabled, true);
-  assert.equal(e.patch.disabled, true);
-  assert.match(e.guidanceDetail.textContent, /remove panel lock/);
-  assert.match(e.guidanceDetail.textContent, /unlock the panel remotely/i);
-  await p.state({ state: "staged", sha256: p.run("CL01") });
-  assert.doesNotMatch(e.guidanceTitle.textContent, /already installed/);
-  assert.match(e.guidanceDetail.textContent, /starts locked/);
-  assert.match(e.guidanceDetail.textContent, /buttons used to stop movement/);
-  await p.state({ state: "verified", sha256: p.run("CL01") });
-  assert.match(e.guidanceDetail.textContent, /unlock the panel remotely/i);
-  // RS01 can be prepared only from an exact supported source with a saved backup.
-  for (const identity of ["STOCK", "DT02", "CL01"]) {
-    await p.state({
-      state: "read_complete",
-      sha256: p.run(identity),
-      source_sha256: p.run(identity),
-    });
-    assert.equal(e.patchResetSpeed.disabled, false);
-  }
-  p.run("original=new Uint8Array(55296);originalHash=CL01");
-  e.saved.checked = true;
+  await e.saved.onchange();
+  assert.deepEqual(p.io.actions, ["backup"]);
+  assert.equal(e.prepareCurrent.disabled, false);
   p.io.actions = [];
-  await e.patchResetSpeed.onclick();
-  assert.deepEqual(p.io.actions, ["backup", "patch_reset_speed"]);
-  await p.state({ state: "read_complete", sha256: p.run("RS01") });
-  assert.match(e.guidanceTitle.textContent, /Reset and speed controls.*already installed/);
-  assert.equal(e.patchResetSpeed.disabled, true);
-  assert.equal(e.patchChildLock.disabled, true);
-  assert.equal(e.patch.disabled, true);
-  await p.state({ state: "staged", sha256: p.run("RS01") });
-  assert.match(e.guidanceDetail.textContent, /unlock the panel remotely/i);
-  await p.state({ state: "verified", sha256: p.run("RS01") });
-  assert.match(e.guidanceDetail.textContent, /unlock the panel remotely/i);
-  for (const s of [
-    { state: "read_complete", sha256: "unknown" },
-    { state: "read_complete", sha256: p.run("CL01"), preflight_seconds: 0 },
-    { state: "reading", sha256: p.run("CL01"), active: true },
+  await e.prepareCurrent.onclick();
+  assert.deepEqual(p.io.actions, ["backup", "prepare_current"]);
+  for (const fields of [
+    { sha256: "unknown" },
+    { sha256: p.run("STOCK"), preflight_seconds: 0 },
+    { sha256: p.run("STOCK"), recovery_required: true },
+    { sha256: p.run("STOCK"), pending: true },
+    { sha256: p.run("STOCK"), active: true },
   ]) {
-    await p.state(s);
-    assert.equal(e.patchResetSpeed.disabled, true);
+    await p.state({ state: "read_complete", ...fields, prepare_available: false });
+    assert.equal(e.prepareCurrent.disabled, true);
   }
-  // Published timer firmware upgrades directly to the shared foundation.
-  for (const identity of ["STOCK", "DT02", "CL01", "RS01", "TB01"]) {
-    await p.state({
-      state: "read_complete",
-      sha256: p.run(identity),
-      source_sha256: p.run(identity),
-    });
-    assert.equal(e.patchPlatform.disabled, false);
-    assert.equal(e.patchTimerBuzzer.disabled, identity === "TB01");
-  }
-  p.run("original=new Uint8Array(55296);originalHash=TB01");
-  e.saved.checked = true;
-  p.io.actions = [];
-  await e.patchPlatform.onclick();
-  assert.deepEqual(p.io.actions, ["backup", "patch_platform"]);
-  await p.state({ state: "read_complete", sha256: p.run("FP01") });
-  assert.match(e.guidanceTitle.textContent, /foundation.*already installed/);
-  assert.equal(e.patchPlatform.disabled, true);
-  assert.equal(e.patchTimerBuzzer.disabled, true);
-  for (const identity of ["STOCK", "DT02", "CL01", "RS01", "TB01", "FP01"]) {
-    await p.state({
-      state: "read_complete",
-      sha256: p.run(identity),
-      source_sha256: p.run(identity),
-    });
-    assert.equal(e.patchMotionTrims.disabled, false);
-  }
-  p.run("original=new Uint8Array(55296);originalHash=FP01");
-  e.saved.checked = true;
-  p.io.actions = [];
-  await e.patchMotionTrims.onclick();
-  assert.deepEqual(p.io.actions, ["backup", "patch_motion_trims"]);
-  await p.state({ state: "read_complete", sha256: p.run("TR01") });
-  assert.match(e.guidanceTitle.textContent, /Motion trims.*already installed/);
-  assert.equal(e.patchMotionTrims.disabled, true);
-  for (const identity of ["TB01", "FP01", "TR01"]) {
-    await p.state({ state: "verified", sha256: p.run(identity) });
-    assert.match(e.guidanceDetail.textContent, /unlock the panel remotely/i);
-  }
-  for (const status of [
-    { state: "read_complete", sha256: "unknown" },
-    { state: "read_complete", sha256: p.run("TB01"), preflight_seconds: 0 },
-    { state: "reading", sha256: p.run("TB01"), active: true },
-  ]) {
-    await p.state(status);
-    assert.equal(e.patchPlatform.disabled, true);
-    assert.equal(e.patchTimerBuzzer.disabled, true);
-    assert.equal(e.patchMotionTrims.disabled, true);
-  }
-  await p.state({ state: "read_complete", sha256: "unknown" });
-  assert.equal(e.patchChildLock.disabled, true);
-  await p.state({ state: "read_complete", sha256: p.run("STOCK"), preflight_seconds: 0 });
-  assert.equal(e.patchChildLock.disabled, true);
-  await p.state({ state: "reading", sha256: p.run("STOCK"), active: true });
-  assert.equal(e.patchChildLock.disabled, true);
+  await p.state({ state: "verified", sha256: p.run("TR01") });
+  assert.match(e.guidanceDetail.textContent, /unlock the panel remotely/i);
   await p.state({
     state: "staged",
     sha256: "e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff",
@@ -285,7 +220,7 @@ async function page() {
   await assert.rejects(fresh.run("refresh()"));
   assert.equal(fresh.elements.message.hidden, false);
   console.log(
-    "Firmware UI: power instructions, connection loss, hash-bound DT02/CL01 preparation, saved backup, lock disclosure, expiry, recovery and takeover passed",
+    "Firmware UI: power instructions, connection loss, current firmware preparation, saved backup, lock disclosure, expiry, recovery and takeover passed",
   );
 })().catch((e) => {
   console.error(e);

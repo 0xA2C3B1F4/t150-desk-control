@@ -53,17 +53,13 @@ Follow the active instruction panel. Keep the ESP32 powered throughout.
    Wait for `read complete`.
 3. Download the backup and confirm it is saved on your computer. Closing the
    page loses its browser-memory copy.
-4. Select **Prepare direct height control** for direct height control and the sleep fix,
-   or **Prepare panel lock** for both plus persistent panel locking.
-   Choose **Prepare reset and speed controls** for those features plus
-   [calibration and Normal/Slow controls](reset-speed.md).
-   **Prepare custom timer and buzzer** adds [timer and sound controls](custom-timer-buzzer.md).
-   **Prepare shared firmware foundation** includes those features on the
-   [STM32F030C8T6 platform](firmware-platform.md).
-   **Prepare motion trims** adds [independent stopping adjustments](motion-trims.md).
-   Alternatively, select a saved application and **Prepare selected file**.
-   CL01, RS01, TB01, FP01 and TR01 initially lock physical buttons, including local stopping; configure
-   the panel-lock controls before installation.
+4. Select **Prepare current firmware**. This includes direct height control,
+   panel locking, calibration, Normal/Slow speeds, timer and buzzer controls,
+   and [motion trims](motion-trims.md). The page shows the target version.
+   If it is already installed, the same action prepares a reinstall.
+   To restore an older supported image, use **Prepare selected file**.
+   Configure the panel-lock controls before installation. Without a valid saved
+   lock setting, physical buttons start locked, including local stopping.
 5. Confirm and select **Arm installation**, then power-cycle only the controller.
    Leave power connected throughout writing.
 6. At `readback required`, select **Verify by full readback** and power-cycle
@@ -71,6 +67,9 @@ Follow the active instruction panel. Keep the ESP32 powered throughout.
    the closing handshake.
 7. Select **Finish maintenance**, then power-cycle the controller to start its
    application. Reconnect the motor only with controller power off.
+
+If the page keeps waiting for a power cycle, leave controller power off for
+30 seconds before turning it back on. Keep the ESP32 powered.
 
 If the browser disconnects, the ESP32 continues the transfer. Reopen the page
 and wait for completion or timeout before taking over the idle session. A new
@@ -80,10 +79,9 @@ keep both devices powered until status returns. Writes never retry automatically
 ## Accepted images and storage
 
 Writing accepts only the exact original, DT02, CL01, RS01 R7, TB01, FP01 and TR01
-applications. Each preparation action accepts the supported earlier images;
-FP01 preparation accepts TB01 directly. TR01 accepts all six earlier supported
-images. FP01 and TR01 require the documented STM32F030C8T6
-controller with 8 KiB SRAM. A fresh read identifies an installed patch.
+applications. **Prepare current firmware** accepts all seven as starting points.
+The current image requires the documented STM32F030C8T6 controller with 8 KiB
+SRAM. A fresh read identifies the installed image.
 Other images need a separately reviewed patch; profile recognition alone does
 not authorize writing.
 
@@ -132,3 +130,7 @@ to hide it. The service cannot enable an unreviewed patch on the ESP32.
 
 See [compatibility research and submission details](hardware.md#help-develop-support)
 for how contributed firmware can help extend support to other controllers.
+
+Before downgrading ESPHome, restore and verify a controller image that the older
+ESPHome version supports. Do not downgrade ESPHome with an unfinished recovery;
+the older version may not recognize its saved recovery record.

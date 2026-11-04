@@ -83,13 +83,17 @@ def validate(catalog, probe):
         raise ValueError("Install pairs differ from production admission")
     # Exact builder source/output pins, not catalog-to-schema self-consistency.
     import build_child_lock_patch as cl
+    import build_controller_firmware as current
     import build_motion_trim_patch as tr
     import build_platform_patch as fp
     import build_reset_speed_patch as rs
     import build_tb01_patch as tb
 
     if (
-        cl.SOURCE_APP_SHA256 != probe["images"]["dt02"]
+        current.SOURCE_APP_SHA256 != rs.OUTPUT_APP_SHA256
+        or current.OUTPUT_APP_SHA256 != probe["images"][current.FIRMWARE_ID]
+        or current.PAYLOAD_SIZE != probe["payload_sizes"][current.FIRMWARE_ID]
+        or cl.SOURCE_APP_SHA256 != probe["images"]["dt02"]
         or cl.OUTPUT_APP_SHA256 != probe["images"]["cl01"]
         or rs.SOURCE_APP_SHA256 != cl.OUTPUT_APP_SHA256
         or rs.OUTPUT_APP_SHA256 != probe["images"]["rs01-r7"]
@@ -105,6 +109,7 @@ def validate(catalog, probe):
         or fp.LAYOUT["payload_size"] != probe["erase_size"]
     ):
         raise ValueError("Patch builder chain differs")
+    current.current_identity(catalog)
     if catalog["prepare"] != probe["prepare"]:
         raise ValueError("Preparation sources differ from supported cumulative patches")
     if catalog["recovery"] != {

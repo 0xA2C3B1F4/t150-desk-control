@@ -122,6 +122,10 @@ for name, packages, valid in [
             and any(p in packages for p in ("firmware-update", "firmware-export"))
         )
         if "firmware-update" in packages:
+            version = json.loads(
+                (ROOT / "components/desk_uart/project_version.json").read_text()
+            )["version"]
+            assert f'set_target_version("{version}")' in generated
             defines = (w / "build/src/esphome/core/defines.h").read_text()
             assert "#define USE_WEBSERVER_GZIP" in defines
             assert "#define USE_WEBSERVER_LOCAL" in defines

@@ -23,12 +23,72 @@ namespace fw = esphome::desk_firmware_update;
 using Receiver = desk_protocol::FirmwareExport;
 struct Rig : fw::FirmwareUpdate {
   esphome::desk_uart::DeskUART desk;
+  std::string last_response;
   Rig() {
     set_desk(&desk);
     setup();
     AsyncWebServerRequest req("/desk-firmware/status");
     req.request_headers["Host"] = "desk.local";
     handleRequest(&req);
+  }
+  void check_retired_actions() {
+    claim();
+    for (const char* action : {"patch", "patch_child_lock", "patch_reset_speed",
+                               "patch_timer_buzzer", "patch_platform", "patch_motion_trims"}) {
+      const auto revision = revision_;
+      CHECK(post(action) == 409);
+      CHECK(last_response == "Unknown action");
+      CHECK(pending_.empty());
+      CHECK(revision_ == revision);
+    }
+  }
+  void check_target_status() {
+    set_research_url("https://" + std::string(232, 'a'));
+    set_target_version(std::string(32, '9'));
+    std::strcpy(hash_, fw::TR01_SHA);
+    std::strcpy(source_hash_, fw::FP01_SHA);
+    revision_ = UINT32_MAX;
+    error_ =
+        "Read image is not recorded for this recovery; read a recorded complete image or use external recovery";
+    AsyncWebServerRequest request("/desk-firmware/status");
+    request.request_headers["Host"] = "desk.local";
+    handleRequest(&request);
+    CHECK(request.response_code == 200);
+    std::string body(reinterpret_cast<const char*>(request.response_data), request.response_size);
+    CHECK(body.back() == '}');
+    CHECK(body.find("\"target_name\":\"T150 Desk Control controller firmware\"") !=
+          std::string::npos);
+    CHECK(body.find(std::string("\"target_sha256\":\"") + fw::TR01_SHA + "\"") !=
+          std::string::npos);
+    CHECK(body.find(std::string(32, '9')) != std::string::npos);
+    CHECK(body.find(std::string(232, 'a')) != std::string::npos);
+    CHECK(body.find("\"prepare_available\":false") != std::string::npos);
+  }
+  void check_preparation_guards(const std::vector<uint8_t>& source) {
+    CHECK(can_prepare_current_());
+    {
+      auto download = buffer_;
+      CHECK(!can_prepare_current_());
+      post("prepare_current");
+      CHECK(state() == "read_complete");
+      CHECK(!std::memcmp(buffer_.get(), source.data(), source.size()));
+    }
+    preflight_at_ = export_host::now - 300001;
+    CHECK(!can_prepare_current_());
+    post("prepare_current");
+    CHECK(state() == "error");
+    CHECK(!std::memcmp(buffer_.get(), source.data(), source.size()));
+    read(source);
+    backup();
+    recovery_ = true;
+    CHECK(!can_prepare_current_());
+    post("prepare_current");
+    CHECK(state() == "error");
+    CHECK(!std::memcmp(buffer_.get(), source.data(), source.size()));
+    recovery_ = false;
+    read(source);
+    backup();
+    CHECK(can_prepare_current_());
   }
   void tick() {
     ++export_host::now;
@@ -48,6 +108,7 @@ struct Rig : fw::FirmwareUpdate {
     if (foreign)
       req.request_headers["Origin"] = "https://untrusted.example";
     handleRequest(&req);
+    last_response.assign(reinterpret_cast<const char*>(req.response_data), req.response_size);
     tick();
     return req.response_code;
   }
@@ -307,43 +368,31 @@ void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_
       CHECK(fw::tr01_byte(i, stock[i]) == trims[i]);
   }
   const std::vector<std::vector<uint8_t>> old{stock, direct, child, reset};
-  for (const char* action : {"patch_timer_buzzer", "patch_platform", "patch_motion_trims"}) {
-    const bool motion = !std::strcmp(action, "patch_motion_trims");
-    if (motion && trims.empty())
-      continue;
-    auto sources = old;
-    if (!std::strcmp(action, "patch_platform") || motion)
-      sources.push_back(timer);
-    if (motion)
-      sources.push_back(platform);
-    const auto& expected = motion                                   ? trims
-                           : !std::strcmp(action, "patch_platform") ? platform
-                                                                    : timer;
-    for (const auto& source : sources) {
-      export_host::reset();
-      Rig r;
-      r.claim();
-      r.read(source);
-      r.post(action);
-      CHECK(r.state() == "error");
-      r.read(source);
-      r.backup();
-      r.post(action);
-      CHECK(r.state() == "staged");
-      CHECK(r.download() == expected);
-      r.install();
-      CHECK(r.complete_write_model(source) == expected);
-      r.post("verify");
-      r.export_image(expected);
-      CHECK(r.state() == "verified");
-      CHECK(!r.recovery_required());
-    }
-  }
   auto all = old;
   all.push_back(timer);
   all.push_back(platform);
-  if (!trims.empty())
-    all.push_back(trims);
+  CHECK(!trims.empty());
+  all.push_back(trims);
+  for (const auto& source : all) {
+    export_host::reset();
+    Rig r;
+    r.claim();
+    r.read(source);
+    r.post("prepare_current");
+    CHECK(r.state() == "error");
+    r.read(source);
+    r.backup();
+    r.check_preparation_guards(source);
+    r.post("prepare_current");
+    CHECK(r.state() == "staged");
+    CHECK(r.download() == trims);
+    r.install();
+    CHECK(r.complete_write_model(source) == trims);
+    r.post("verify");
+    r.export_image(trims);
+    CHECK(r.state() == "verified");
+    CHECK(!r.recovery_required());
+  }
   // All source/target pairs include same-image reinstalls and shorter
   // downgrades. Compare every byte of modeled flash with the exact target.
   for (const auto& source : all)
@@ -363,6 +412,41 @@ void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_
       CHECK(r.state() == "verified");
       CHECK(!r.recovery_required());
     }
+  // A downgrade from the current image keeps its recorded identity across a
+  // restart, including a shorter target and a different 53-block target.
+  for (const auto& target : {stock, platform}) {
+    export_host::reset();
+    {
+      Rig r;
+      r.claim();
+      r.read(trims);
+      r.backup();
+      r.upload(target);
+      r.install();
+      r.feed({0xfa, 0x30, 0, 1, 0x31, 0xfd});
+      r.post("cancel");
+    }
+    export_host::reset();
+    {
+      Rig r;
+      CHECK(r.recovery_required());
+      CHECK(r.source() == fw::TR01_SHA);
+      r.claim();
+      auto torn = target;
+      const size_t cut = target == stock ? 0x5dfa : 0xc080;
+      std::fill(torn.begin() + cut, torn.end(), 255);
+      r.read(torn);
+      r.backup();
+      r.upload(stock);
+      CHECK(r.state() == "staged");
+      r.install();
+      CHECK(r.complete_write_model(torn) == stock);
+      r.post("verify");
+      r.export_image(stock);
+      CHECK(r.state() == "verified");
+      CHECK(!r.recovery_required());
+    }
+  }
   auto extended = std::vector<std::vector<uint8_t>>{timer, platform};
   if (!trims.empty())
     extended.push_back(trims);
@@ -493,6 +577,32 @@ void extended_images(const std::vector<uint8_t>& stock, const std::vector<uint8_
       << " modeled transitions, 53-to-32 erase, final ACK loss, torn blocks 33/53 and repeated original recovery passed\n";
 }
 int main(int argc, char** argv) {
+  if (argc >= 10) {
+    std::ifstream file(argv[9], std::ios::binary);
+    CHECK(file.good());
+    const std::vector<uint8_t> saved{std::istreambuf_iterator<char>(file), {}};
+    CHECK(saved.size() > 4);
+    esphome::preference_data = saved;
+    std::memcpy(&esphome::saved_recovery, saved.data(), 4);
+    {
+      Rig r;
+      CHECK(r.recovery_required());
+      CHECK(r.source() == fw::RS01_SHA);
+      CHECK(r.target() == fw::TR01_SHA);
+      CHECK(esphome::preference_data == saved);
+      r.claim();
+      r.read(load(argv[8]));
+      CHECK(!r.recovery_required());
+    }
+    export_host::reset();
+    std::cout << "Prior updater recovery record loaded unchanged and verified\n";
+  }
+  {
+    Rig r;
+    r.check_retired_actions();
+    r.check_target_status();
+  }
+  export_host::reset();
   {
     Rig r;
     r.check_ota_admission();
@@ -578,7 +688,7 @@ int main(int argc, char** argv) {
       r.claim();
       r.read(stock);
       r.backup();
-      r.post("patch");
+      r.upload(patched);
       r.install();
       r.feed({0xfa, 0x30, 0, 1, 0x31, 0xfd});
       if (failure == 0) {
@@ -603,7 +713,7 @@ int main(int argc, char** argv) {
       r.post("exit");
       CHECK(r.state() == "read_complete");
       r.backup();
-      r.post("patch");
+      r.upload(patched);
       CHECK(r.hash() == fw::DT02_SHA);
       CHECK(r.download() == patched);
       CHECK(export_host::live_allocations() == 1);
@@ -614,13 +724,13 @@ int main(int argc, char** argv) {
       esphome::fail_preferences = false;
       r.read(stock);
       r.backup();
-      r.post("patch");
+      r.upload(patched);
       r.install();
       r.post("cancel");
       CHECK(esphome::saved_recovery == 0);
       r.read(stock);
       r.backup();
-      r.post("patch");
+      r.upload(patched);
       r.install();
       export_host::now += 120001;
       r.tick();
@@ -628,7 +738,7 @@ int main(int argc, char** argv) {
       CHECK(esphome::saved_recovery == 0);
       r.read(stock);
       r.backup();
-      r.post("patch");
+      r.upload(patched);
       r.install();
       r.complete_write();
       CHECK(r.post("exit") == 200);
@@ -649,7 +759,7 @@ int main(int argc, char** argv) {
       r.claim();
       r.read(stock);
       r.backup();
-      r.post("patch");
+      r.upload(patched);
       r.install();
       r.feed({0xfa, 0x30, 0, 1, 0x31, 0xfd});
       r.feed({6, 0x43, 0x15});
@@ -700,7 +810,7 @@ int main(int argc, char** argv) {
       r.claim();
       r.read(stock);
       r.backup();
-      r.post("patch");
+      r.upload(patched);
       r.install();
     }
     export_host::reset();
@@ -730,7 +840,7 @@ int main(int argc, char** argv) {
           r.read(target ? stock : patched);
           r.backup();
           if (target)
-            r.post("patch");
+            r.upload(patched);
           else
             r.upload(stock);
           r.install();
@@ -824,7 +934,7 @@ int main(int argc, char** argv) {
         r.claim();
         r.read(stock);
         r.backup();
-        r.post("patch");
+        r.upload(patched);
         r.install();
         r.feed({0xfa, 0x30, 0, 1, 0x31, 0xfd});
         r.post("cancel");
@@ -984,7 +1094,7 @@ int main(int argc, char** argv) {
         r.claim();
         r.read(stock);
         r.backup();
-        r.post("patch");
+        r.upload(patched);
         r.install();
         r.feed({0xfa, 0x30, 0, 1, 0x31, 0xfd});
         r.post("cancel");
@@ -1006,7 +1116,7 @@ int main(int argc, char** argv) {
       r.claim();
       r.read(stock);
       r.backup();
-      r.post("patch");
+      r.upload(patched);
       r.install();
       r.feed({0xfa, 0x30, 0, 1, 0x31, 0xfd});
       r.post("cancel");
@@ -1052,7 +1162,7 @@ int main(int argc, char** argv) {
         r.claim();
         r.read(stock);
         r.backup();
-        r.post("patch");
+        r.upload(patched);
         r.install();
         r.legacy(phase);
         CHECK(esphome::preference_data.size() == r.legacy_size());
@@ -1081,11 +1191,11 @@ int main(int argc, char** argv) {
           Rig r;
           r.claim();
           r.read(source);
-          r.post("patch_child_lock");
+          r.post("stage");
           CHECK(r.state() == "error");
           r.read(source);
           r.backup();
-          r.post("patch_child_lock");
+          r.upload(child);
           CHECK(r.state() == "staged");
           CHECK(r.hash() == fw::CL01_SHA);
           CHECK(r.download() == child);
@@ -1132,7 +1242,7 @@ int main(int argc, char** argv) {
         r.read(child);
         r.backup();
         const auto saved = esphome::preference_data;
-        for (const char* action : {"patch", "patch_child_lock", "stage"}) {
+        for (const char* action : {"prepare_current", "stage"}) {
           r.post(action);
           CHECK(r.state() == "error");
           CHECK(r.recovery_required());
@@ -1148,7 +1258,7 @@ int main(int argc, char** argv) {
         r.claim();
         r.read(patched);
         r.backup();
-        r.post("patch_child_lock");
+        r.upload(child);
         r.install();
         r.complete_write();
         r.post("verify");
@@ -1284,11 +1394,11 @@ int main(int argc, char** argv) {
             Rig r;
             r.claim();
             r.read(source);
-            r.post("patch_reset_speed");
+            r.post("stage");
             CHECK(r.state() == "error");
             r.read(source);
             r.backup();
-            r.post("patch_reset_speed");
+            r.upload(reset);
             CHECK(r.state() == "staged");
             CHECK(r.hash() == fw::RS01_SHA);
             CHECK(r.download() == reset);
@@ -1387,14 +1497,15 @@ int main(int argc, char** argv) {
           r.claim();
           r.read(reset);
           r.backup();
-          r.post("patch_reset_speed");
-          CHECK(r.state() == "error");
+          CHECK(r.post("patch_reset_speed") == 409);
+          CHECK(r.state() == "read_complete");
+          CHECK(r.download() == reset);
         }
         if (argc >= 8)
           extended_images(stock, patched, child, reset, load(argv[6]), load(argv[7]),
                           argc >= 9 ? load(argv[8]) : std::vector<uint8_t>{});
         std::cout
-            << "RS01 exact bytes, chained preparation, sixteen image transitions and extended-block recovery passed\n";
+            << "RS01 exact bytes, saved-image staging, sixteen image transitions and extended-block recovery passed\n";
       }
       std::cout
           << "CL01 exact generated bytes, nine full-image transitions, legacy marker upgrade, torn blocks and repeated three-identity original recovery passed\n";

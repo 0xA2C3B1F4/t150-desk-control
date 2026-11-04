@@ -5,6 +5,13 @@ Host tests and successful builds do not establish physical behavior.
 
 ## Hardware validation
 
+### Current firmware maintenance
+
+Hardware checks covered preparing the current image from FP01, restoring a saved
+FP01 image, and full readback after both installations. Preparing an already-current
+image preserved its bytes. Encrypted OTA succeeded after verification; active reads
+blocked OTA, and OTA blocked new maintenance requests.
+
 ### TR01 motion trims
 
 TR01 passed maintenance-page installation, complete application readback,
@@ -192,6 +199,12 @@ Remove task-owned build directories and caches when finished.
 
 ## Patch reproduction
 
+Historical DT02 through FP01 rebuilds use the
+[preserved source revision](https://github.com/0xA2C3B1F4/t150-desk-control/tree/fb345b84f07ac7d0d3ffe28acf9c1d3d2631638b).
+On the current checkout, `python tools/check_firmware_history.py` checks their
+frozen reconstruction data. Use the [current builder](#tr01-reproduction) for
+new installations.
+
 With LLVM installed, run from the repository root. These checks rebuild our
 replacement code without needing a manufacturer image:
 
@@ -320,6 +333,9 @@ and peripherals; they do not measure physical SRAM or reset behavior.
 
 ### TR01 reproduction
 
+Offline checks reproduced identical full, application and payload images with
+the current controller builder and its TR01 predecessor.
+
 Use the same LLVM toolchain and Unicorn version as FP01:
 
 ```sh
@@ -330,7 +346,7 @@ python tools/test_motion_trim_builder.py --llvm-bin /path/to/llvm/bin
 Build from an exact saved R7 full-flash or application image with LLVM 23.1.0:
 
 ```sh
-python tools/build_motion_trim_patch.py saved-r7.bin tr01-output \
+python tools/build_controller_firmware.py saved-r7.bin controller-output \
   --llvm-bin /path/to/llvm/bin --require-clean-source
 ```
 

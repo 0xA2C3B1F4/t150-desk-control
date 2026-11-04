@@ -46,6 +46,7 @@ YAMLS.update(
         for name in (
             "child-lock.yaml",
             "reset-speed.yaml",
+            "motion-trims.yaml",
             "custom-timer-buzzer.yaml",
             "firmware-export.yaml",
             "firmware-update.yaml",
@@ -71,6 +72,30 @@ def json_bytes(data):
     return (
         json.dumps(data, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     ).encode()
+
+
+def current_identity(catalog):
+    """Resolve the release target from its own catalog, not workflow-side recipes.
+
+    The compiled catalog check binds this metadata to the production recipe in
+    the candidate test run. Release workflows can run from a later main commit.
+    """
+    current = catalog.get("current", {})
+    target = current.get("id")
+    images = [image for image in catalog.get("images", []) if image.get("id") == target]
+    if (
+        catalog.get("schema_version") != 2
+        or not isinstance(target, str)
+        or not target
+        or not isinstance(current.get("profile"), str)
+        or not current["profile"]
+        or catalog.get("prepare", {}).get("target") != target
+        or len(images) != 1
+        or not isinstance(images[0].get("sha256"), str)
+        or not re.fullmatch(r"[0-9a-f]{64}", images[0]["sha256"])
+    ):
+        raise ValueError("Invalid current controller firmware in release catalog")
+    return {"id": target, "sha256": images[0]["sha256"]}
 
 
 def git(root, *args):
@@ -264,6 +289,9 @@ def package_bytes(root, version, commit):
         "commit": commit,
         "esphome": esphome_pin(root),
         "catalog_sha256": digest(data["firmware-catalog.json"]),
+        "controller_firmware": current_identity(
+            json.loads(data["firmware-catalog.json"])
+        ),
         "assets": {name: digest(content) for name, content in sorted(data.items())},
     }
     data["release-manifest.json"] = json_bytes(manifest)
@@ -304,6 +332,13 @@ def verify_package(directory, version, commit):
     for name, expected in manifest["assets"].items():
         if digest((directory / name).read_bytes()) != expected:
             raise ValueError("Asset digest mismatch: " + name)
+    catalog_data = (directory / "firmware-catalog.json").read_bytes()
+    if manifest.get("controller_firmware") != current_identity(
+        json.loads(catalog_data)
+    ):
+        raise ValueError("Controller firmware identity differs from the catalog")
+    if manifest.get("catalog_sha256") != digest(catalog_data):
+        raise ValueError("Catalog digest differs from the release manifest")
     expected = "".join(
         f"{digest((directory / name).read_bytes())}  {name}\n"
         for name in sorted(ASSETS - {"SHA256SUMS"})

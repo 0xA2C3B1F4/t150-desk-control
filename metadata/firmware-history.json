@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "source_commit": "fb345b84f07ac7d0d3ffe28acf9c1d3d2631638b",
+  "headers": {
+    "dt02_patch.h": {
+      "sha256": "81b4cd16ec96585c64331272fe9b6bce0bc01fa259913b2f9cd02f6eddca6757",
+      "sections": {
+        "0:DT02_CODE": "360430a78a8149dd8fb25e3d3fb9905782bccac4d2d7608ce8fdbda0968b8e40",
+        "1:sleep_patch": "749741887ef7f742187db2ca712f615721d6c5808ca5aacbf38f56c19a21f244",
+        "2:sleep": "6fd6efc7abf70ba9e31db700d398761e5d4bfff0005d9f58fdcf26d34a245e1b",
+        "3:sleep_patch": "749741887ef7f742187db2ca712f615721d6c5808ca5aacbf38f56c19a21f244"
+      }
+    },
+    "child_lock_patch.h": {
+      "sha256": "cf614f002303c590e6eb3746af98c4e3509c344b47ab54c6ba7cb2ffb942549d",
+      "sections": {
+        "0:CL01_GPIO_HOOK": "9197fff9a894de6ab7071058f2065ce630fbbf4c8aaced42b128c09da57f11a3",
+        "1:CL01_BOOT_HOOK": "8af4fefaefeb632e97ca490859e196698a9605dd0cdad0677e8a7d32fb0d44a4",
+        "2:CL01_HOOK": "aa0abb7937fccbb1ade04237f6592e854c4ec32c371dc9de6e408247dbe36262",
+        "3:CL01_CAVE": "b97c47a6318ee8ef83415ed928a9194a084d62fbb314f6b8f627527f8810577d",
+        "4:CL01_CHILD_LOCK": "d6097fd557dedde6efc3ac048189f99f853073f807bd25be26f7dc3bb342602f",
+        "5:gpio": "994b7e445b454f62296d2d8775ee9f71a5040729b632d52060e29e2b0d55f621",
+        "6:boot": "efb3222195e638560ed931c256c516a8e3eb9087fb33435810c3be0b8fb400b2"
+      }
+    },
+    "reset_speed_patch.h": {
+      "sha256": "a7e9257262295333e2ed716db09f3bfb29f3cf45f5435c74c0fb4c3ed3a34d8d",
+      "sections": {
+        "0:RS01_RS_VECTOR": "afe57eb621ec66a088c4f922566999f9aeb6e441fe3ca2152432b569c935021e",
+        "1:RS01_RS_BOOT_HOOK": "f4f685e30b1246dcafb86d9f6a176e2997db4ec65fce4dcb0c5f904eae8e42b9",
+        "2:RS01_RS_UART_HOOK": "7419c679c2272623c41e254d3abe26bbb9130cf17108eb023b9f3527e4e73aaf",
+        "3:RS01_RS_MAIN_HOOK": "5855be792f516d1341a6be75a0beda89c79b95473695b905f698dc92db0f4a60",
+        "4:RS01_RS_PARSER_HOOK": "ae029be3e5b0e3d530dc2eef10f75389af51dfa9086e9d24e30d99f961a449fa",
+        "5:RS01_RS_RX_RESET_HOOK": "f5aec40ee4c8f5016ecc9d60e8104c037b998d3f82f2db69d1634941b179cfa5",
+        "6:RS01_RS_SPEED_HOOK": "9e5c7cc7db8cd9cf01672642cbdeeb5302dc3b2ae3c56e437674bd3f3de6cf18",
+        "7:RS01_RS_OUTPUT_HOOK": "d47a63d06a20b0e47e40735b1c5fcc72e112e0b3fc1d33c24ada3e9d2cdd75c2",
+        "8:RS01_RS_COMPLETE_HOOK": "eab13eb2a925067d147e820c33327fa063fd3cd5795bc769b12d58e5f7148c7b",
+        "9:RS01_RESET_SPEED": "ac30a92a96c87068ade3fed5adec0b1198cd14a31615ea8581199b5e6e8e37ac",
+        "10:vector": "8b8a306a818cc80e3af08ac681031254b2e8fce7eddf10050dc6ed59e8207456",
+        "11:parser": "6394a57cbaf1225f16dea5915b2e2b6e20cf0e9964353a227e53d30a44c754ed",
+        "12:rx_init": "4ffdac1b77435abbf2e92753040eef68dd0c67db2f64c84424c08b12f4f2320e",
+        "13:complete": "aa38413770fbd35ddd978b709fceab33442e85d743ae28d6d7255770287e63c3",
+        "14:speed": "b57e7eda0f7347854a0f383033a53ab477c76f6a3d868cac48874898fd8fa393"
+      }
+    },
+    "tb01_patch.h": {
+      "sha256": "069642e3d6ca4589130e8123a6d7a54cb07d6f65149f62a750288f40c2ae752a",
+      "sections": {
+        "0:TB01_HOOK_SOUND": "2d49eec9cd629843a7c1d942d0ddffd13025234b118907c69da21873d4e8d3c5",
+        "1:TB01_HOOK_SLEEP": "45834052e5b2795c4a9b49f8eef3b37338b35baa894f7007aaf3b2dfdddc4ec5",
+        "2:TB01_HOOK_INIT": "7728897e32705bcbc14ba8a94304ab307dd4661e1c34793d64099390f5139c89",
+        "3:TB01_HOOK_ROUTE": "e609ccf59c3027009f56ef0c491e6a5a1e3c5cdc2494b316e7cfdd027b0caadc",
+        "4:TB01_HOOK_TICK": "fa79eba66b1c1795e47ed92de336d830a990c00409cf226b2b9da542955f0017",
+        "5:TB01_CANDIDATE": "6e56cadb9255cf4121cc8c02cdbd9cad2206ae1980ccb40879c4d084cfb0f701",
+        "6:before_hook_sound": "dc200be023cf7496bd67bab6517f59f18ab106ac7222f5d8be059ce9e2bc3550",
+        "7:before_hook_sleep": "db0f0a906d3576a9aafd3ec61a87d53ba818a74ef1babbca2300a26541b16682",
+        "8:before_hook_init": "ca83fc56b5af36dec5163ece39b0ece3561c438ef1e892fab7b6b3fa46d58e30",
+        "9:before_hook_route": "8e5e563b3d4ff9fb83cfea6c5b270b65e6a7f46253b5b9bdd18cc815420920e5",
+        "10:before_hook_tick": "1b1ebb325cc6d5bae3329cbdcebc76b021247fa5b0c6fe85e8e53e01581998d5",
+        "11:before_hook_sound": "dc200be023cf7496bd67bab6517f59f18ab106ac7222f5d8be059ce9e2bc3550",
+        "12:before_hook_sleep": "db0f0a906d3576a9aafd3ec61a87d53ba818a74ef1babbca2300a26541b16682",
+        "13:before_hook_init": "ca83fc56b5af36dec5163ece39b0ece3561c438ef1e892fab7b6b3fa46d58e30",
+        "14:before_hook_route": "8e5e563b3d4ff9fb83cfea6c5b270b65e6a7f46253b5b9bdd18cc815420920e5",
+        "15:before_hook_tick": "1b1ebb325cc6d5bae3329cbdcebc76b021247fa5b0c6fe85e8e53e01581998d5"
+      }
+    },
+    "platform_patch.h": {
+      "sha256": "ab23fb3048a5d669cedad1774fb3b5ddcc3a80ef045e18c5b749448d6eb70bb2",
+      "sections": {
+        "0:FP01_DESCRIPTOR": "b6b3f96318f271bc0b7065739a219d3202359fe9d2b14d3599d367d4fda0ffaa",
+        "1:FP01_HOOK_SOUND": "6fb80709bed55ca1c0e5b153baa06b566df14e9913faf466ebf10bae13952234",
+        "2:FP01_HOOK_SLEEP": "7fc7e3b8ca5b4934174f3518cce36c96759d3644106fd266d83d4e5508a7890f",
+        "3:FP01_HOOK_INIT": "904f3b5d959fda13210f7160bfc817936af17b7ea3971beb97708b1afbfeff55",
+        "4:FP01_HOOK_ROUTE": "e1316e4ac6e76e676643dd394b85ff521abe3b4b4553756571a7c1d5bc174183",
+        "5:FP01_HOOK_TICK": "cdb648753d9661db010541939bdaa819f4ea6acb1d18b46a5703a83d9a736ac1",
+        "6:FP01_HOOK_BOOT": "201a0a2fb90a6678881c73d49b442f8c2632b80047ba3b45aaa6fd74cb161716",
+        "7:FP01_CANDIDATE": "defb88b730ee3e24038369b9495f7840dc7bc1823b6603094b5c764e50ca72e8",
+        "8:before_hook_sound": "dc200be023cf7496bd67bab6517f59f18ab106ac7222f5d8be059ce9e2bc3550",
+        "9:before_hook_sleep": "db0f0a906d3576a9aafd3ec61a87d53ba818a74ef1babbca2300a26541b16682",
+        "10:before_hook_init": "ca83fc56b5af36dec5163ece39b0ece3561c438ef1e892fab7b6b3fa46d58e30",
+        "11:before_hook_route": "8e5e563b3d4ff9fb83cfea6c5b270b65e6a7f46253b5b9bdd18cc815420920e5",
+        "12:before_hook_tick": "1b1ebb325cc6d5bae3329cbdcebc76b021247fa5b0c6fe85e8e53e01581998d5",
+        "13:before_hook_boot": "34fbb06012c6b9586d4d9ea14017ef785631aac5c8f9ba5895a95fb19add7270"
+      }
+    }
+  }
+}

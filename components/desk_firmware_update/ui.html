@@ -160,27 +160,15 @@
         select it again.</label
       >
       <div id="prepareControls" hidden>
-        <button disabled id="patch">Prepare direct height control</button>
-        <button disabled id="patchChildLock">Prepare panel lock</button>
-        <button disabled id="patchResetSpeed">Prepare reset and speed controls</button>
-        <button disabled id="patchTimerBuzzer">Prepare custom timer and buzzer</button>
-        <button disabled id="patchPlatform">Prepare shared firmware foundation</button>
-        <button disabled id="patchMotionTrims">Prepare motion trims</button>
+        <p id="targetFirmware"></p>
+        <button disabled id="prepareCurrent">Prepare current firmware</button>
         <p class="note"
-          >The reset and speed option includes panel lock, direct height control, reset calibration,
-          Normal/Slow movement speeds and a fix for receiving controller messages. Use the ESPHome
-          adapter from the same release. Unlock the panel before starting reset calibration. The
-          panel-lock rules below also apply to regular desk movement.</p
-        >
-        <p class="note"
-          >The panel-lock option also includes direct height control. Without a valid saved
-          panel-lock setting, the panel starts locked. All physical buttons are blocked while
-          locked, including buttons used to stop movement. Unlock the panel remotely to enable the
-          buttons.</p
+          >Use the ESPHome adapter from the same release. Without a valid saved panel-lock setting,
+          the panel starts locked, including local stopping. Unlock the panel remotely before
+          calibration or normal use.</p
         >
         <label
-          >Or select a saved original firmware file or one with direct height control, panel lock,
-          or reset and speed controls:
+          >Or select a saved supported application file:
           <input type="file" id="file" accept=".bin,application/octet-stream"
         /></label>
         <button disabled id="stage">Prepare selected file</button>
@@ -370,12 +358,7 @@
       for (const id of [
         "claim",
         "read",
-        "patch",
-        "patchChildLock",
-        "patchResetSpeed",
-        "patchTimerBuzzer",
-        "patchPlatform",
-        "patchMotionTrims",
+        "prepareCurrent",
         "stage",
         "install",
         "verify",
@@ -390,42 +373,11 @@
         (!status.active && status.state !== "uploading");
       $("backupDownload").disabled = locked || status.state !== "read_complete";
       $("preparedDownload").disabled = locked || !["staged", "verified"].includes(status.state);
-      $("patch").disabled =
-        locked ||
-        status.pending ||
-        !status.preflight_seconds ||
-        status.state !== "read_complete" ||
-        status.sha256 !== STOCK;
-      $("patchChildLock").disabled =
-        locked ||
-        status.pending ||
-        !status.preflight_seconds ||
-        status.state !== "read_complete" ||
-        ![STOCK, DT02].includes(status.sha256);
-      $("patchResetSpeed").disabled =
-        locked ||
-        status.pending ||
-        !status.preflight_seconds ||
-        status.state !== "read_complete" ||
-        ![STOCK, DT02, CL01].includes(status.sha256);
-      $("patchTimerBuzzer").disabled =
-        locked ||
-        status.pending ||
-        !status.preflight_seconds ||
-        status.state !== "read_complete" ||
-        ![STOCK, DT02, CL01, RS01].includes(status.sha256);
-      $("patchPlatform").disabled =
-        locked ||
-        status.pending ||
-        !status.preflight_seconds ||
-        status.state !== "read_complete" ||
-        ![STOCK, DT02, CL01, RS01, TB01].includes(status.sha256);
-      $("patchMotionTrims").disabled =
-        locked ||
-        status.pending ||
-        !status.preflight_seconds ||
-        status.state !== "read_complete" ||
-        ![STOCK, DT02, CL01, RS01, TB01, FP01].includes(status.sha256);
+      $("prepareCurrent").disabled =
+        locked || status.pending || status.active || !status.prepare_available;
+      $("targetFirmware").textContent = status.target_name
+        ? `${status.target_name}, target version ${status.target_version}.`
+        : "";
       $("install").disabled =
         locked || status.pending || !status.preflight_seconds || status.state !== "staged";
       $("verify").disabled =
@@ -514,48 +466,15 @@
           "Save any backup you still need, then select Read controller firmware to obtain a fresh preflight before preparing or installing an image.";
         attention = true;
       } else if (status.state === "read_complete") {
-        const alreadyPatched = status.sha256 === DT02,
-          alreadyLocked = status.sha256 === CL01,
-          alreadyReset = status.sha256 === RS01,
-          alreadyTimer = status.sha256 === TB01,
-          alreadyPlatform = status.sha256 === FP01,
-          alreadyTrims = status.sha256 === TR01;
-        const known =
-          alreadyTrims ||
-          alreadyPlatform ||
-          alreadyTimer ||
-          alreadyReset ||
-          alreadyPatched ||
-          alreadyLocked ||
-          status.sha256 === STOCK;
-        title = alreadyTrims
-          ? "Motion trims are already installed"
-          : alreadyPlatform
-            ? "Shared firmware foundation is already installed"
-            : alreadyTimer
-              ? "Custom timer and buzzer are already installed"
-              : alreadyReset
-                ? "Reset and speed controls are already installed"
-                : alreadyLocked
-                  ? "Panel lock is already installed"
-                  : alreadyPatched
-                    ? "Direct height control is already installed"
-                    : "Read complete. Save the controller backup";
-        detail = alreadyTrims
-          ? "Motion trims, custom timer, buzzer, reset calibration, speed selection, panel lock and direct height control are installed. Save this backup before selecting another supported firmware file. " +
+        const known = [STOCK, DT02, CL01, RS01, TB01, FP01, TR01].includes(status.sha256);
+        const current = status.target_sha256 && status.sha256 === status.target_sha256;
+        title = current
+          ? "Current firmware is already installed"
+          : "Read complete. Save the controller backup";
+        detail = current
+          ? "Save this backup. Prepare current firmware to reinstall it, or select a saved supported application file. " +
             lockNotice
-          : alreadyPlatform || alreadyTimer
-            ? "Custom timer, buzzer, reset calibration, speed selection, panel lock and direct height control are installed. Save this backup before selecting another supported firmware file. " +
-              lockNotice
-            : alreadyReset
-              ? "Reset calibration, speed selection, panel lock and direct height control are installed. Save this backup. To remove reset and speed controls, select a saved original firmware file or one with direct height control or panel lock. " +
-                lockNotice
-              : alreadyLocked
-                ? "Panel lock and direct height control are installed. Save this backup. To remove panel lock, select your saved original firmware or a file with direct height control only. " +
-                  lockNotice
-                : alreadyPatched
-                  ? "Direct height control is installed. Save this backup before preparing panel lock or selecting another firmware file. Leave controller power on."
-                  : "Download the original backup and save it on your computer before preparing an image. Leave controller power on.";
+          : "Download and save the backup, then prepare the current firmware. Leave controller power on.";
         if (!known) {
           title = status.recovery_required
             ? "Recovery read complete. Save this read"
@@ -690,7 +609,6 @@
         normalBootNeeded = false;
         sessionOwned = true;
       });
-    $("saved").onchange = () => render();
     $("read").onclick = () =>
       task(async () => {
         original = null;
@@ -703,35 +621,14 @@
         originalHash = status.sha256;
         save(original, `t150-backup-${status.sha256.slice(0, 12)}.bin`);
       });
-    $("patch").onclick = () =>
+    $("saved").onchange = () =>
       task(async () => {
-        await confirmBackup();
-        await action("patch");
+        if ($("saved").checked) await confirmBackup();
       });
-    $("patchChildLock").onclick = () =>
+    $("prepareCurrent").onclick = () =>
       task(async () => {
         await confirmBackup();
-        await action("patch_child_lock");
-      });
-    $("patchResetSpeed").onclick = () =>
-      task(async () => {
-        await confirmBackup();
-        await action("patch_reset_speed");
-      });
-    $("patchTimerBuzzer").onclick = () =>
-      task(async () => {
-        await confirmBackup();
-        await action("patch_timer_buzzer");
-      });
-    $("patchPlatform").onclick = () =>
-      task(async () => {
-        await confirmBackup();
-        await action("patch_platform");
-      });
-    $("patchMotionTrims").onclick = () =>
-      task(async () => {
-        await confirmBackup();
-        await action("patch_motion_trims");
+        await action("prepare_current");
       });
     $("file").onchange = async () => {
       const f = $("file").files[0];

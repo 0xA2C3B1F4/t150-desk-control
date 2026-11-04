@@ -133,14 +133,10 @@ jobs:
           TMPDIR: ${{ runner.temp }}
           PYTHONDONTWRITEBYTECODE: "1"
         run: |
-          python3 tools/verify_dt02_assembly.py
-          python3 tools/embed_child_lock_patch.py --check
           python3 tools/generate_reset_speed_core.py --clang clang --check
-          python3 tools/embed_reset_speed_patch.py --check
           python3 tools/generate_tb01_core.py --clang clang --check
           python3 tools/generate_platform_layout.py --check
-          python3 tools/embed_tb01_patch.py --check
-          python3 tools/embed_platform_patch.py --check
+          python3 tools/check_firmware_history.py
           python3 tools/embed_motion_trim_patch.py --check
       - name: Test controller extensions against synthetic helpers
         if: matrix.build_type == 'Debug'
