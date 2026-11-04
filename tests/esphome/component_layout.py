@@ -21,7 +21,7 @@ def main():
     )
     assert not (source / "lib").exists()
     assert not (source / ".git").exists()
-    headers = sorted((ROOT / "lib/desk_protocol/include/desk_protocol").glob("*.h"))
+    headers = sorted((ROOT / "components/desk_uart/desk_protocol").glob("*.h"))
     results = []
     for name in ("host", "esp32-no-web", "web", "reader", "updater"):
         case = work / name
@@ -66,6 +66,10 @@ def main():
             config += f"{domain}:\n  desk_id: desk\n"
         yaml = case / "test.yaml"
         yaml.write_text(config)
+        # An existing build must discard headers from the former flat layout.
+        stale_header = case / "build/src/esphome/components/desk_uart/protocol.h"
+        stale_header.parent.mkdir(parents=True, exist_ok=True)
+        stale_header.write_text("#error Obsolete protocol header was not removed\n")
         env = dict(
             test_env(work),
             ESPHOME_DATA_DIR=str(case / "data"),
@@ -89,12 +93,14 @@ def main():
             )
         generated = case / "build/src/esphome/components/desk_uart"
         component_files = {
-            p.name
-            for p in (source / "components/desk_uart").iterdir()
+            p.relative_to(source / "components/desk_uart")
+            for p in (source / "components/desk_uart").rglob("*")
             if p.suffix in (".h", ".cpp")
         }
         assert component_files == {
-            p.name for p in generated.iterdir() if p.suffix in (".h", ".cpp")
+            p.relative_to(generated)
+            for p in generated.rglob("*")
+            if p.suffix in (".h", ".cpp")
         }
         for filename in component_files:
             assert (generated / filename).read_bytes() == (
@@ -114,9 +120,9 @@ def main():
                 case
                 / "build/src/esphome/components/desk_firmware_export/firmware_profile.h"
             ).is_file()
-            assert (generated / "firmware_profile.h").is_file()
+            assert (generated / "desk_protocol/firmware_profile.h").is_file()
             combined = (case / "build/src/esphome.h").read_text()
-            for domain in ("desk_uart", "desk_firmware_export"):
+            for domain in ("desk_uart/desk_protocol", "desk_firmware_export"):
                 assert (
                     f'#include "esphome/components/{domain}/firmware_profile.h"'
                     in combined
@@ -148,7 +154,7 @@ def main():
         "uploaded": False,
         "canonical_sha256": {
             p.name: hashlib.sha256(
-                (source / "components/desk_uart" / p.name).read_bytes()
+                (source / "components/desk_uart/desk_protocol" / p.name).read_bytes()
             ).hexdigest()
             for p in headers
         },

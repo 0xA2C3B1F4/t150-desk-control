@@ -1,5 +1,5 @@
 #pragma once
-#include "esphome/components/desk_uart/firmware_profile.h"
+#include "esphome/components/desk_uart/desk_protocol/firmware_profile.h"
 #include "esphome/components/sha256/sha256.h"
 
 namespace esphome::desk_firmware_export {

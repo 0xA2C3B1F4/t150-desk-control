@@ -65,7 +65,7 @@
       }
     },
     "platform_patch.h": {
-      "sha256": "ab23fb3048a5d669cedad1774fb3b5ddcc3a80ef045e18c5b749448d6eb70bb2",
+      "sha256": "a352e9afc0eaf9689e74a520ef95f3b4de0a30eb32f292f246eb657a79bb79ed",
       "sections": {
         "0:FP01_DESCRIPTOR": "b6b3f96318f271bc0b7065739a219d3202359fe9d2b14d3599d367d4fda0ffaa",
         "1:FP01_HOOK_SOUND": "6fb80709bed55ca1c0e5b153baa06b566df14e9913faf466ebf10bae13952234",

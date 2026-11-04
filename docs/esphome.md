@@ -1,6 +1,7 @@
 # ESPHome setup and controls
 
-The examples use ESPHome 2026.10.1 with the default native ESP-IDF toolchain.
+ESPHome 2026.10.1 or later is required. The examples use the default native
+ESP-IDF toolchain.
 Choose a board configuration from the [README](../README.md#install); `desk.yaml`
 is the monitoring-only alternative in both example directories.
 

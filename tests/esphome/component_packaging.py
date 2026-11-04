@@ -12,8 +12,6 @@ import tarfile
 
 from desk_test_support import ROOT, parse_args, test_env
 
-ADAPTER_HEADERS = {"desk_uart.h", "journal_storage.h"}
-
 
 def run(command, log, **kwargs):
     """Run a checked subprocess with combined output captured in the packaging log."""
@@ -25,10 +23,10 @@ def main():
     work = parse_args(__doc__).work_dir
     env = test_env(work)
     env["PLATFORMIO_SETTING_ENABLE_TELEMETRY"] = "No"
-    component = ROOT / "components/desk_uart"
-    headers = sorted(p for p in component.glob("*.h") if p.name not in ADAPTER_HEADERS)
-    wrappers = ROOT / "lib/desk_protocol/include/desk_protocol"
-    assert {p.name for p in headers} == {p.name for p in wrappers.glob("*.h")}
+    component = ROOT / "components/desk_uart/desk_protocol"
+    headers = sorted(component.glob("*.h"))
+    assert headers
+    assert not list((ROOT / "lib/desk_protocol").rglob("*.h"))
     manifest = json.loads((ROOT / "library.json").read_text())
     expected = {
         "library.json",
@@ -37,21 +35,10 @@ def main():
         "lib/desk_protocol/CMakeLists.txt",
     }
     for header in headers:
-        expected.update(
-            (
-                str(header.relative_to(ROOT)),
-                str((wrappers / header.name).relative_to(ROOT)),
-            )
-        )
+        expected.add(str(header.relative_to(ROOT)))
         assert header.read_text().startswith("#pragma once\n"), header
-        assert (wrappers / header.name).read_text() == (
-            f'#pragma once\n#include "../../../../components/desk_uart/{header.name}"\n'
-        )
     assert set(manifest["export"]["include"]) == expected
     assert len(manifest["export"]["include"]) == len(expected)
-    for source in (ROOT / "components").rglob("*"):
-        if source.suffix in (".h", ".cpp"):
-            assert '"desk_protocol/' not in source.read_text(), source
     assert (
         (ROOT / "components/desk_firmware_export/firmware_profile.h")
         .read_text()
@@ -60,9 +47,9 @@ def main():
 
     compiler = shlex.split(os.environ.get("CXX", "c++"))
     standalone = work / "standalone"
-    standalone.mkdir()
+    (standalone / "desk_protocol").mkdir(parents=True)
     for header in headers:
-        shutil.copy2(header, standalone / header.name)
+        shutil.copy2(header, standalone / "desk_protocol" / header.name)
     with (work / "build.log").open("w") as log:
         for header in headers:
             run(
@@ -73,12 +60,14 @@ def main():
                     "-Wextra",
                     "-Werror",
                     "-fsyntax-only",
+                    "-I",
+                    str(standalone),
                     "-x",
                     "c++",
                     "-",
                 ],
                 log,
-                input=f'#include "{standalone / header.name}"\n',
+                input=f'#include "desk_protocol/{header.name}"\n',
                 text=True,
             )
         archive = work / "desk_protocol.tar.gz"

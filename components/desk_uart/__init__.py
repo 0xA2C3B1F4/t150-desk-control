@@ -23,6 +23,7 @@ from esphome.const import (
     STATE_CLASS_MEASUREMENT,
     STATE_CLASS_TOTAL_INCREASING,
 )
+from esphome.loader import get_component
 
 from .source_metadata import source_metadata
 from .web_support import configure_web_controls, validate_build_toolchain
@@ -158,6 +159,7 @@ def display_bounds(config):
 
 
 CONFIG_SCHEMA = cv.All(
+    cv.require_esphome_version(2026, 10, 1),
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(DeskUART),
@@ -386,6 +388,8 @@ FINAL_VALIDATE_SCHEMA = cv.All(
 
 async def to_code(config):
     """Generate the configured UART component, source metadata and desk entities."""
+    # Include the portable headers in ESPHome's normal source copy and cleanup.
+    get_component("desk_uart").recursive_sources = True
     metadata = source_metadata()
     cg.add_define("DESK_SOURCE_VERSION", metadata["version"])
     cg.add_define("DESK_SOURCE_REVISION", metadata["revision"])
