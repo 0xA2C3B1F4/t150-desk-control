@@ -194,6 +194,43 @@ class ReleaseTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             release.verify_package(directory, self.version, self.sha)
 
+    def test_controller_manifest_binding(self):
+        """Reject inconsistent controller metadata even with matching checksums."""
+        directory = self.package()
+        path = directory / "release-manifest.json"
+        original = path.read_bytes()
+        for key, value in (
+            ("controller_firmware", None),
+            ("controller_firmware", {"id": "fp01", "sha256": "0" * 64}),
+            ("catalog_sha256", "0" * 64),
+        ):
+            with self.subTest(key=key, value=value):
+                manifest = json.loads(original)
+                manifest[key] = value
+                path.write_bytes(release.json_bytes(manifest))
+                (directory / "SHA256SUMS").write_text(
+                    "".join(
+                        f"{release.digest((directory / name).read_bytes())}  {name}\n"
+                        for name in sorted(release.ASSETS - {"SHA256SUMS"})
+                    )
+                )
+                with self.assertRaisesRegex(ValueError, "[Cc]atalog"):
+                    release.verify_package(directory, self.version, self.sha)
+
+    def test_controller_identity_uses_candidate_catalog(self):
+        """Resolve the candidate identity independently of later workflow recipes."""
+        catalog = json.loads((self.root / "metadata/firmware-catalog.json").read_text())
+        target = catalog["current"]["id"]
+        for image in catalog["images"]:
+            if image["id"] == target:
+                image["sha256"] = "1" * 64
+        self.assertEqual(
+            release.current_identity(catalog), {"id": target, "sha256": "1" * 64}
+        )
+        catalog["prepare"]["target"] = "missing"
+        with self.assertRaises(ValueError):
+            release.current_identity(catalog)
+
     def test_ci_helpers_are_bound_to_the_release_candidate(self):
         """Reject later changes to selection, documentation checks or their dependencies."""
         for name in (

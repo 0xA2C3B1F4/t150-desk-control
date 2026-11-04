@@ -25,22 +25,33 @@ parser.add_argument("--child-lock", type=Path)
 parser.add_argument("--reset-speed", type=Path)
 parser.add_argument("--timer-buzzer", type=Path)
 parser.add_argument("--platform", type=Path)
-parser.add_argument("--motion-trims", type=Path)
+parser.add_argument("--current", "--motion-trims", dest="current", type=Path)
+parser.add_argument("--recovery-record", type=Path)
 args = parse_args(parser=parser)
-if bool(args.timer_buzzer) != bool(args.platform):
-    parser.error("--timer-buzzer and --platform must be provided together")
-if args.interrupted and not args.original:
-    parser.error("--interrupted requires both private images")
-if bool(args.original) != bool(args.patched):
-    parser.error("Provide both private images or neither")
-if args.child_lock and not args.original:
-    parser.error("--child-lock requires both private images")
-if args.reset_speed and not args.child_lock:
-    parser.error("--reset-speed requires --child-lock and private images")
-if args.timer_buzzer and not args.reset_speed:
-    parser.error("--timer-buzzer requires --reset-speed and private images")
-if args.motion_trims and not args.platform:
-    parser.error("--motion-trims requires --platform and private images")
+required_images = (
+    "original",
+    "patched",
+    "child_lock",
+    "reset_speed",
+    "timer_buzzer",
+    "platform",
+    "current",
+)
+if (
+    args.interrupted
+    or args.recovery_record
+    or any(getattr(args, name) for name in required_images)
+):
+    missing = [
+        "--" + name.replace("_", "-")
+        for name in required_images
+        if not getattr(args, name)
+    ]
+    if missing:
+        parser.error(
+            "Complete lifecycle requires all seven images; missing "
+            + ", ".join(missing)
+        )
 work = args.work_dir
 host = ROOT / "tests/esphome/firmware_export_host"
 update = ROOT / "tests/esphome/firmware_update_host"
@@ -102,16 +113,23 @@ if args.timer_buzzer:
     command += [str(args.timer_buzzer.resolve())]
 if args.platform:
     command += [str(args.platform.resolve())]
-if args.motion_trims:
-    command += [str(args.motion_trims.resolve())]
+if args.current:
+    command += [str(args.current.resolve())]
+if args.recovery_record:
+    command += [str(args.recovery_record.resolve())]
 with (work / "run.log").open("w") as log:
     subprocess.run(
         command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=60
     )
 run_output = (work / "run.log").read_text()
+if (
+    args.recovery_record
+    and "Prior updater recovery record loaded unchanged and verified" not in run_output
+):
+    raise SystemExit("Prior updater recovery record was not exercised")
 if args.platform:
-    identities = "TB01/FP01/TR01" if args.motion_trims else "TB01/FP01"
-    pairs = 49 if args.motion_trims else 36
+    identities = "TB01/FP01/TR01"
+    pairs = 49
     expected = (
         f"{identities} exact preparation, {pairs} modeled transitions, 53-to-32 erase, final ACK loss, "
         "torn blocks 33/53 and repeated original recovery passed"
@@ -134,7 +152,8 @@ summary = dict(
     reset_speed_image=bool(args.reset_speed),
     timer_buzzer_image=bool(args.timer_buzzer),
     platform_image=bool(args.platform),
-    motion_trims_image=bool(args.motion_trims),
+    current_image=bool(args.current),
+    prior_recovery_record=bool(args.recovery_record),
     interrupted_image=interrupted,
     hardware_access=False,
     boundary="Real adapter and SHA; host stand-ins for IDF, HTTP transport, UART, heap and preferences",
@@ -147,7 +166,7 @@ for name in (
     "reset_speed",
     "timer_buzzer",
     "platform",
-    "motion_trims",
+    "current",
     "interrupted",
 ):
     path = getattr(args, name)

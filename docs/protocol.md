@@ -751,6 +751,11 @@ accepted write. Read the current state rather than retrying SET.
 
 ## Firmware maintenance
 
+`prepare_current` prepares the catalog's current image, including an unchanged
+reinstall when it is already installed. The status response supplies the target
+name, target version, SHA-256 and preparation availability. Historical `patch*`
+actions return HTTP 409; saved supported images still use the upload path.
+
 The maintenance adapter accepts only these 55,296-byte application hashes:
 
 | Image                            | SHA-256                                                            |

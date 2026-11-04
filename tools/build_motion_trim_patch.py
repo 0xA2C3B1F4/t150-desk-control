@@ -130,17 +130,17 @@ def build(data, llvm_bin=None, *, require_clean_source=False):
     return output, manifest
 
 
-def write_outputs(directory, output, origin, manifest):
+def write_outputs(directory, output, origin, manifest, *, basename="t150-tr01"):
     """Write a new bundle, preserving existing paths and removing failed partial output."""
     artifacts = {
-        "t150-tr01.application.bin": output[platform.APP_OFFSET - origin :],
-        "t150-tr01.payload.bin": output[
+        f"{basename}.application.bin": output[platform.APP_OFFSET - origin :],
+        f"{basename}.payload.bin": output[
             platform.APP_OFFSET - origin : platform.PAYLOAD_END - origin
         ],
         "manifest.json": (json.dumps(manifest, indent=2) + "\n").encode(),
     }
     if origin == 0:
-        artifacts["t150-tr01.full.bin"] = output
+        artifacts[f"{basename}.full.bin"] = output
     directory.mkdir()
     created = []
     try:

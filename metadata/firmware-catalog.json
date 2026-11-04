@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "images": [
     {
       "id": "stock",
@@ -124,12 +124,8 @@
     }
   ],
   "prepare": {
-    "dt02": ["stock"],
-    "cl01": ["stock", "dt02"],
-    "rs01-r7": ["stock", "dt02", "cl01"],
-    "tb01": ["stock", "dt02", "cl01", "rs01-r7"],
-    "fp01": ["stock", "dt02", "cl01", "rs01-r7", "tb01"],
-    "tr01": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01"]
+    "target": "tr01",
+    "sources": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
   },
   "install": [
     ["stock", "stock"],
@@ -185,5 +181,9 @@
   "recovery": {
     "target": "stock",
     "documentation": "docs/firmware-update.md"
+  },
+  "current": {
+    "id": "tr01",
+    "profile": "STM32F030C8T6-8KiB-exact-R7"
   }
 }

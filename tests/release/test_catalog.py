@@ -42,7 +42,11 @@ class CatalogTest(unittest.TestCase):
             lambda c: c["images"].append(c["images"][0]),
             lambda c: c["install"].pop(),
             lambda c: c["install"].append(["unknown", "stock"]),
-            lambda c: c["prepare"]["dt02"].append("rs01-r7"),
+            lambda c: c["prepare"]["sources"].pop(),
+            lambda c: c["prepare"].update(target="fp01"),
+            lambda c: c.pop("current"),
+            lambda c: c["current"].update(id="fp01"),
+            lambda c: c["current"].update(profile="unknown"),
             lambda c: c["recovery"].update(target="rs01-r7"),
         ]
         checker.validate(self.catalog, self.probe)

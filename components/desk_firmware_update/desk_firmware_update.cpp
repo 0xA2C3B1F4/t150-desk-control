@@ -27,6 +27,7 @@ static_assert(FP01_PAYLOAD_SIZE == desk_protocol::FirmwareInstall::PLATFORM_PAYL
 static_assert(TR01_PAYLOAD_SIZE == desk_protocol::FirmwareInstall::PLATFORM_PAYLOAD_SIZE,
               "TR01 transfer profile mismatch");
 constexpr uint32_t RECOVERY_TAG = 0x44543032;
+constexpr const char* CURRENT_SHA = TR01_SHA;
 bool known(const char* hash) {
   return !std::strcmp(hash, STOCK_SHA) || !std::strcmp(hash, DT02_SHA) ||
          !std::strcmp(hash, CL01_SHA) || !std::strcmp(hash, RS01_SHA) ||
@@ -321,6 +322,11 @@ bool FirmwareUpdate::admit_() const {
   return known(source_hash_) || ((recovery_source_valid_ || validate_partial_recovery_()) &&
                                  !std::strcmp(hash_, STOCK_SHA));
 }
+bool FirmwareUpdate::can_prepare_current_() const {
+  return phase_ == Phase::Ready && buffer_ && buffer_.use_count() == 1 && size_ == IMAGE_SIZE &&
+         backup_ && preflight_ && tail_erased_ && !recovery_ &&
+         uint32_t(millis() - preflight_at_) <= 300000 && known(hash_);
+}
 void FirmwareUpdate::execute_(const std::string& action) {
   error_ = nullptr;
   if (action == "claim") {
@@ -343,101 +349,35 @@ void FirmwareUpdate::execute_(const std::string& action) {
     backup_ = true;
     return;
   }
-  if ((action == "patch" || action == "patch_child_lock" || action == "patch_reset_speed" ||
-       action == "patch_timer_buzzer" || action == "patch_platform" ||
-       action == "patch_motion_trims" || action == "stage") &&
-      buffer_ && buffer_.use_count() > 1) {
+  if ((action == "prepare_current" || action == "stage") && buffer_ && buffer_.use_count() > 1) {
     error_ = "Wait for the image download to finish";
     return;
   }
-  if ((action == "patch" || action == "patch_child_lock" || action == "patch_reset_speed" ||
-       action == "patch_timer_buzzer" || action == "patch_platform" ||
-       action == "patch_motion_trims" || action == "stage") &&
-      recovery_ && known(source_hash_)) {
-    fail_(
-        "Read image is not recorded for this recovery; read a recorded complete image or use external recovery");
+  if ((action == "prepare_current" || (action == "stage" && known(source_hash_))) && recovery_) {
+    fail_("Complete recovery before preparing another image");
     return;
   }
-  if (action == "patch") {
-    if (phase_ != Phase::Ready || !backup_ || std::strcmp(hash_, STOCK_SHA) ||
-        !apply_dt02(buffer_.get(), size_)) {
-      fail_("Patch requires the exact supported original and a saved backup");
+  if (action == "prepare_current") {
+    if (!can_prepare_current_()) {
+      fail_("Firmware preparation requires a fresh supported read and a saved backup");
       return;
     }
-    digest_();
-    if (std::strcmp(hash_, DT02_SHA)) {
-      fail_("Generated patch hash mismatch");
+    if (!std::strcmp(hash_, CURRENT_SHA)) {
+      digest_();
+      if (std::strcmp(hash_, CURRENT_SHA)) {
+        fail_("Current firmware failed its integrity check");
+        return;
+      }
+      phase_ = Phase::Staged;
       return;
     }
-    phase_ = Phase::Staged;
-    return;
-  }
-  if (action == "patch_child_lock") {
-    if (phase_ != Phase::Ready || !backup_ || !preflight_ || !tail_erased_ ||
-        uint32_t(millis() - preflight_at_) > 300000 ||
-        (std::strcmp(hash_, STOCK_SHA) && std::strcmp(hash_, DT02_SHA))) {
-      fail_(
-          "Panel lock requires a supported original or direct height control firmware and a saved backup");
-      return;
-    }
-    if ((!std::strcmp(hash_, STOCK_SHA) && !apply_dt02(buffer_.get(), size_)) ||
-        !apply_child_lock(buffer_.get(), size_)) {
-      fail_("Cannot prepare panel lock; firmware does not match the required starting version");
-      return;
-    }
-    digest_();
-    if (std::strcmp(hash_, CL01_SHA)) {
-      fail_("Prepared panel-lock firmware failed its integrity check");
-      return;
-    }
-    phase_ = Phase::Staged;
-    return;
-  }
-  if (action == "patch_reset_speed") {
-    if (phase_ != Phase::Ready || !backup_ || !preflight_ || !tail_erased_ ||
-        uint32_t(millis() - preflight_at_) > 300000 ||
-        (std::strcmp(hash_, STOCK_SHA) && std::strcmp(hash_, DT02_SHA) &&
-         std::strcmp(hash_, CL01_SHA))) {
-      fail_(
-          "Reset and speed controls require supported original, direct height control or panel-lock firmware and a saved backup");
-      return;
-    }
-    if ((!std::strcmp(hash_, STOCK_SHA) && !apply_dt02(buffer_.get(), size_)) ||
-        (std::strcmp(hash_, CL01_SHA) && !apply_child_lock(buffer_.get(), size_)) ||
-        !apply_reset_speed(buffer_.get(), size_)) {
-      fail_(
-          "Cannot prepare reset and speed controls; firmware does not match the required starting version");
-      return;
-    }
-    digest_();
-    if (std::strcmp(hash_, RS01_SHA)) {
-      fail_("Prepared reset and speed firmware failed its integrity check");
-      return;
-    }
-    phase_ = Phase::Staged;
-    return;
-  }
-  if (action == "patch_timer_buzzer" || action == "patch_platform" ||
-      action == "patch_motion_trims") {
-    const bool trims = action == "patch_motion_trims";
-    const bool platform_source = !std::strcmp(hash_, FP01_SHA);
-    const bool platform = action == "patch_platform";
-    const bool timer_source = !std::strcmp(hash_, TB01_SHA);
-    if (phase_ != Phase::Ready || !backup_ || !preflight_ || !tail_erased_ ||
-        uint32_t(millis() - preflight_at_) > 300000 ||
-        (std::strcmp(hash_, STOCK_SHA) && std::strcmp(hash_, DT02_SHA) &&
-         std::strcmp(hash_, CL01_SHA) && std::strcmp(hash_, RS01_SHA) &&
-         !((platform || trims) && timer_source) && !(trims && platform_source))) {
-      fail_("Firmware preparation requires a supported source and a saved backup");
-      return;
-    }
-    // Verify the complete intermediate R7 image before applying the new payload.
-    if (platform_source) {
+    // Every historical input must restore the exact R7 image first.
+    if (!std::strcmp(hash_, FP01_SHA)) {
       if (!remove_platform_for_motion_trim(buffer_.get(), size_)) {
         fail_("Cannot restore the exact reset and speed source from platform firmware");
         return;
       }
-    } else if (timer_source) {
+    } else if (!std::strcmp(hash_, TB01_SHA)) {
       if (!remove_tb01(buffer_.get(), size_)) {
         fail_("Cannot restore the exact reset and speed source from timer firmware");
         return;
@@ -454,15 +394,12 @@ void FirmwareUpdate::execute_(const std::string& action) {
       fail_("Intermediate reset and speed firmware failed its integrity check");
       return;
     }
-    const bool applied = trims      ? apply_motion_trim(buffer_.get(), size_)
-                         : platform ? apply_platform(buffer_.get(), size_)
-                                    : apply_tb01(buffer_.get(), size_);
-    if (!applied) {
+    if (!apply_motion_trim(buffer_.get(), size_)) {
       fail_("Cannot prepare firmware from this source");
       return;
     }
     digest_();
-    if (std::strcmp(hash_, trims ? TR01_SHA : platform ? FP01_SHA : TB01_SHA)) {
+    if (std::strcmp(hash_, CURRENT_SHA)) {
       fail_("Prepared firmware failed its integrity check");
       return;
     }
@@ -755,10 +692,12 @@ void FirmwareUpdate::handleRequest(AsyncWebServerRequest* request) {
     return;
   }
   if (request->method() == HTTP_GET && url == "/desk-firmware/status") {
-    std::string json(1800, 0);
+    // Existing fields need at most 1800 bytes. Target metadata adds fixed names,
+    // a 64-byte SHA and a version bounded to 32 bytes.
+    std::string json(1800 + 256, 0);
     const int length = std::snprintf(
         &json[0], json.size(),
-        "{\"state\":\"%s\",\"error\":\"%s\",\"revision\":%lu,\"csrf\":\"%s\",\"claimed\":%s,\"active\":%s,\"waiting_for_power_cycle\":%s,\"pending\":%s,\"recovery_required\":%s,\"size\":%u,\"progress\":%u,\"progress_max\":%u,\"preflight_seconds\":%u,\"sha256\":\"%s\",\"source_sha256\":\"%s\",\"free_heap\":%u,\"largest_block\":%u,\"research_url\":\"%s\"}",
+        "{\"state\":\"%s\",\"error\":\"%s\",\"revision\":%lu,\"csrf\":\"%s\",\"claimed\":%s,\"active\":%s,\"waiting_for_power_cycle\":%s,\"pending\":%s,\"recovery_required\":%s,\"size\":%u,\"progress\":%u,\"progress_max\":%u,\"preflight_seconds\":%u,\"sha256\":\"%s\",\"source_sha256\":\"%s\",\"free_heap\":%u,\"largest_block\":%u,\"research_url\":\"%s\",\"target_name\":\"T150 Desk Control controller firmware\",\"target_version\":\"%s\",\"target_sha256\":\"%s\",\"prepare_available\":%s}",
         phase_name_(), error_ ? error_ : "", (unsigned long)revision_, csrf_.c_str(),
         owner_.empty() ? "false" : "true", active_() ? "true" : "false",
         ((phase_ == Phase::Writing &&
@@ -776,7 +715,8 @@ void FirmwareUpdate::handleRequest(AsyncWebServerRequest* request) {
                      ? (300000 - uint32_t(millis() - preflight_at_)) / 1000
                      : 0),
         hash_, source_hash_, unsigned(heap_caps_get_free_size(MALLOC_CAP_8BIT)),
-        unsigned(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)), research_url_.c_str());
+        unsigned(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)), research_url_.c_str(),
+        target_version_.c_str(), CURRENT_SHA, can_prepare_current_() ? "true" : "false");
     if (length < 0 || size_t(length) >= json.size()) {
       send(500, "text/plain", "Status response too large");
       return;
@@ -856,9 +796,7 @@ void FirmwareUpdate::handleRequest(AsyncWebServerRequest* request) {
     send(200, "application/json", accepted);
     return;
   }
-  if (action != "read" && action != "backup" && action != "patch" && action != "patch_child_lock" &&
-      action != "patch_reset_speed" && action != "patch_timer_buzzer" &&
-      action != "patch_platform" && action != "patch_motion_trims" && action != "stage" &&
+  if (action != "read" && action != "backup" && action != "prepare_current" && action != "stage" &&
       action != "seal" && action != "install" && action != "verify" && action != "cancel" &&
       action != "exit") {
     send(409, "text/plain", "Unknown action");

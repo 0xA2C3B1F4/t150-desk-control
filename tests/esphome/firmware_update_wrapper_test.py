@@ -13,22 +13,36 @@ ROOT = Path(__file__).resolve().parents[2]
 class WrapperArgumentsTest(unittest.TestCase):
     """Reject incomplete private-image combinations before compiling a fixture."""
 
-    def test_extended_images_must_be_supplied_together(self):
-        """Exercise both one-sided CLI combinations through the real parser."""
+    def test_each_private_image_is_required(self):
+        """Reject each missing image before compiling or reading private files."""
+        options = (
+            "--original",
+            "--patched",
+            "--child-lock",
+            "--reset-speed",
+            "--timer-buzzer",
+            "--platform",
+            "--current",
+        )
         with tempfile.TemporaryDirectory(
             dir=os.environ["TMPDIR"], prefix="desk-wrapper-"
         ) as directory:
-            for option in ("--timer-buzzer", "--platform"):
-                with self.subTest(option=option):
-                    work = Path(directory) / option.removeprefix("--")
+            for missing in options:
+                with self.subTest(missing=missing):
+                    work = Path(directory) / missing.removeprefix("--")
+                    arguments = [
+                        item
+                        for option in options
+                        if option != missing
+                        for item in (option, "unused-private-image.bin")
+                    ]
                     result = subprocess.run(
                         [
                             sys.executable,
                             str(ROOT / "tests/esphome/firmware_update_lifecycle.py"),
                             "--work-dir",
                             str(work),
-                            option,
-                            "unused-private-image.bin",
+                            *arguments,
                         ],
                         text=True,
                         capture_output=True,
@@ -38,34 +52,10 @@ class WrapperArgumentsTest(unittest.TestCase):
                         result.returncode, 2, result.stdout + result.stderr
                     )
                     self.assertIn(
-                        "--timer-buzzer and --platform must be provided together",
-                        result.stderr,
+                        "requires all seven images; missing " + missing, result.stderr
                     )
                     self.assertFalse((work / "include").exists())
                     self.assertFalse((work / "update-test").exists())
-
-    def test_trims_require_platform_images(self):
-        """Reject a trim-only request before any host compilation or image read."""
-        with tempfile.TemporaryDirectory(
-            dir=os.environ["TMPDIR"], prefix="desk-trim-wrapper-"
-        ) as directory:
-            work = Path(directory) / "work"
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "tests/esphome/firmware_update_lifecycle.py"),
-                    "--work-dir",
-                    str(work),
-                    "--motion-trims",
-                    "unused-private-image.bin",
-                ],
-                text=True,
-                capture_output=True,
-                timeout=10,
-            )
-            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-            self.assertIn("--motion-trims requires --platform", result.stderr)
-            self.assertFalse((work / "include").exists())
 
 
 if __name__ == "__main__":

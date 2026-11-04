@@ -11,8 +11,10 @@ The last number increases for another release in the same month. The target
 version lives in `components/desk_uart/project_version.json`; the published tag
 and full commit identify a release. A new month does not trigger a release.
 
-Tested ESPHome `2026.10.1`, the protocol library's `0.1.0` and controller patches DT02,
-CL01 and RS01 have separate versions. Startup logs and optional
+The maintenance page shows the project target version for the controller image;
+the version is not embedded in the image. Its SHA-256 identifies the actual
+bytes. Historical patch IDs remain in the compatibility catalog.
+ESPHome `2026.10.1` and the protocol library's `0.1.0` have separate versions. Startup logs and optional
 [source diagnostics](esphome.md#source-diagnostics) report the project version,
 revision and source state. Copied components may have an unknown revision;
 a fork's revision identifies its own source, not upstream origin.
@@ -25,7 +27,9 @@ Other attachments are the firmware identity catalog, install and release notes,
 `release-manifest.json`, `SHA256SUMS` and a validation report. Manufacturer firmware,
 credentials, private logs and compiled ESP images are excluded.
 
-The catalog records supported hashes and transitions. Runtime hash checks,
+The catalog identifies the current controller image and supported historical
+images. The release manifest binds the current image ID and SHA-256 to the
+release version and source commit. Runtime hash checks,
 backup requirements and recovery guards still determine which images can be
 installed. `SHA256SUMS` covers the repeatable text assets and manifest. The
 validation report records source and workflow revisions, test jobs and run IDs;

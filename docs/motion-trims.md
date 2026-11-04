@@ -13,7 +13,7 @@ their original behavior. Changing a trim does not move the desk.
 Tune with enough travel for the desk to reach steady speed. The same trim may
 leave a small positioning difference on short moves or with a different load.
 
-Install TR01 with **Prepare motion trims** in [firmware maintenance](firmware-update.md).
+Install the current controller firmware with **Prepare current firmware** in [firmware maintenance](firmware-update.md).
 Keep the panel-lock controls enabled. Then add the optional
 [motion-trims package](../examples/esphome/packages/motion-trims.yaml) to an
 ESPHome desk configuration. The four controls appear under **Motion trims** in

@@ -1,10 +1,10 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "images", "prepare", "install", "recovery"],
+  "required": ["schema_version", "images", "prepare", "install", "recovery", "current"],
   "properties": {
     "schema_version": {
-      "const": 1,
+      "const": 2,
       "type": "integer"
     },
     "images": {
@@ -76,55 +76,20 @@
     "prepare": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"],
+      "required": ["target", "sources"],
       "properties": {
-        "dt02": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
-          },
-          "uniqueItems": true
+        "target": {
+          "type": "string",
+          "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
         },
-        "cl01": {
+        "sources": {
           "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
           "items": {
             "type": "string",
             "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
-          },
-          "uniqueItems": true
-        },
-        "rs01-r7": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
-          },
-          "uniqueItems": true
-        },
-        "tb01": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
-          },
-          "uniqueItems": true
-        },
-        "fp01": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
-          },
-          "uniqueItems": true
-        },
-        "tr01": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
-          },
-          "uniqueItems": true
+          }
         }
       }
     },
@@ -153,6 +118,21 @@
         "documentation": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "current": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "profile"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01"]
+        },
+        "profile": {
+          "type": "string",
+          "const": "STM32F030C8T6-8KiB-exact-R7"
         }
       }
     }

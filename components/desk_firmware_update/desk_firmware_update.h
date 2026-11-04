@@ -7,6 +7,10 @@ namespace esphome::desk_firmware_update {
 class FirmwareUpdate : public desk_firmware_export::FirmwareExport {
  public:
   void set_research_url(const std::string& url) { research_url_ = url; }
+  void set_target_version(const std::string& version) {
+    if (version.size() <= 32 && version.find_first_not_of("0123456789.") == std::string::npos)
+      target_version_ = version;
+  }
   float get_setup_priority() const override { return setup_priority::DATA + 1.0f; }
   void setup() override;
   void loop() override;
@@ -45,6 +49,7 @@ class FirmwareUpdate : public desk_firmware_export::FirmwareExport {
   bool active_() const;
   bool blocks_ota_() const override;
   bool admit_() const;
+  bool can_prepare_current_() const;
   bool save_recovery_(bool value);
   const char* phase_name_() const;
   desk_protocol::FirmwareInstall sender_;
@@ -66,6 +71,7 @@ class FirmwareUpdate : public desk_firmware_export::FirmwareExport {
   ESPPreferenceObject recovery_preference_;
   Phase phase_{Phase::Idle};
   std::string owner_, csrf_, pending_, research_url_;
+  std::string target_version_{"unknown"};
   uint32_t revision_{0}, preflight_at_{0};
   size_t size_{0}, upload_offset_{0};
   char hash_[65]{}, source_hash_[65]{};
