@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Check or format the repository's tracked C/C++ sources with pinned clang-format.
 
-Firmware payload headers, include wrappers and assembly stay outside the
-selection. Both modes use the repository's root .clang-format configuration.
+Firmware payload headers and assembly stay outside the selection. Both modes
+use the repository's root .clang-format configuration.
 """
 
 import argparse
@@ -54,7 +54,7 @@ EXCLUDED = {
     "components/desk_firmware_update/tb01_patch.h",
     "components/desk_firmware_update/platform_patch.h",
     "components/desk_firmware_update/motion_trim_patch.h",
-    "components/desk_uart/firmware_layout.h",
+    "components/desk_uart/desk_protocol/firmware_layout.h",
 }
 
 

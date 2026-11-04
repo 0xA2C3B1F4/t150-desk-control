@@ -75,6 +75,7 @@ class CppStyleTest(unittest.TestCase):
         """Select staged source extensions while excluding protected and local files."""
         selected = {
             "components/one.c",
+            "components/desk_uart/desk_protocol/protocol.h",
             "components/two.cc",
             "components/three.cpp",
             "tests/four.cxx",
@@ -118,8 +119,7 @@ class CppStyleTest(unittest.TestCase):
             "components/desk_firmware_update/tb01_patch.h",
             "components/desk_firmware_update/platform_patch.h",
             "components/desk_firmware_update/motion_trim_patch.h",
-            "components/desk_uart/firmware_layout.h",
-            "lib/desk_protocol/include/desk_protocol/protocol.h",
+            "components/desk_uart/desk_protocol/firmware_layout.h",
             "tools/patches/reset_speed.S",
             "tools/patches/reset_speed_core.S",
             "tools/patches/tb01_core.S",

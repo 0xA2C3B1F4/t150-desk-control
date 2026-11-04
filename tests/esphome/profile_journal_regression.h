@@ -1,7 +1,7 @@
 #pragma once
 
 #include "esphome/components/desk_uart/desk_uart.h"
-#include "esphome/components/desk_uart/preset_journal.h"
+#include "esphome/components/desk_uart/desk_protocol/preset_journal.h"
 #include <cstdlib>
 #include <cstring>
 #include <map>

@@ -71,11 +71,9 @@ Firmware tools are separate optional builds:
 ## Use the C++ library elsewhere
 
 Add `lib/desk_protocol` from the checkout with CMake and link `desk_protocol`, or
-add `lib/desk_protocol/include` to your include path. These compatibility headers
-refer to the single implementation in `components/desk_uart`. Keep both directories
-when using this interface. The header-only C++11 library leaves transport, timing
-and storage to the caller. See the [protocol reference](docs/protocol.md) for
-standalone use, packaging and transactions.
+add `components/desk_uart` to your include path and use `desk_protocol/*.h`.
+The header-only C++11 library leaves transport, timing and storage to the caller.
+See the [protocol reference](docs/protocol.md) for standalone use and packaging.
 
 ## Tests
 

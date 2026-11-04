@@ -97,7 +97,7 @@ control flow and ownership separate from layout changes. Explain constraints in
 comments instead of restating statements.
 
 The helper excludes generated firmware headers, the generated platform layout,
-the exact protocol include wrappers, and assembly sources under `tools/patches`.
+and assembly sources under `tools/patches`.
 Do not format these files by hand or edit generated output. For C++ changes, run the native
 Debug and Release tests with sanitizers and the component tests affected by the
 change.
@@ -165,8 +165,7 @@ unchanged during formatting. Python strings containing JavaScript, HTML, YAML,
 C++ or assembly are data to the formatter; changing their contents needs a
 separate review and the relevant generator or component tests.
 
-Edit generators or source assets instead of generated headers. Preserve the
-exact include wrappers under `lib/desk_protocol/include/desk_protocol`.
+Edit generators or source assets instead of generated headers.
 Formatter checks exclude ignored dependencies, caches and build outputs.
 `.editorconfig` provides editor defaults. Assembly, binary fixtures and the
 protected firmware headers keep their existing whitespace.

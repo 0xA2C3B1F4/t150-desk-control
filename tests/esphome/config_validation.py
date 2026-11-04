@@ -3,6 +3,7 @@
 
 import json
 import subprocess
+import sys
 
 import yaml
 
@@ -302,5 +303,32 @@ for name, text, expected in cases:
         assert raw["entity_category"] == "diagnostic", raw
         assert not raw.get("unit_of_measurement") and not raw.get("device_class"), raw
     results.append({"case": name, "accepted": passed, "expected": expected})
+# Exercise the schema's version guard without installing a second ESPHome.
+legacy_cfg = work / "older_esphome.yaml"
+legacy_cfg.write_text(
+    base.replace(
+        "  name: desk-config-test\n",
+        "  name: desk-config-test\n  min_version: 2026.9.0\n",
+    )
+)
+legacy_result = subprocess.run(
+    [
+        sys.executable,
+        "-c",
+        "import runpy; import esphome.config_validation as cv; "
+        "cv.ESPHOME_VERSION = '2026.9.0'; "
+        "runpy.run_module('esphome', run_name='__main__')",
+        "config",
+        str(legacy_cfg),
+    ],
+    env=env,
+    text=True,
+    capture_output=True,
+)
+legacy_output = legacy_result.stdout + legacy_result.stderr
+(work / "older_esphome.log").write_text(legacy_output)
+assert legacy_result.returncode != 0
+assert "requires at least ESPHome version 2026.10.1" in legacy_output
+results.append({"case": "older_esphome", "accepted": False, "expected": False})
 (work / "summary.json").write_text(json.dumps(results, indent=2) + "\n")
 print(json.dumps(results, indent=2))
