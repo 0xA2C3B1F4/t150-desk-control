@@ -22,11 +22,6 @@ desk_uart:
   timer_120min: !remove
   cancel_timer: !remove
   timer_command_pending: !remove
-  custom_available:
-    name: Custom timer and buzzer available
-    web_server:
-      sorting_group_id: desk_group_diagnostics
-      sorting_weight: 70
   custom_command_result:
     id: tb01_command_result
     name: Custom timer and buzzer result

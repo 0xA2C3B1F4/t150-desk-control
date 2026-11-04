@@ -8,6 +8,8 @@
 #include "desk_protocol/child_lock.h"
 #include "desk_protocol/reset_speed.h"
 #include "desk_protocol/motion_trim.h"
+#include "desk_protocol/display_settings.h"
+#include "esphome/core/preferences.h"
 #include "desk_protocol/uart_observation.h"
 #include "desk_protocol/timer.h"
 #include "desk_protocol/custom_timer_buzzer.h"
@@ -31,6 +33,8 @@ namespace desk_uart {
 class ChildLockSwitch;
 class MotionSpeedSelect;
 class MotionTrimNumber;
+class DisplayModeSelect;
+class DisplayTimeoutNumber;
 
 class DeskUART : public Component, public uart::UARTDevice {
  public:
@@ -93,6 +97,14 @@ class DeskUART : public Component, public uart::UARTDevice {
   void set_motion_trim_status(text_sensor::TextSensor* sensor) { motion_trim_status_ = sensor; }
   bool set_motion_trim(uint8_t index, float value);
   bool redetect_motion_trim();
+  void set_display_mode_select(DisplayModeSelect* select) { display_mode_select_ = select; }
+  void set_display_timeout_number(DisplayTimeoutNumber* number) {
+    display_timeout_number_ = number;
+  }
+  void set_display_status(text_sensor::TextSensor* sensor) { display_status_ = sensor; }
+  void set_display_preference_key(uint32_t key) { display_preference_key_ = key; }
+  bool set_display_mode(const std::string& mode);
+  bool set_display_timeout(float seconds);
   void set_direct_mode(bool enabled) { direct_mode_ = enabled; }
   void set_uart_observation_enabled(bool enabled) { uart_observation_enabled_ = enabled; }
   void set_keep_awake_auto(bool enabled) { keep_awake_auto_ = enabled; }
@@ -195,6 +207,34 @@ class DeskUART : public Component, public uart::UARTDevice {
   void direct_loop_(uint32_t now);
   void child_lock_loop_(uint32_t now);
   void reset_speed_loop_(uint32_t now);
+  void display_setup_(uint32_t boot);
+  void display_observe_height_(uint16_t sequence);
+  void yield_display_read_();
+  void display_loop_(uint32_t now);
+  void display_frame_(const desk_protocol::Frame& frame, uint32_t now);
+  void display_disconnect_();
+  void publish_display_();
+  bool display_edit_(const desk_protocol::DisplaySettingsCodec::Settings& settings);
+  bool display_enabled_() const {
+    return display_mode_select_ || display_timeout_number_ || display_status_;
+  }
+  desk_protocol::DisplaySettings display_{};
+  DisplayModeSelect* display_mode_select_{nullptr};
+  DisplayTimeoutNumber* display_timeout_number_{nullptr};
+  text_sensor::TextSensor* display_status_{nullptr};
+  ESPPreferenceObject display_preference_{};
+  struct DisplaySaved {
+    uint16_t seconds{60};
+    uint8_t mode{0};
+    uint8_t version{1};
+  };
+  DisplaySaved display_saved_{};
+  uint32_t display_preference_key_{0}, display_last_probe_{0};
+  uint8_t display_probe_attempts_{0};
+  uint16_t display_last_sequence_{0};
+  bool display_have_sequence_{false};
+  bool display_sending_{false}, display_restore_pending_{false}, display_have_saved_{false};
+  const char* display_message_{nullptr};
   void motion_trim_loop_(uint32_t now);
   void motion_trim_frame_(const desk_protocol::Frame& frame, uint32_t now);
   void motion_trim_result_();
@@ -229,8 +269,8 @@ class DeskUART : public Component, public uart::UARTDevice {
     return reset_speed_controls_enabled_() || motion_trim_enabled_();
   }
   bool reset_speed_controls_enabled_() const {
-    return custom_enabled_ || reset_enabled_ || reset_status_ || reset_available_ ||
-           motion_speed_select_ || motion_speed_available_;
+    return display_enabled_() || custom_enabled_ || reset_enabled_ || reset_status_ ||
+           reset_available_ || motion_speed_select_ || motion_speed_available_;
   }
   bool reset_speed_access_allowed_(uint32_t now, bool reset = false, bool read = false,
                                    bool presentation = false) const;
@@ -378,6 +418,34 @@ class DeskUART : public Component, public uart::UARTDevice {
   uint32_t last_subscribe_{0}, last_stop_{0};
   bool stop_latched_{false}, stop_acknowledged_{false};
   bool connected_{false}, motion_enabled_{false}, release_fault_{false};
+};
+
+class DisplayModeSelect : public select::Select {
+ public:
+  DisplayModeSelect();
+  static bool is_instance(const select::Select* candidate);
+  void set_parent(DeskUART* parent) { parent_ = parent; }
+  void invalidate();
+
+ protected:
+  void control(const std::string& value) override { parent_->set_display_mode(value); }
+  DeskUART* parent_{nullptr};
+  static DisplayModeSelect* first_;
+  DisplayModeSelect* next_{nullptr};
+};
+
+class DisplayTimeoutNumber : public number::Number {
+ public:
+  DisplayTimeoutNumber();
+  static bool is_instance(const number::Number* candidate);
+  void set_parent(DeskUART* parent) { parent_ = parent; }
+  void invalidate();
+
+ protected:
+  void control(float value) override { parent_->set_display_timeout(value); }
+  DeskUART* parent_{nullptr};
+  static DisplayTimeoutNumber* first_;
+  DisplayTimeoutNumber* next_{nullptr};
 };
 
 class MotionTrimNumber : public number::Number {

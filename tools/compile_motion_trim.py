@@ -51,8 +51,10 @@ SOURCES = (
 )
 
 
-def compile_patch(llvm_bin=None, *, boot_profile=None, buzzer=False):
+def compile_patch(llvm_bin=None, *, boot_profile=None, buzzer=False, display=False):
     """Return linked sections, symbols and provenance for offline integration tests."""
+    if display and not buzzer:
+        raise ValueError("Display integration requires the cumulative buzzer profile")
     boot_fields = {
         "timing": 0xFFFFFFFF,
         "transfer_ticks": 0xFFFFFFFF,
@@ -90,6 +92,8 @@ def compile_patch(llvm_bin=None, *, boot_profile=None, buzzer=False):
             else name
             for name in SOURCES
         ) + ("buzzer_profile.c", "buzzer_pwm.c")
+    if display:
+        sources += ("display_core.c", "display_controller.c", "display_hooks.S")
     commands = []
     with tempfile.TemporaryDirectory(
         prefix="t150-trim-link-", dir=os.environ["TMPDIR"]
@@ -126,6 +130,8 @@ def compile_patch(llvm_bin=None, *, boot_profile=None, buzzer=False):
                     "-Werror",
                     "-fstack-usage",
                 ]
+            if display:
+                flags += ["-DDESK_DISPLAY_TIMEOUT"]
             if buzzer and name == "platform_runtime.c":
                 flags += ["-DDESK_BUZZER_PROFILES"]
             if name == "motion_trim_boot.c" and boot_profile is not None:
@@ -145,7 +151,14 @@ def compile_patch(llvm_bin=None, *, boot_profile=None, buzzer=False):
                 "-L",
                 PATCHES,
                 "-T",
-                PATCHES / ("buzzer_patch.ld" if buzzer else "motion_trim_patch.ld"),
+                PATCHES
+                / (
+                    "display_patch.ld"
+                    if display
+                    else "buzzer_patch.ld"
+                    if buzzer
+                    else "motion_trim_patch.ld"
+                ),
                 *objects,
                 "-o",
                 elf,
@@ -163,6 +176,8 @@ def compile_patch(llvm_bin=None, *, boot_profile=None, buzzer=False):
         section_names = (*platform.HOOKS, "candidate", *TARGET_HOOKS, *STORAGE_HOOKS)
         if buzzer:
             section_names += ("hook_buzzer_timer",)
+        if display:
+            section_names += ("hook_display_stop", "hook_display_render")
         for name in section_names:
             output = work / (name + ".bin")
             run(
@@ -182,6 +197,9 @@ def compile_patch(llvm_bin=None, *, boot_profile=None, buzzer=False):
     if buzzer:
         dependencies.update(path.name for path in PATCHES.glob("buzzer_*.h"))
         dependencies.add("buzzer_patch.ld")
+    if display:
+        dependencies.update(path.name for path in PATCHES.glob("display_*.h"))
+        dependencies.add("display_patch.ld")
     manifest = {
         "toolchain": versions,
         "commands": commands,

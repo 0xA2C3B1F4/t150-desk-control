@@ -147,11 +147,38 @@
         "timer-sound-profile"
       ],
       "validation": "docs/validation.md#custom-sound-profiles"
+    },
+    {
+      "id": "ds01",
+      "name": "T150 Desk Control with display timeout",
+      "sha256": "3ecdedb88e63c6b83bb2b6816dbb8bb4003ead092f4430b405ba5706a4a6c5b9",
+      "application_size": 55296,
+      "application_offset": 10240,
+      "flash_size": 65536,
+      "payload_size": 54272,
+      "erase_size": 54272,
+      "features": [
+        "direct-height",
+        "sleep-fix",
+        "panel-lock",
+        "reset-control",
+        "motion-speed",
+        "uart-parser-fix",
+        "custom-timer",
+        "custom-buzzer",
+        "shared-firmware-platform",
+        "motion-trims",
+        "buzzer-volume",
+        "buzzer-envelope",
+        "timer-sound-profile",
+        "display-timeout"
+      ],
+      "validation": "docs/validation.md#display-timeout"
     }
   ],
   "prepare": {
-    "target": "bz01",
-    "sources": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01", "bz01"]
+    "target": "ds01",
+    "sources": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01", "bz01", "ds01"]
   },
   "install": [
     ["stock", "stock"],
@@ -217,14 +244,31 @@
     ["bz01", "fp01"],
     ["tr01", "bz01"],
     ["bz01", "tr01"],
-    ["bz01", "bz01"]
+    ["bz01", "bz01"],
+    ["stock", "ds01"],
+    ["dt02", "ds01"],
+    ["cl01", "ds01"],
+    ["rs01-r7", "ds01"],
+    ["tb01", "ds01"],
+    ["fp01", "ds01"],
+    ["tr01", "ds01"],
+    ["bz01", "ds01"],
+    ["ds01", "stock"],
+    ["ds01", "dt02"],
+    ["ds01", "cl01"],
+    ["ds01", "rs01-r7"],
+    ["ds01", "tb01"],
+    ["ds01", "fp01"],
+    ["ds01", "tr01"],
+    ["ds01", "bz01"],
+    ["ds01", "ds01"]
   ],
   "recovery": {
     "target": "stock",
     "documentation": "docs/firmware-update.md"
   },
   "current": {
-    "id": "bz01",
+    "id": "ds01",
     "profile": "STM32F030C8T6-8KiB-exact-R7"
   }
 }

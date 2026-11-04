@@ -78,6 +78,7 @@ def entity(e):
 
 desk=c['desk_uart']
 if isinstance(desk,list):desk=desk[0]
+assert "custom_available" not in desk
 print(json.dumps({'numbers':{str(e['id']):entity(e) for e in c.get('number',[])},
                  'buttons':{str(e['id']):entity(e) for e in c.get('button',[])},
                  'groups':{str(e['id']):e['name'] for e in c['web_server']['sorting_groups']},
@@ -85,7 +86,7 @@ print(json.dumps({'numbers':{str(e['id']):entity(e) for e in c.get('number',[])}
                  'panel_timer':desk['experimental_timer_buttons'],
                  'target_mode':desk['target_height_mode'],
                  'custom':desk['experimental_custom_timer_buzzer'],
-                 'diagnostics':{k:entity(desk[k]) for k in ('custom_available','custom_command_result')}}))
+                 'diagnostics':{k:entity(desk[k]) for k in ('custom_command_result',)}}))
 """ % (LEGACY,)
 
 
@@ -305,7 +306,7 @@ desk_uart:
                 assert time.monotonic() < deadline, (events, states[-15:])
                 await asyncio.sleep(0.025)
 
-        await wait_until(lambda: latest("Custom timer and buzzer available") is True)
+        assert "Custom timer and buzzer available" not in keys
         await wait_until(
             lambda: all(
                 latest(name) == initial for name, _, _, initial, _ in NUMBERS.values()

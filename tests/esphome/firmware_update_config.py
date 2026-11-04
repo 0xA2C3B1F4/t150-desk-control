@@ -25,7 +25,13 @@ subprocess.run(
 args = parse_args()
 w = args.work_dir
 (w / "packages").mkdir(exist_ok=True)
-for name in ["firmware-export", "firmware-update", "child-lock", "reset-speed"]:
+for name in [
+    "firmware-export",
+    "firmware-update",
+    "child-lock",
+    "reset-speed",
+    "display",
+]:
     shutil.copy2(
         ROOT / f"examples/esphome/packages/{name}.yaml", w / f"packages/{name}.yaml"
     )
@@ -55,6 +61,8 @@ for name, packages, valid in [
     ("updater", ["firmware-update"], True),
     ("updater_with_lock", ["firmware-update", "child-lock"], True),
     ("panel_lock", ["child-lock"], True),
+    ("display", ["display"], True),
+    ("updater_with_display", ["firmware-update", "display"], True),
     ("reset_speed", ["child-lock", "reset-speed"], True),
     ("reset_speed_without_lock_entity", ["reset-speed"], True),
     ("updater_with_reset", ["firmware-update", "child-lock", "reset-speed"], True),
@@ -103,7 +111,9 @@ for name, packages, valid in [
             "firmware-update" in packages
         )
         assert ("set_child_lock_switch" in generated) == ("child-lock" in packages)
-        controls = any(p in packages for p in ("child-lock", "reset-speed"))
+        assert ("set_display_mode_select" in generated) == ("display" in packages)
+        assert ("set_display_timeout_number" in generated) == ("display" in packages)
+        controls = any(p in packages for p in ("child-lock", "reset-speed", "display"))
         patched = controls or "firmware-update" in packages
         assert ("t150_web_patch_guard();" in generated) == patched
         if patched or (name != "no_ota" and "firmware-export" in packages):

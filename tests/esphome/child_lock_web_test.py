@@ -177,6 +177,58 @@ console.log('PASS: confirmed trim boxes, unknown state, numeric bounds, row bind
             ["node", "-e", script], input=json.dumps(web.NUMBER), text=True, check=True
         )
 
+    def test_confirmed_display_controls(self):
+        """Use display-specific choices and seconds while retaining confirmed values."""
+        script = r"""
+const assert=require('node:assert/strict');
+const data=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+const D=(strings,...values)=>({strings,values});
+const Renderer=new Function('D','return class {'+data.select+data.number+'}')(D);
+const r=new Renderer(),sent=[];
+r.actioner={restAction:(entity,action)=>sent.push([entity.name,action])};
+for(const value of [null,undefined,'Slow','Auto blank','Normal']){
+ r.entity={name:'Display mode',desk_display_mode:true,value};
+ const t=r.render_select();
+ if(value!=='Auto blank'&&value!=='Normal'){
+  assert.match(t.strings.join(''),/>Unknown<\/span>/);continue;
+ }
+ assert.deepEqual(t.values.filter(x=>typeof x==='boolean'),[value==='Auto blank',value==='Normal']);
+ const send=t.values.find(x=>typeof x==='function');
+ r.entity={name:'Other row',value:'Normal'};
+ const event={target:{value:'Auto blank'}};send(event);
+ assert.deepEqual(sent.at(-1),['Display mode','set?option=Auto%20blank']);
+ assert.equal(event.target.value,value);
+ for(const invalid of ['Slow','','UNKNOWN']){
+  const count=sent.length;send({target:{value:invalid}});assert.equal(sent.length,count);
+ }
+}
+for(const value of [null,undefined,0,1,60,65535,65536]){
+ r.entity={name:'Display timeout',desk_display_timeout:true,value,uom:'s'};
+ const t=r.render_number();
+ if(value===null||value===undefined||value<1||value>65535){
+  assert.match(t.strings.join(''),/>Unknown<\/span>/);continue;
+ }
+ assert.match(t.strings.join(''),/min="1" max="65535" step="1"/);
+ const send=t.values.find(x=>typeof x==='function');
+ r.entity={name:'Other row',value:3};
+ for(const seconds of ['1','60','65535']){
+  const event={target:{value:seconds}};send(event);
+  assert.deepEqual(sent.at(-1),['Display timeout','set?value='+seconds]);
+  assert.equal(event.target.value,String(value));
+ }
+ for(const invalid of ['','0','65536','1.5','NaN','Infinity']){
+  const count=sent.length;send({target:{value:invalid}});assert.equal(sent.length,count);
+ }
+}
+console.log('PASS: display modes, timeout bounds, confirmed values and row binding');
+"""
+        subprocess.run(
+            ["node", "-e", script],
+            input=json.dumps({"select": web.SELECT, "number": web.NUMBER}),
+            text=True,
+            check=True,
+        )
+
     def test_actual_render_and_disconnect(self):
         """Verify lock rows stay bound and only desk controls become unknown."""
         # Execute the exact renderer inserted into the bundled Lit application.
@@ -218,7 +270,9 @@ const entities=[{domain:'switch',assumed_state:true,desk_panel_lock:true,state:'
  {domain:'select',desk_motion_speed:true,state:'Slow',value:'Slow'},
  {domain:'select',state:'Normal',value:'Normal'},
  {domain:'number',desk_motion_trim:true,state:'2',value:2},
- {domain:'number',state:'100',value:100}];
+ {domain:'number',state:'100',value:100},
+ {domain:'select',desk_display_mode:true,state:'Auto blank',value:'Auto blank'},
+ {domain:'number',desk_display_timeout:true,state:'60',value:60}];
 let updates=0,listener;
 const table={entities,requestUpdate:()=>updates++};
 const app={updateComplete:Promise.resolve(),shadowRoot:{querySelector:()=>table}};
@@ -226,9 +280,10 @@ const run=new Function('customElements','document','window', 'return (async()=>{
 run({whenDefined:()=>Promise.resolve()},{querySelector:()=>app},
  {source:{addEventListener:(type,fn)=>{assert.equal(type,'error');listener=fn;}}}).then(()=>{
  listener();assert.equal(updates,1);
- assert.deepEqual(entities.map(e=>e.state),['UNKNOWN','UNKNOWN','73.0','OFF','ON','UNKNOWN','Normal','UNKNOWN','100']);
+ assert.deepEqual(entities.map(e=>e.state),['UNKNOWN','UNKNOWN','73.0','OFF','ON','UNKNOWN','Normal','UNKNOWN','100','UNKNOWN','UNKNOWN']);
  assert.equal(entities[5].value,null);assert.equal(entities[6].value,'Normal');
  assert.equal(entities[7].value,null);assert.equal(entities[8].value,100);
+ assert.equal(entities[9].value,null);assert.equal(entities[10].value,null);
  assert.deepEqual(sent,[{name:'Panel lock',action:'turn_on'},{name:'Panel lock',action:'turn_off'}]);
  console.log('PASS: confirmed colors, explicit actions, unknown state, disconnect, ordinary switch');
 }).catch(e=>{console.error(e);process.exitCode=1;});

@@ -40,4 +40,9 @@ uint8_t trim_controller_capture_native(void);
 bool trim_controller_tx_reserved(void);
 uint32_t trim_controller_send_native(volatile uint8_t* ring, const volatile uint8_t* frame);
 
+#ifdef DESK_DISPLAY_TIMEOUT
+/* The caller holds PRIMASK across the capacity check, mutation and enqueue. */
+bool trim_controller_reply_room(uint8_t needed);
+void trim_controller_reply(const uint8_t* reply, uint8_t length);
+#endif
 #endif

@@ -29,6 +29,7 @@ Contents:
 - [T-key timer transaction](#t-key-timer-transaction)
 - [TB01 timer and buzzer transaction](#tb01-timer-and-buzzer-transaction)
 - [TR01 motion trims](#tr01-motion-trims)
+- [Display settings](#display-settings)
 - [Test fixtures](#test-fixtures)
 
 ## Headers
@@ -781,3 +782,23 @@ Image staging and verification reuse one RAM buffer. HTTP downloads retain share
 ownership through the synchronous send, even if the image is cleared concurrently.
 See [maintenance instructions](firmware-update.md) for the user workflow and
 [patch reproduction](validation.md#patch-reproduction) for build commands.
+
+## Display settings
+
+D7/D8 version 4 reads or sets the display mode and timeout as one pair.
+`desk_protocol/display_settings.h` supplies the codec and confirmed-state client.
+All multibyte values are big-endian; framing adds its usual checksum and escaping.
+
+| Body              | Fields in order                                                          |
+| ----------------- | ------------------------------------------------------------------------ |
+| Request, 12 bytes | `D7 04`, operation, nonce u16, zero, mode, seconds u16, three zero bytes |
+| Reply, 10 bytes   | `D8 04`, operation, nonce u16, result, capabilities, state, seconds u16  |
+
+Operations are GET `0` and SET `1`. GET zeros the mode and timeout fields. SET uses
+mode `0` for Auto blank or `1` for Normal, with a timeout of 1–65535 seconds.
+Results are OK `0`, invalid `1` and busy `2`. Capabilities are `03`.
+State bits are Auto `01`, attention `02`, time remaining `04`, last render blank
+`08` and unavailable `10`. A rejected reply uses state `10` and a zero timeout.
+Wrong lengths or versions receive no reply. GET and an unchanged SET do not
+restart the display timer. Clients match the operation and nonce, and do not
+retry an unacknowledged SET automatically.

@@ -150,6 +150,7 @@ bool DeskUART::begin_firmware_export(bool motor_isolated) {
   // queued work without transmitting anything; never replay it on exit.
   this->firmware_export_active_ = true;
   this->cancel_motion_trim_("Trim settings unavailable during firmware maintenance", true);
+  this->display_disconnect_();
   this->reset_speed_confirmed_ = false;
   if (motor_isolated) {
     this->discard_pending_preset_("Pending preset cancelled by firmware maintenance");
@@ -218,6 +219,11 @@ void DeskUART::end_firmware_export() {
 bool DeskUART::send_(const desk_protocol::Frame& frame) {
   if (this->firmware_export_active_)
     return false;
+  if (this->display_.busy() && !this->display_sending_) {
+    this->display_.cancel();
+    this->display_message_ = "Display request interrupted; not retried";
+    this->publish_display_();
+  }
   if (this->motion_trim_busy_() && !this->motion_trim_sending_) {
     this->cancel_motion_trim_("Trim change cancelled by another control");
   }
@@ -316,6 +322,7 @@ void DeskUART::setup() {
   this->child_lock_.seed(static_cast<uint16_t>(boot >> 16));
   this->reset_speed_.seed(static_cast<uint16_t>(boot ^ (boot >> 16)));
   this->custom_.seed(static_cast<uint16_t>(boot ^ (boot >> 16)));
+  this->display_setup_(boot);
   this->motion_trim_.seed(static_cast<uint16_t>((boot >> 8) ^ boot));
   this->motion_trim_dt_probe_.seed(static_cast<uint16_t>(boot >> 8));
   this->publish_motion_trim_(millis());
@@ -426,6 +433,7 @@ void DeskUART::loop() {
     }
     if (parsed != desk_protocol::ParseResult::FrameReady)
       continue;
+    this->display_frame_(frame, now);
     this->motion_trim_frame_(frame, now);
     if (this->firmware_export_active_) {
       return;
@@ -467,6 +475,7 @@ void DeskUART::loop() {
     }
     const uint16_t previous_sequence = this->monitor_.height().sequence;
     if (this->monitor_.observe(frame, now)) {
+      this->display_observe_height_(this->monitor_.height().sequence);
       if (this->height_seen_ &&
           static_cast<uint16_t>(this->monitor_.height().sequence - previous_sequence) >= 0x8000) {
         this->custom_.disconnect();
@@ -552,6 +561,7 @@ void DeskUART::loop() {
   this->pending_preset_loop_(now);
   this->timer_loop_(now);
   this->child_lock_loop_(now);
+  this->display_loop_(millis());
   this->motion_trim_loop_(millis());
   if (this->firmware_export_active_)
     return;
@@ -923,9 +933,9 @@ void DeskUART::limit_loop_(uint32_t now) {
   }
 }
 bool DeskUART::preset_access_allowed_(uint32_t now) const {
-  return !this->motion_trim_busy_() && !this->custom_.pending() && !this->reset_speed_blocking_() &&
-         !this->child_lock_busy_() && !this->detection_.busy() && !this->journal_error_() &&
-         !this->journal_recheck_pending_ && !this->pending_preset_ &&
+  return !this->display_.busy() && !this->motion_trim_busy_() && !this->custom_.pending() &&
+         !this->reset_speed_blocking_() && !this->child_lock_busy_() && !this->detection_.busy() &&
+         !this->journal_error_() && !this->journal_recheck_pending_ && !this->pending_preset_ &&
          !this->firmware_export_active_ && this->monitor_.fresh(now) &&
          this->stable_ms_(now) >= 1500 &&
          static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
@@ -1454,10 +1464,11 @@ bool DeskUART::discovery_access_allowed_(uint32_t now) const {
   // Read-only capability discovery must not depend on a dormant journal, its
   // load errors, or whether a target-height number is exposed. A real borrow
   // still owns the bus until its write/brake/cleanup is resolved.
-  return !this->motion_trim_busy_() && !this->custom_.pending() && !this->reset_speed_blocking_() &&
-         !this->child_lock_busy_() && !this->legacy_ownership_active_() &&
-         !this->keep_awake_active_ && !this->firmware_export_active_ && this->monitor_.fresh(now) &&
-         this->height_seen_ && static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
+  return !this->display_.busy() && !this->motion_trim_busy_() && !this->custom_.pending() &&
+         !this->reset_speed_blocking_() && !this->child_lock_busy_() &&
+         !this->legacy_ownership_active_() && !this->keep_awake_active_ &&
+         !this->firmware_export_active_ && this->monitor_.fresh(now) && this->height_seen_ &&
+         static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
          this->stable_ms_(now) >= 1500 && !this->stop_latched_ && !this->release_fault_ &&
          !this->timer_.busy() && !this->preset_settings_.busy() && !this->pulse_.active() &&
          !this->release_ack_.pending() && !this->stop_ack_.pending() && !this->pending_preset_ &&
@@ -1465,11 +1476,11 @@ bool DeskUART::discovery_access_allowed_(uint32_t now) const {
          static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000;
 }
 bool DeskUART::direct_access_allowed_(uint32_t now) const {
-  return !this->motion_trim_busy_() && !this->custom_.pending() && !this->reset_speed_blocking_() &&
-         !this->child_lock_busy_() && this->target_enabled_ && !this->journal_error_() &&
-         !this->journal_recheck_pending_ && !this->accept_current_active_ &&
-         !this->recovery_check_active_ && !this->restore_requested_ &&
-         !this->target_move_.dirty() && !this->target_move_.busy() &&
+  return !this->display_.busy() && !this->motion_trim_busy_() && !this->custom_.pending() &&
+         !this->reset_speed_blocking_() && !this->child_lock_busy_() && this->target_enabled_ &&
+         !this->journal_error_() && !this->journal_recheck_pending_ &&
+         !this->accept_current_active_ && !this->recovery_check_active_ &&
+         !this->restore_requested_ && !this->target_move_.dirty() && !this->target_move_.busy() &&
          !this->firmware_export_active_ && this->monitor_.fresh(now) && this->height_seen_ &&
          static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&
          this->stable_ms_(now) >= 1500 && !this->stop_latched_ && !this->release_fault_ &&
@@ -1536,7 +1547,7 @@ bool DeskUART::reset_speed_access_allowed_(uint32_t now, bool reset, bool read,
   const bool recovery_read = read && this->reset_stop_pending_;
   // Only availability publication skips read-only bus occupancy. Command
   // admission and polling always use the default, fully serialized path.
-  return !this->motion_trim_busy_() && !this->custom_write_pending_() &&
+  return !this->display_.busy() && !this->motion_trim_busy_() && !this->custom_write_pending_() &&
          (!this->custom_.pending() || read || presentation) && !this->firmware_export_active_ &&
          (!this->reset_speed_.busy() ||
           (presentation && this->reset_speed_.operation() == desk_protocol::ResetSpeed::Get)) &&
@@ -1566,6 +1577,7 @@ bool DeskUART::reset_speed_access_allowed_(uint32_t now, bool reset, bool read,
          static_cast<uint32_t>(now - this->last_preset_recall_) >= 3000;
 }
 void DeskUART::yield_reset_speed_read_() {
+  this->yield_display_read_();
   this->yield_custom_probe_();
   if (this->reset_speed_.busy() &&
       this->reset_speed_.operation() == desk_protocol::ResetSpeed::Get) {
@@ -1789,7 +1801,7 @@ const char* DeskUART::reset_speed_status_(uint32_t now) const {
   return status;
 }
 bool DeskUART::motion_trim_access_allowed_(uint32_t now) const {
-  return !this->firmware_export_active_ && !this->custom_.pending() &&
+  return !this->display_.busy() && !this->firmware_export_active_ && !this->custom_.pending() &&
          !this->reset_speed_.blocking() &&
          (!this->reset_speed_.busy() || this->motion_trim_token_pending_) &&
          !this->child_lock_busy_() && !this->detection_.busy() && !this->direct_.busy() &&
@@ -2148,7 +2160,7 @@ void DeskUART::reset_speed_loop_(uint32_t now) {
 
 bool DeskUART::child_lock_access_allowed_(uint32_t now, bool read, bool presentation) const {
   const bool recovery_read = read && this->reset_stop_pending_;
-  return !this->motion_trim_busy_() && !this->custom_write_pending_() &&
+  return !this->display_.busy() && !this->motion_trim_busy_() && !this->custom_write_pending_() &&
          (!this->custom_.pending() || read || presentation) &&
          (!this->reset_speed_blocking_() ||
           (!this->reset_speed_.owned() && !this->reset_speed_.busy()) ||
@@ -2187,6 +2199,7 @@ void DeskUART::invalidate_child_lock_(const char* reason, bool publish, bool rep
     this->publish_child_lock_(millis());
 }
 void DeskUART::yield_child_lock_read_() {
+  this->yield_display_read_();
   this->yield_reset_speed_read_();
   if (this->child_lock_.busy() && this->child_lock_.operation() == 0) {
     this->child_lock_.yield_read();
@@ -2496,9 +2509,9 @@ bool DeskUART::restore_temporary_preset() {
                                         : "No failed preset transaction to restore");
 }
 bool DeskUART::recovery_access_allowed_(uint32_t now) const {
-  return !this->motion_trim_busy_() && !this->custom_.pending() && !this->reset_speed_blocking_() &&
-         !this->child_lock_busy_() && !this->detection_.busy() && !this->journal_error_() &&
-         !this->direct_.busy() && !this->firmware_export_active_ &&
+  return !this->display_.busy() && !this->motion_trim_busy_() && !this->custom_.pending() &&
+         !this->reset_speed_blocking_() && !this->child_lock_busy_() && !this->detection_.busy() &&
+         !this->journal_error_() && !this->direct_.busy() && !this->firmware_export_active_ &&
          !this->preset_settings_.busy() && !this->timer_.busy() && !this->release_fault_ &&
          this->monitor_.fresh(now) && this->stable_ms_(now) >= 1500 &&
          static_cast<uint32_t>(now - this->last_height_received_) <= 750 &&

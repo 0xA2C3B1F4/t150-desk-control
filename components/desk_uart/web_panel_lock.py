@@ -1,7 +1,7 @@
 """Confirmed-state controls in generated ESPHome 2026.10.1 local v3 assets.
 
-Only builds opting into child_lock, motion_speed or motion trims use this hook. No installed ESPHome files
-are changed. Unknown upstream formats fail the build rather than silently
+Only builds opting into confirmed desk controls use this hook.
+No installed ESPHome files are changed. Unknown upstream formats fail the build rather than silently
 shipping misleading controls. Explicit on/off commands remain available.
 """
 
@@ -14,6 +14,17 @@ TRIM_MARKER = "<!-- desk-confirmed-trim-v1 -->"
 OLD_NUMBER = "render_number(){if(this.entity)return D`${this._range(this.entity,`set`,`value`,this.entity.value,this.entity.min_value,this.entity.max_value,this.entity.step)} ${this.entity.uom}`}"
 NUMBER = """render_number(){
   if(!this.entity)return;
+  if(this.entity.desk_display_timeout){
+    const entity=this.entity,actioner=this.actioner,confirmed=Number(entity.value);
+    const valid=value=>Number.isInteger(value)&&value>=1&&value<=65535;
+    if(entity.value===null||entity.value===undefined||!valid(confirmed))return D`<span aria-live="polite">Unknown</span>`;
+    const send=event=>{
+      const raw=event.target.value,value=Number(raw);
+      if(raw.trim()!==''&&valid(value))actioner?.restAction(entity,'set?value='+encodeURIComponent(value));
+      event.target.value=String(confirmed);
+    };
+    return D`<input type="number" aria-label="${entity.name}" min="1" max="65535" step="1" .value="${String(confirmed)}" @change="${send}"> ${entity.uom}`;
+  }
   if(!this.entity.desk_motion_trim)return D`${this._range(this.entity,'set','value',this.entity.value,this.entity.min_value,this.entity.max_value,this.entity.step)} ${this.entity.uom}`;
   const entity=this.entity,actioner=this.actioner,confirmed=Number(entity.value);
   const known=entity.value!==null&&entity.value!==undefined&&Number.isInteger(confirmed)&&confirmed>=-3&&confirmed<=3;
@@ -28,6 +39,19 @@ NUMBER = """render_number(){
 OLD_SELECT = "render_select(){if(this.entity)return this._select(this.entity,`set`,`option`,this.entity.option||[],this.entity.value)}"
 SELECT = """render_select(){
   if(!this.entity)return;
+  if(this.entity.desk_display_mode){
+    const entity=this.entity,actioner=this.actioner;
+    const valid=value=>value==='Auto blank'||value==='Normal';
+    if(!valid(entity.value))return D`<span aria-live="polite">Unknown</span>`;
+    const send=event=>{
+      if(valid(event.target.value))actioner?.restAction(entity,'set?option='+encodeURIComponent(event.target.value));
+      event.target.value=entity.value;
+    };
+    return D`<select aria-label="${entity.name}" .value="${entity.value}" @change="${send}">
+      <option value="Auto blank" ?selected="${entity.value==='Auto blank'}">Auto blank</option>
+      <option value="Normal" ?selected="${entity.value==='Normal'}">Normal</option>
+    </select>`;
+  }
   if(!this.entity.desk_motion_speed)return this._select(this.entity,"set","option",this.entity.option||[],this.entity.value);
   const entity=this.entity,actioner=this.actioner;
   const known=entity.value==='Normal'||entity.value==='Slow';
@@ -73,8 +97,8 @@ window.source?.addEventListener('error',()=>{
   if(!table)return;
   for(const entity of table.entities){
     if(entity.desk_panel_lock)entity.state='UNKNOWN';
-    if(entity.desk_motion_speed){entity.state='UNKNOWN';entity.value=null;}
-    if(entity.desk_motion_trim){entity.state='UNKNOWN';entity.value=null;}
+    if(entity.desk_motion_speed||entity.desk_display_mode){entity.state='UNKNOWN';entity.value=null;}
+    if(entity.desk_motion_trim||entity.desk_display_timeout){entity.state='UNKNOWN';entity.value=null;}
   }
   table.requestUpdate();
 });
@@ -98,8 +122,9 @@ OLD_SELECT_JSON = 'set_json_icon_state_value(root, obj, "select", value.c_str(),
 NEW_SELECT_JSON = (
     OLD_SELECT_JSON
     + """
-  if (desk_uart::MotionSpeedSelect::is_instance(obj)) {
-    root[ESPHOME_F("desk_motion_speed")] = true;
+  if (desk_uart::MotionSpeedSelect::is_instance(obj) || desk_uart::DisplayModeSelect::is_instance(obj)) {
+    root[ESPHOME_F("desk_motion_speed")] = desk_uart::MotionSpeedSelect::is_instance(obj);
+    root[ESPHOME_F("desk_display_mode")] = desk_uart::DisplayModeSelect::is_instance(obj);
     if (!obj->has_state()) {
       root[ESPHOME_F("state")] = "UNKNOWN";
       root[ESPHOME_F("value")] = nullptr;
@@ -112,8 +137,9 @@ OLD_NUMBER_JSON = (
 NEW_NUMBER_JSON = (
     OLD_NUMBER_JSON
     + """
-  if (desk_uart::MotionTrimNumber::is_instance(obj)) {
-    root[ESPHOME_F("desk_motion_trim")] = true;
+  if (desk_uart::MotionTrimNumber::is_instance(obj) || desk_uart::DisplayTimeoutNumber::is_instance(obj)) {
+    root[ESPHOME_F("desk_motion_trim")] = desk_uart::MotionTrimNumber::is_instance(obj);
+    root[ESPHOME_F("desk_display_timeout")] = desk_uart::DisplayTimeoutNumber::is_instance(obj);
     if (!obj->has_state()) {
       root[ESPHOME_F("state")] = "UNKNOWN";
       root[ESPHOME_F("value")] = nullptr;

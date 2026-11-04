@@ -37,6 +37,23 @@ desk_uart:
 """
 cases = [
     (
+        "display_controls",
+        base
+        + "  display_mode:\n    name: Display mode\n  display_timeout:\n    name: Display timeout\n  display_status:\n    name: Display status\n",
+        True,
+    ),
+    (
+        "display_custom_slider",
+        base + "  display_timeout:\n    name: Display timeout\n    mode: slider\n",
+        True,
+    ),
+    (
+        "display_rejects_restore",
+        base
+        + "  display_timeout:\n    name: Display timeout\n    restore_value: true\n",
+        False,
+    ),
+    (
         "motion_trim_boxes",
         base
         + "  normal_up_trim:\n    name: Normal up trim\n  normal_down_trim:\n    name: Normal down trim\n  slow_up_trim:\n    name: Slow up trim\n  slow_down_trim:\n    name: Slow down trim\n  motion_trim_status:\n    name: Motion trim status\n",

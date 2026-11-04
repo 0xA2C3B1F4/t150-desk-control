@@ -3,6 +3,13 @@
 Hardware results apply to the [tested controller](hardware.md#desk-and-controller-compatibility).
 Host tests and successful builds do not establish physical behavior.
 
+## Display timeout
+
+DS01 adds configurable idle-display timing. Offline checks cover deadline limits,
+wraparound, wake-up, display priority, confirmed web/HA settings and lost replies.
+The updater passed all 81 supported install/restore image pairs. Earlier image
+hashes remain unchanged.
+
 ## Custom sound profiles
 
 BZ01 adds 5 ms pulses, volume and a separate timer alarm sound to the current
@@ -15,6 +22,14 @@ The Stamp-C3 build includes the controls, encrypted API, web interface, OTA and
 firmware maintenance. Earlier firmware reconstruction bytes remain pinned.
 
 ## Hardware validation
+
+### Display timeout
+
+DS01 passed firmware-maintenance installation and full application readback.
+Web and Home Assistant controls changed the mode and timeout, and the saved
+setting returned after controller and ESPHome restarts. Checks covered idle
+blanking, button wake-up, Normal mode, panel menus, timer indicators and alarms,
+sound playback with blanked digits, movement, Stop and calibration display priority.
 
 ### Custom sound profiles
 
