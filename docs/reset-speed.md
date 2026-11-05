@@ -13,7 +13,7 @@ Stamp-C3 or ESP32 example, enable both includes:
 
 ```yaml
 packages:
-  panel_lock: !include packages/child-lock.yaml
+  panel_lock: !include packages/panel-lock.yaml
   reset_speed: !include packages/reset-speed.yaml
 ```
 

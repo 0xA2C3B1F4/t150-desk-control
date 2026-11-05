@@ -61,8 +61,8 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
   void cl_reply(uint32_t now, bool locked = false, bool storage_fault = false,
                 bool physical_gate = false) {
     desk_protocol::Frame request{}, reply{};
-    require(child_lock_.probe(now), "CL01 probe");
-    require(child_lock_.take_frame(request), "CL01 request");
+    require(panel_lock_.probe(now), "CL01 probe");
+    require(panel_lock_.take_frame(request), "CL01 request");
     reply.size = 15;
     reply.bytes[0] = 0xD4;
     reply.bytes[1] = 1;
@@ -74,8 +74,8 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
     reply.bytes[11] = request.bytes[3];
     reply.bytes[12] = request.bytes[4];
     reply.bytes[14] = 1;
-    child_lock_.accept(reply, now + 1);
-    require(child_lock_.supported(), "CL01 reply accepted");
+    panel_lock_.accept(reply, now + 1);
+    require(panel_lock_.supported(), "CL01 reply accepted");
   }
   static void availability_checks() {
     const uint32_t now = esphome::millis();
@@ -86,14 +86,14 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
     d.cl_reply(now - 2);
     d.reset_enabled_ = true;
     static esphome::desk_uart::MotionSpeedSelect speed;
-    static esphome::desk_uart::ChildLockSwitch lock;
+    static esphome::desk_uart::PanelLockSwitch lock;
     speed.traits.set_options({"Normal", "Slow"});
     esphome::binary_sensor::BinarySensor reset_available, speed_available, lock_available;
     d.motion_speed_select_ = &speed;
     d.reset_available_ = &reset_available;
     d.motion_speed_available_ = &speed_available;
-    d.child_lock_available_ = &lock_available;
-    d.child_lock_switch_ = &lock;
+    d.panel_lock_available_ = &lock_available;
+    d.panel_lock_switch_ = &lock;
     require(!d.reset_desk(true), "legacy continuation cannot start an idle reset");
     desk_protocol::Frame legacy_reset_frame{};
     require(!d.reset_speed_.busy() && !d.reset_speed_.take_frame(legacy_reset_frame),
@@ -110,7 +110,7 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
     });
     auto publish = [&]() {
       d.publish_reset_speed_(now);
-      d.publish_child_lock_(now);
+      d.publish_panel_lock_(now);
     };
     auto all = [&](bool expected) {
       publish();
@@ -122,34 +122,34 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
     const auto initial_changes = changes;
     require(d.reset_speed_.probe(now), "availability RS01 GET");
     all(true);
-    require(!d.reset_speed_access_allowed_(now) && !d.child_lock_access_allowed_(now),
+    require(!d.reset_speed_access_allowed_(now) && !d.panel_lock_access_allowed_(now),
             "RS01 GET admission still blocked");
     d.reset_speed_.yield_read();
-    const auto child_lock = d.child_lock_;
-    require(d.child_lock_.probe(now), "availability CL01 GET");
+    const auto panel_lock = d.panel_lock_;
+    require(d.panel_lock_.probe(now), "availability CL01 GET");
     all(true);
-    require(!d.reset_speed_access_allowed_(now) && d.child_lock_busy_(),
+    require(!d.reset_speed_access_allowed_(now) && d.panel_lock_busy_(),
             "CL01 GET admission still blocked");
     // The real SET path yields this GET before admission. Check that step
     // without transmitting through this fixture's deliberately absent UART.
-    d.yield_child_lock_read_();
-    require(d.child_lock_.supported() && d.child_lock_.state_known() && !d.child_lock_busy_(),
+    d.yield_panel_lock_read_();
+    require(d.panel_lock_.supported() && d.panel_lock_.state_known() && !d.panel_lock_busy_(),
             "yielded CL01 GET retains confirmed state");
-    require(d.child_lock_access_allowed_(now), "CL01 SET admission after yielding its own GET");
-    d.child_lock_ = child_lock;
+    require(d.panel_lock_access_allowed_(now), "CL01 SET admission after yielding its own GET");
+    d.panel_lock_ = panel_lock;
     require(d.preset_settings_.begin_read(1, now), "availability preset read");
     all(true);
-    require(!d.reset_speed_access_allowed_(now) && !d.child_lock_access_allowed_(now),
+    require(!d.reset_speed_access_allowed_(now) && !d.panel_lock_access_allowed_(now),
             "preset read admission still blocked");
     d.preset_settings_ = desk_protocol::PresetSettings(d.height_profile_);
     d.limit_phase_ = LimitPhase::Read;
     all(true);
-    require(!d.reset_speed_access_allowed_(now) && !d.child_lock_access_allowed_(now),
+    require(!d.reset_speed_access_allowed_(now) && !d.panel_lock_access_allowed_(now),
             "limit read admission still blocked");
     d.limit_phase_ = LimitPhase::Idle;
     d.identity_pending_ = 0;
     all(true);
-    require(!d.reset_speed_access_allowed_(now) && !d.child_lock_access_allowed_(now),
+    require(!d.reset_speed_access_allowed_(now) && !d.panel_lock_access_allowed_(now),
             "identity read admission still blocked");
     d.identity_pending_ = 255;
     require(changes == initial_changes, "background reads cause no availability events");
@@ -163,9 +163,9 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
     all(false);
     d.preset_settings_ = desk_protocol::PresetSettings(d.height_profile_);
     all(true);
-    require(d.child_lock_.set(true, now), "availability CL01 SET");
+    require(d.panel_lock_.set(true, now), "availability CL01 SET");
     all(false);
-    d.child_lock_ = child_lock;
+    d.panel_lock_ = panel_lock;
     all(true);
     require(d.reset_speed_.set_speed(true, now), "availability speed SET");
     all(false);
@@ -294,7 +294,7 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
       require(d.reset_speed_.error() && !d.reset_speed_.blocking(),
               "unsupported capability stays unverified");
       d.expect(now, "Ready");
-      d.child_lock_.disconnect(
+      d.panel_lock_.disconnect(
           "Panel-lock saving failed; locked now, lock state after power loss uncertain", false);
       d.expect(now, "Panel-lock saving failed; locked now, lock state after power loss uncertain",
                "Ready");
@@ -360,21 +360,21 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
       StatusDisplayAccess d;
       d.idle(now);
       d.cl_reply(now - 2);
-      require(d.child_lock_.probe(now), "CL01 background GET");
+      require(d.panel_lock_.probe(now), "CL01 background GET");
       d.expect(now, "Ready", "Panel-lock request in progress");
       esphome::text_sensor::TextSensor sensor;
-      d.child_lock_status_ = &sensor;
-      d.publish_child_lock_(now);
+      d.panel_lock_status_ = &sensor;
+      d.publish_panel_lock_(now);
       require(sensor.state == "Unlocked", "CL01 confirmed status retained during GET");
-      d.child_lock_.disconnect("lost", false);
-      d.publish_child_lock_(now);
+      d.panel_lock_.disconnect("lost", false);
+      d.publish_panel_lock_(now);
       require(sensor.state != "Unlocked", "CL01 loss immediately visible");
     }
     {
       StatusDisplayAccess d;
       d.idle(now);
       d.cl_reply(now - 2);
-      require(d.child_lock_.set(true, now), "CL01 SET");
+      require(d.panel_lock_.set(true, now), "CL01 SET");
       d.expect(now, "Lock requested; waiting for controller confirmation",
                "Panel-lock request in progress");
     }
@@ -382,8 +382,8 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
       StatusDisplayAccess d;
       d.idle(now);
       d.last_preset_recall_ = now - 5000;
-      static esphome::desk_uart::ChildLockSwitch lock;
-      d.child_lock_switch_ = &lock;
+      static esphome::desk_uart::PanelLockSwitch lock;
+      d.panel_lock_switch_ = &lock;
       d.cl_reply(now - 2, true, true);
       d.expect(now, "Panel-lock saving failed; locked now, lock state after power loss uncertain",
                "Ready");
@@ -391,18 +391,18 @@ class StatusDisplayAccess : public esphome::desk_uart::DeskUART {
     {
       StatusDisplayAccess d;
       d.idle(now);
-      static esphome::desk_uart::ChildLockSwitch lock;
-      d.child_lock_switch_ = &lock;
+      static esphome::desk_uart::PanelLockSwitch lock;
+      d.panel_lock_switch_ = &lock;
       d.cl_reply(now - 2, true);
       d.expect(now, "Ready");
     }
     {
       StatusDisplayAccess d;
       d.idle(now);
-      static esphome::desk_uart::ChildLockSwitch lock;
-      d.child_lock_switch_ = &lock;
+      static esphome::desk_uart::PanelLockSwitch lock;
+      d.panel_lock_switch_ = &lock;
       d.cl_reply(now - 2, false, false, true);
-      d.expect(now, "Unlocked; release all physical keys", "Ready");
+      d.expect(now, "Unlocked; panel buttons in use", "Ready");
     }
     {
       StatusDisplayAccess d;

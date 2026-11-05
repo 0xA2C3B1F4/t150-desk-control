@@ -8,9 +8,9 @@ import re
 import subprocess
 
 from build_child_lock_patch import ImageError, read_saved_image, sha256
-import build_display_patch as recipe
+import build_local_lock_patch as recipe
 
-FIRMWARE_ID = "ds01"
+FIRMWARE_ID = "lk01"
 FIRMWARE_NAME = "T150 Desk Control controller firmware"
 PROFILE = recipe.platform.LAYOUT["profile"]
 SOURCE_APP_SHA256 = recipe.platform.SOURCE_APP_SHA256

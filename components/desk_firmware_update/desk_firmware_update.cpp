@@ -5,7 +5,7 @@
 #include "tb01_patch.h"
 #include "platform_patch.h"
 #include "motion_trim_patch.h"
-#include "display_patch.h"
+#include "local_lock_patch.h"
 #include "partial_recovery.h"
 #include "ui.h"
 #include <cstdio>
@@ -27,16 +27,16 @@ static_assert(FP01_PAYLOAD_SIZE == desk_protocol::FirmwareInstall::PLATFORM_PAYL
               "FP01 transfer profile mismatch");
 static_assert(TR01_PAYLOAD_SIZE == desk_protocol::FirmwareInstall::PLATFORM_PAYLOAD_SIZE,
               "TR01 transfer profile mismatch");
-static_assert(DS01_PAYLOAD_SIZE == desk_protocol::FirmwareInstall::PLATFORM_PAYLOAD_SIZE,
-              "DS01 transfer profile mismatch");
+static_assert(LK01_PAYLOAD_SIZE == desk_protocol::FirmwareInstall::PLATFORM_PAYLOAD_SIZE,
+              "LK01 transfer profile mismatch");
 constexpr uint32_t RECOVERY_TAG = 0x44543032;
-constexpr const char* CURRENT_SHA = DS01_SHA;
+constexpr const char* CURRENT_SHA = LK01_SHA;
 bool known(const char* hash) {
   return !std::strcmp(hash, STOCK_SHA) || !std::strcmp(hash, DT02_SHA) ||
          !std::strcmp(hash, CL01_SHA) || !std::strcmp(hash, RS01_SHA) ||
          !std::strcmp(hash, TB01_SHA) || !std::strcmp(hash, FP01_SHA) ||
          !std::strcmp(hash, TR01_SHA) || !std::strcmp(hash, BZ01_SHA) ||
-         !std::strcmp(hash, DS01_SHA);
+         !std::strcmp(hash, DS01_SHA) || !std::strcmp(hash, LK01_SHA);
 }
 bool hex_string(const std::string& s, size_t length) {
   if (s.size() != length)
@@ -171,7 +171,7 @@ bool FirmwareUpdate::validate_partial_recovery_() const {
   // all pinned candidates from the uploaded original. Each is admitted only
   // through the block hash recorded for the same persistent identity.
   for (const char* identity : {STOCK_SHA, DT02_SHA, CL01_SHA, RS01_SHA, TB01_SHA, FP01_SHA,
-                               TR01_SHA, BZ01_SHA, DS01_SHA}) {
+                               TR01_SHA, BZ01_SHA, DS01_SHA, LK01_SHA}) {
     const uint8_t* recorded =
         !std::strcmp(recovery_record_.source, identity)
             ? recovery_record_.source_blocks[partial_block_]
@@ -185,7 +185,8 @@ bool FirmwareUpdate::validate_partial_recovery_() const {
     uint8_t expected[1024], digest[32];
     for (size_t i = 0; i < 1024; ++i) {
       const uint8_t stock = buffer_.get()[base + i];
-      expected[i] = !std::strcmp(identity, DS01_SHA)   ? ds01_byte(base + i, stock)
+      expected[i] = !std::strcmp(identity, LK01_SHA)   ? lk01_byte(base + i, stock)
+                    : !std::strcmp(identity, DS01_SHA) ? ds01_byte(base + i, stock)
                     : !std::strcmp(identity, BZ01_SHA) ? bz01_byte(base + i, stock)
                     : !std::strcmp(identity, TR01_SHA) ? tr01_byte(base + i, stock)
                     : !std::strcmp(identity, FP01_SHA) ? fp01_byte(base + i, stock)
@@ -206,7 +207,8 @@ bool FirmwareUpdate::validate_partial_recovery_() const {
   return false;
 }
 size_t FirmwareUpdate::payload_size_() const {
-  return !std::strcmp(hash_, DS01_SHA)   ? DS01_PAYLOAD_SIZE
+  return !std::strcmp(hash_, LK01_SHA)   ? LK01_PAYLOAD_SIZE
+         : !std::strcmp(hash_, DS01_SHA) ? DS01_PAYLOAD_SIZE
          : !std::strcmp(hash_, BZ01_SHA) ? BZ01_PAYLOAD_SIZE
          : !std::strcmp(hash_, TR01_SHA) ? TR01_PAYLOAD_SIZE
          : !std::strcmp(hash_, FP01_SHA) ? FP01_PAYLOAD_SIZE
@@ -216,7 +218,9 @@ size_t FirmwareUpdate::payload_size_() const {
                                          : PAYLOAD_SIZE;
 }
 size_t FirmwareUpdate::recovery_payload_size_() const {
-  if (!std::strcmp(recovery_record_.source, DS01_SHA) ||
+  if (!std::strcmp(recovery_record_.source, LK01_SHA) ||
+      !std::strcmp(recovery_record_.target, LK01_SHA) ||
+      !std::strcmp(recovery_record_.source, DS01_SHA) ||
       !std::strcmp(recovery_record_.target, DS01_SHA) ||
       !std::strcmp(recovery_record_.source, BZ01_SHA) ||
       !std::strcmp(recovery_record_.target, BZ01_SHA) ||
@@ -384,7 +388,12 @@ void FirmwareUpdate::execute_(const std::string& action) {
       return;
     }
     // Every historical input must restore the exact R7 image first.
-    if (!std::strcmp(hash_, BZ01_SHA)) {
+    if (!std::strcmp(hash_, DS01_SHA)) {
+      if (!remove_display_timeout(buffer_.get(), size_)) {
+        fail_("Cannot restore the exact reset and speed source from display firmware");
+        return;
+      }
+    } else if (!std::strcmp(hash_, BZ01_SHA)) {
       if (!remove_buzzer_profiles(buffer_.get(), size_)) {
         fail_("Cannot restore the exact reset and speed source from sound firmware");
         return;
@@ -416,7 +425,7 @@ void FirmwareUpdate::execute_(const std::string& action) {
       fail_("Intermediate reset and speed firmware failed its integrity check");
       return;
     }
-    if (!apply_display_timeout(buffer_.get(), size_)) {
+    if (!apply_local_panel_lock(buffer_.get(), size_)) {
       fail_("Cannot prepare firmware from this source");
       return;
     }
@@ -477,11 +486,12 @@ void FirmwareUpdate::execute_(const std::string& action) {
     error_baseline_ = errors_();
     const auto profile =
         (!std::strcmp(hash_, FP01_SHA) || !std::strcmp(hash_, TR01_SHA) ||
-         !std::strcmp(hash_, BZ01_SHA) || !std::strcmp(hash_, DS01_SHA))
+         !std::strcmp(hash_, BZ01_SHA) || !std::strcmp(hash_, DS01_SHA) ||
+         !std::strcmp(hash_, LK01_SHA))
             ? desk_protocol::FirmwareInstall::Profile::PlatformFP01
         : !std::strcmp(hash_, TB01_SHA) ? desk_protocol::FirmwareInstall::Profile::TimerBuzzerTB01
         : !std::strcmp(hash_, RS01_SHA) ? desk_protocol::FirmwareInstall::Profile::ResetSpeedRS01
-        : !std::strcmp(hash_, CL01_SHA) ? desk_protocol::FirmwareInstall::Profile::ChildLockCL01
+        : !std::strcmp(hash_, CL01_SHA) ? desk_protocol::FirmwareInstall::Profile::PanelLockCL01
                                         : desk_protocol::FirmwareInstall::Profile::OriginalDT02;
     if (uart_flush_input(port_) != ESP_OK ||
         !sender_.begin(buffer_.get(), size_, transmit_, this, millis(), profile)) {

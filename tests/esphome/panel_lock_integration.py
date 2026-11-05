@@ -30,6 +30,7 @@ IDENTITY = {
 }
 CASES = [
     "startup",
+    "local_toggle",
     "unlock",
     "busy",
     "storage_fault",
@@ -85,59 +86,59 @@ def main():
     work, env = args.work_dir, test_env(args.work_dir)
     master = slave = None
     config = f"""esphome:
-  name: desk-child-lock-test
+  name: desk-panel-lock-test
   build_path: {work}/build
   on_boot:
     priority: -100
     then:
       - lambda: |-
-          const std::string scenario = getenv("DESK_CHILD_LOCK_CASE");
+          const std::string scenario = getenv("DESK_PANEL_LOCK_CASE");
           if (scenario == "auto_stock") id(desk)->set_auto_target_mode(true);
           if (scenario == "shutdown_handoff") id(desk)->set_direct_mode(true);
       - delay: 1s
       - lambda: |-
-          ESP_LOGI("child_lock_test", "initial_known=%d initial_available=%d", id(lock)->has_state(), id(available)->state);
+          ESP_LOGI("panel_lock_test", "initial_known=%d initial_available=%d", id(lock)->has_state(), id(available)->state);
       - delay: 3500ms
       - lambda: |-
-          const std::string scenario = getenv("DESK_CHILD_LOCK_CASE");
-          if (scenario == "shutdown_handoff") ESP_LOGI("child_lock_test", "shutdown_move=%d", id(desk)->move_to_height(78));
-          else if (scenario != "startup" && scenario != "sequence_reset" && scenario != "initial_get_lost" && scenario != "periodic_get_lost" && scenario != "auto_stock" && scenario.find("readonly_") != 0) {{
-            if (scenario == "callback_stop") ::setenv("DESK_CHILD_LOCK_ARM", "1", 1);
-            ESP_LOGI("child_lock_test", "request=%d", id(desk)->set_child_lock(scenario == "boot_fault"));
-            if (scenario == "callback_stop") ESP_LOGI("child_lock_test", "after_request_result=%s", id(result)->state.c_str());
-            if (scenario == "stop" || scenario == "stop_handoff") ESP_LOGI("child_lock_test", "stop_priority=%d", id(desk)->stop());
+          const std::string scenario = getenv("DESK_PANEL_LOCK_CASE");
+          if (scenario == "shutdown_handoff") ESP_LOGI("panel_lock_test", "shutdown_move=%d", id(desk)->move_to_height(78));
+          else if (scenario != "startup" && scenario != "local_toggle" && scenario != "sequence_reset" && scenario != "initial_get_lost" && scenario != "periodic_get_lost" && scenario != "auto_stock" && scenario.find("readonly_") != 0) {{
+            if (scenario == "callback_stop") ::setenv("DESK_PANEL_LOCK_ARM", "1", 1);
+            ESP_LOGI("panel_lock_test", "request=%d", id(desk)->set_panel_lock(scenario == "boot_fault"));
+            if (scenario == "callback_stop") ESP_LOGI("panel_lock_test", "after_request_result=%s", id(result)->state.c_str());
+            if (scenario == "stop" || scenario == "stop_handoff") ESP_LOGI("panel_lock_test", "stop_priority=%d", id(desk)->stop());
             else if (scenario == "maintenance") {{
-              ESP_LOGI("child_lock_test", "maintenance_priority=%d", id(desk)->begin_firmware_export(true));
+              ESP_LOGI("panel_lock_test", "maintenance_priority=%d", id(desk)->begin_firmware_export(true));
               id(desk)->end_firmware_export();
             }} else if (scenario == "lost_ack") {{
-              ESP_LOGI("child_lock_test", "preset_blocked=%d", !id(desk)->recall_preset(1));
-              ESP_LOGI("child_lock_test", "target_blocked=%d", !id(desk)->move_to_height(80));
-              ESP_LOGI("child_lock_test", "timer_blocked=%d", !id(desk)->set_timer(30));
-              ESP_LOGI("child_lock_test", "recovery_blocked=%d", !id(desk)->restore_temporary_preset());
-              ESP_LOGI("child_lock_test", "edit_blocked=%d", !id(desk)->set_preset_height(3, 80));
-              ESP_LOGI("child_lock_test", "limit_blocked=%d", !id(desk)->set_load_limit(desk_protocol::LoadLimit::Upward, 4800));
+              ESP_LOGI("panel_lock_test", "preset_blocked=%d", !id(desk)->recall_preset(1));
+              ESP_LOGI("panel_lock_test", "target_blocked=%d", !id(desk)->move_to_height(80));
+              ESP_LOGI("panel_lock_test", "timer_blocked=%d", !id(desk)->set_timer(30));
+              ESP_LOGI("panel_lock_test", "recovery_blocked=%d", !id(desk)->restore_temporary_preset());
+              ESP_LOGI("panel_lock_test", "edit_blocked=%d", !id(desk)->set_preset_height(3, 80));
+              ESP_LOGI("panel_lock_test", "limit_blocked=%d", !id(desk)->set_load_limit(desk_protocol::LoadLimit::Upward, 4800));
             }}
           }}
       - delay: 1500ms
       - lambda: |-
-          ESP_LOGI("child_lock_test", "known=%d locked=%d available=%d status=%s", id(lock)->has_state(), id(lock)->state, id(available)->state, id(status)->state.c_str());
-          if (std::string(getenv("DESK_CHILD_LOCK_CASE")) == "shutdown_handoff") id(desk)->on_shutdown();
+          ESP_LOGI("panel_lock_test", "known=%d locked=%d available=%d status=%s", id(lock)->has_state(), id(lock)->state, id(available)->state, id(status)->state.c_str());
+          if (std::string(getenv("DESK_PANEL_LOCK_CASE")) == "shutdown_handoff") id(desk)->on_shutdown();
       - delay: 500ms
       - lambda: |-
-          if (std::string(getenv("DESK_CHILD_LOCK_CASE")) == "storage_repair")
-            ESP_LOGI("child_lock_test", "repair=%d", id(desk)->set_child_lock(true));
+          if (std::string(getenv("DESK_PANEL_LOCK_CASE")) == "storage_repair")
+            ESP_LOGI("panel_lock_test", "repair=%d", id(desk)->set_panel_lock(true));
       - delay: 1500ms
       - lambda: |-
-          ESP_LOGI("child_lock_test", "final_known=%d final_locked=%d final_available=%d final_status=%s", id(lock)->has_state(), id(lock)->state, id(available)->state, id(status)->state.c_str());
-          ESP_LOGI("child_lock_test", "final_result=%s", id(result)->state.c_str());
+          ESP_LOGI("panel_lock_test", "final_known=%d final_locked=%d final_available=%d final_status=%s", id(lock)->has_state(), id(lock)->state, id(available)->state, id(status)->state.c_str());
+          ESP_LOGI("panel_lock_test", "final_result=%s", id(result)->state.c_str());
       - delay: 3s
       - lambda: |-
-          const std::string scenario = getenv("DESK_CHILD_LOCK_CASE");
+          const std::string scenario = getenv("DESK_PANEL_LOCK_CASE");
           if (scenario == "lost_ack_recover" || scenario == "identity_lost" || scenario == "dt02_get_lost")
-            ESP_LOGI("child_lock_test", "explicit_retry=%d", id(desk)->set_child_lock(false));
+            ESP_LOGI("panel_lock_test", "explicit_retry=%d", id(desk)->set_panel_lock(false));
       - delay: 1500ms
       - lambda: |-
-          ESP_LOGI("child_lock_test", "recovered_known=%d recovered_locked=%d recovered_available=%d recovered_status=%s", id(lock)->has_state(), id(lock)->state, id(available)->state, id(status)->state.c_str());
+          ESP_LOGI("panel_lock_test", "recovered_known=%d recovered_locked=%d recovered_available=%d recovered_status=%s", id(lock)->has_state(), id(lock)->state, id(available)->state, id(status)->state.c_str());
 interval:
   - interval: 20ms
     then:
@@ -145,8 +146,8 @@ interval:
           static bool done = false;
           if (!done && ::access("trigger", F_OK) == 0) {{
             done = true;
-            const std::string scenario = getenv("DESK_CHILD_LOCK_CASE");
-            ESP_LOGI("child_lock_test", "readonly_preempt=%d", scenario == "readonly_get_timer" ? id(desk)->set_timer(30) : id(desk)->recall_preset(1));
+            const std::string scenario = getenv("DESK_PANEL_LOCK_CASE");
+            ESP_LOGI("panel_lock_test", "readonly_preempt=%d", scenario == "readonly_get_timer" ? id(desk)->set_timer(30) : id(desk)->recall_preset(1));
           }}
 host:
 external_components:
@@ -168,34 +169,46 @@ desk_uart:
   experimental_timer_buttons: true
   target_height_mode: preset
   keep_awake: false
-  child_lock:
+  panel_lock:
     id: lock
-    name: Child lock
-  child_lock_status:
+    name: Panel lock
+    on_turn_on:
+      then:
+        - lambda: |-
+            if (std::string(getenv("DESK_PANEL_LOCK_CASE")) == "local_toggle") {{
+              ESP_LOGI("panel_lock_test", "local_poll locked=1");
+            }}
+    on_turn_off:
+      then:
+        - lambda: |-
+            if (std::string(getenv("DESK_PANEL_LOCK_CASE")) == "local_toggle") {{
+              ESP_LOGI("panel_lock_test", "local_poll locked=0");
+            }}
+  panel_lock_status:
     id: status
-    name: Child lock status
+    name: Panel lock status
     on_value:
       then:
         - lambda: |-
             static bool fired = false;
-            if (!fired && std::string(getenv("DESK_CHILD_LOCK_CASE")) == "stop_handoff" && x.find("cancelled by Stop") != std::string::npos) {{
+            if (!fired && std::string(getenv("DESK_PANEL_LOCK_CASE")) == "stop_handoff" && x.find("cancelled by Stop") != std::string::npos) {{
               fired = true;
-              ESP_LOGI("child_lock_test", "maintenance_during_stop=%d", id(desk)->begin_firmware_export(true));
+              ESP_LOGI("panel_lock_test", "maintenance_during_stop=%d", id(desk)->begin_firmware_export(true));
             }}
-            if (!fired && std::string(getenv("DESK_CHILD_LOCK_CASE")) == "shutdown_handoff" && x.find("ESPHome shutting down") != std::string::npos) {{
+            if (!fired && std::string(getenv("DESK_PANEL_LOCK_CASE")) == "shutdown_handoff" && x.find("ESPHome shutting down") != std::string::npos) {{
               fired = true;
-              ESP_LOGI("child_lock_test", "maintenance_during_shutdown=%d", id(desk)->begin_firmware_export(true));
+              ESP_LOGI("panel_lock_test", "maintenance_during_shutdown=%d", id(desk)->begin_firmware_export(true));
             }}
-  child_lock_available:
+  panel_lock_available:
     id: available
-    name: Child lock available
+    name: Panel lock available
     on_state:
       then:
         - lambda: |-
             static bool fired = false;
-            if (!x && !fired && getenv("DESK_CHILD_LOCK_ARM") != nullptr && std::string(getenv("DESK_CHILD_LOCK_CASE")) == "callback_stop") {{
+            if (!x && !fired && getenv("DESK_PANEL_LOCK_ARM") != nullptr && std::string(getenv("DESK_PANEL_LOCK_CASE")) == "callback_stop") {{
               fired = true;
-              ESP_LOGI("child_lock_test", "callback_stop=%d", id(desk)->stop());
+              ESP_LOGI("panel_lock_test", "callback_stop=%d", id(desk)->stop());
             }}
   preset_3_height:
     name: Preset height
@@ -207,10 +220,10 @@ desk_uart:
       then:
         - lambda: |-
             static bool fired = false;
-            const std::string scenario = getenv("DESK_CHILD_LOCK_CASE");
+            const std::string scenario = getenv("DESK_PANEL_LOCK_CASE");
             if (!fired && (scenario == "invalid_then_stop" || scenario == "valid_then_stop") && x > 100) {{
               fired = true;
-              ESP_LOGI("child_lock_test", "height_callback_stop=%d", id(desk)->stop());
+              ESP_LOGI("panel_lock_test", "height_callback_stop=%d", id(desk)->stop());
             }}
   command_result:
     id: result
@@ -222,7 +235,7 @@ desk_uart:
 
     def adapt_host(source):
         if args.trace_timing:
-            from child_lock_timing import instrument
+            from panel_lock_timing import instrument
 
             instrument(work)
         # Current upstream uses tcdrain, so no TX-purging workaround is needed.
@@ -255,6 +268,7 @@ desk_uart:
             triggered = prerequisite_dropped = False
             locked, gate, fault = True, True, scenario == "boot_fault"
             wire, events, delayed = bytearray(), [], []
+            local_changes, local_reports = [], []
             peer_tx, peer_rx, height_lateness = [], [], []
             peer_max_loop_gap = 0.0
             previous_loop = None
@@ -297,11 +311,11 @@ desk_uart:
             try:
                 with (case / "runtime.log").open("w") as log:
                     proc = subprocess.Popen(
-                        [str(work / "build/.pioenvs/desk-child-lock-test/program")],
+                        [str(work / "build/.pioenvs/desk-panel-lock-test/program")],
                         cwd=case,
                         env=dict(
                             env,
-                            DESK_CHILD_LOCK_CASE=scenario,
+                            DESK_PANEL_LOCK_CASE=scenario,
                             DESK_TEST_UART=os.ttyname(slave),
                             DESK_TEST_PREFS_HOME=str(case / "prefs"),
                         ),
@@ -312,7 +326,9 @@ desk_uart:
                     # HeightMonitor deliberately waits for a stale sequence epoch
                     # before accepting a rebooted counter, then requires settling.
                     duration = (
-                        13.5
+                        14
+                        if scenario == "local_toggle"
+                        else 13.5
                         if scenario
                         in (
                             "periodic_get_lost",
@@ -333,6 +349,12 @@ desk_uart:
                             )
                         previous_loop = loop_now
                         assert proc.poll() is None, scenario
+                        if scenario == "local_toggle" and len(local_changes) < 2:
+                            deadline = (3.0, 8.5)[len(local_changes)]
+                            if elapsed >= deadline:
+                                locked = len(local_changes) == 1
+                                gate = locked
+                                local_changes.append(elapsed)
                         if (
                             scenario == "sequence_reset"
                             and elapsed >= 5
@@ -491,6 +513,10 @@ desk_uart:
                                             )
                                             continue
                                         reply(cl_reply(frame))
+                                        if scenario == "local_toggle" and len(
+                                            local_reports
+                                        ) < len(local_changes):
+                                            local_reports.append(elapsed)
                                         continue
                                     sets += 1
                                     status_code = 0
@@ -619,6 +645,16 @@ desk_uart:
                         sets == 0
                         and "known=1 locked=1 available=1 status=Locked" in out
                     )
+                elif scenario == "local_toggle":
+                    assert sets == 0 and get_count >= 3, events
+                    assert len(local_reports) == len(local_changes) == 2
+                    assert all(
+                        report - change <= 5.0
+                        for change, report in zip(local_changes, local_reports)
+                    ), (local_changes, local_reports)
+                    unlocked = out.index("local_poll locked=0")
+                    assert "local_poll locked=1" in out[unlocked:]
+                    assert "final_known=1 final_locked=0 final_available=1" in out
                 elif scenario in ("unknown", "stock", "vanilla_dt02"):
                     assert "request=0" in out and sets == 0 and "known=0" in out
                     if scenario != "vanilla_dt02":
@@ -673,7 +709,7 @@ desk_uart:
                     ), scenario
                 if scenario in ("unlock", "long_gap"):
                     assert (
-                        "known=1 locked=0 available=1 status=Unlocked; release all physical keys"
+                        "known=1 locked=0 available=1 status=Unlocked; panel buttons in use"
                         in out
                     )
                 if scenario == "busy":
@@ -694,7 +730,7 @@ desk_uart:
                     assert get_count == 1, (scenario, events)
                     assert (
                         "final_result=Panel-lock " in out
-                        and "final_result=Child lock requested" not in out
+                        and "final_result=Panel lock requested" not in out
                     )
                 if scenario == "lost_ack_recover":
                     assert "final_result=Panel-lock change not confirmed" in out
@@ -803,6 +839,11 @@ desk_uart:
                 events=events,
                 transport="synthetic PTY only",
             )
+            if scenario == "local_toggle":
+                summary["local_poll_latency_seconds"] = [
+                    round(report - change, 3)
+                    for change, report in zip(local_changes, local_reports)
+                ]
             (case / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
             results.append({k: v for k, v in summary.items() if k != "events"})
             print(json.dumps(results[-1]), flush=True)

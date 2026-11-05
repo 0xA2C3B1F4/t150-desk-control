@@ -23,6 +23,8 @@ class ControllerFirmwareTest(unittest.TestCase):
     def test_catalog_identity(self):
         """Reject missing or conflicting current-image metadata."""
         catalog = json.loads((ROOT / "metadata/firmware-catalog.json").read_text())
+        self.assertEqual(current.FIRMWARE_ID, "lk01")
+        self.assertIn("display_patch.h", history.HEADERS)
         self.assertEqual(
             current.current_identity(catalog)["sha256"], current.OUTPUT_APP_SHA256
         )

@@ -24,6 +24,7 @@ from desk_test_support import (
     parse_args,
     test_env,
 )
+from limit_poll_integration import run_checks as run_limit_poll_checks
 
 
 def host_config(work):
@@ -412,6 +413,7 @@ def main():
             "boot_same",
         )
     ]
+    results.extend(run_limit_poll_checks(work.with_name(work.name + "-limit-poll")))
     (work / "summary.json").write_text(json.dumps(results, indent=2) + "\n")
     print(json.dumps(results, indent=2))
 

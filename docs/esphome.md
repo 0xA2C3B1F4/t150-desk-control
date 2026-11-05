@@ -47,7 +47,7 @@ the same `t150_ref`:
 
 ```yaml
 packages:
-  panel_lock: github://0xA2C3B1F4/t150-desk-control/examples/esphome/packages/child-lock.yaml@${t150_ref}
+  panel_lock: github://0xA2C3B1F4/t150-desk-control/examples/esphome/packages/panel-lock.yaml@${t150_ref}
   reset_speed: github://0xA2C3B1F4/t150-desk-control/examples/esphome/packages/reset-speed.yaml@${t150_ref}
 ```
 
@@ -221,9 +221,9 @@ Configuration validation checks the listed dependencies. Keep the component
 
 ### Panel lock
 
-`child_lock` is a switch, `child_lock_status` a text sensor and
-`child_lock_available` a binary sensor. All are optional. See
-[panel lock](child-lock.md) for CL01 requirements and use.
+`panel_lock` is a switch, `panel_lock_status` a text sensor and
+`panel_lock_available` a binary sensor. All are optional. See
+[panel lock](panel-lock.md) for CL01 requirements and use.
 
 ### Preset heights and recovery
 
@@ -336,7 +336,8 @@ Changing a target during a direct move stops the desk. Wait for settling and
 select the target again; no replacement is queued. A preset press during uncertain
 command admission also requests Stop and must be repeated. Once a direct move
 is acknowledged, preset buttons can interrupt it normally. Physical keys also
-interrupt movement unless [panel lock](child-lock.md) is active.
+interrupt movement. With [panel lock](panel-lock.md) active, local Stop requires
+LK01; earlier firmware blocks those keys during ordinary remote height moves.
 
 ## Stop and recovery
 

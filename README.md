@@ -13,7 +13,7 @@ Basic control works with supported stock firmware; patches are optional. Develop
 ## What it does
 
 - ESP32 controls provide height in cm or inches, preset recall and editing, target-height moves, controlled Stop, UART status and preset recovery through ESPHome, the browser and Home Assistant. Optional controls cover keep-awake, load telemetry, load settings and timers.
-- Controller firmware extensions add [direct height commands](docs/esphome.md#direct-backend), a persistent [panel lock](docs/child-lock.md), and [calibration and speed controls](docs/reset-speed.md).
+- Controller firmware extensions add [direct height commands](docs/esphome.md#direct-backend), a persistent [panel lock with local unlocking and Stop](docs/panel-lock.md), and [calibration and speed controls](docs/reset-speed.md).
 - Experimental [TB01 timer and buzzer controls](docs/custom-timer-buzzer.md) add an adjustable timer and buzzer pulses to the web interface and Home Assistant.
 - [Display controls](docs/display.md) set how long idle height digits remain visible.
 - Targeted [controller firmware fixes](docs/validation.md#controller-firmware-fixes) address sleep logic at the RTC hour boundary and UART receive parsing.
@@ -65,7 +65,7 @@ Firmware tools are separate optional builds:
 | -------------------------------------------- | ----------------------------------------------- |
 | Read and download only                       | [Firmware reader](docs/firmware-export.md)      |
 | Read, patch, install and verify              | [Firmware maintenance](docs/firmware-update.md) |
-| Enable panel lock controls                   | [Panel lock](docs/child-lock.md)                |
+| Enable panel lock controls                   | [Panel lock](docs/panel-lock.md)                |
 | Enable calibration and speed controls        | [Reset and motion speed](docs/reset-speed.md)   |
 | Adjust stopping for each speed and direction | [Motion trims](docs/motion-trims.md)            |
 

@@ -1,5 +1,6 @@
 """ESPHome UART controls with bundled portable protocol headers."""
 
+import logging
 import math
 import zlib
 
@@ -28,6 +29,8 @@ from esphome.loader import get_component
 from .source_metadata import source_metadata
 from .web_support import configure_web_controls, validate_build_toolchain
 
+_LOGGER = logging.getLogger(__name__)
+
 DEPENDENCIES = ["uart"]
 AUTO_LOAD = [
     "sensor",
@@ -52,13 +55,34 @@ StepHeightButton = ns.class_("StepHeightButton", button.Button)
 RestorePresetButton = ns.class_("RestorePresetButton", button.Button)
 AcceptCurrentPresetButton = ns.class_("AcceptCurrentPresetButton", button.Button)
 TimerButton = ns.class_("TimerButton", button.Button)
-ChildLockSwitch = ns.class_("ChildLockSwitch", switch.Switch)
+PanelLockSwitch = ns.class_("PanelLockSwitch", switch.Switch)
 ResetButton = ns.class_("ResetButton", button.Button)
 MotionSpeedSelect = ns.class_("MotionSpeedSelect", select.Select)
 DisplayModeSelect = ns.class_("DisplayModeSelect", select.Select)
 DisplayTimeoutNumber = ns.class_("DisplayTimeoutNumber", number.Number)
 MotionTrimNumber = ns.class_("MotionTrimNumber", number.Number)
 MOTION_TRIMS = ("normal_up_trim", "normal_down_trim", "slow_up_trim", "slow_down_trim")
+PANEL_LOCK_ALIASES = {
+    "child_lock": "panel_lock",
+    "child_lock_status": "panel_lock_status",
+    "child_lock_available": "panel_lock_available",
+}
+
+
+def normalize_panel_lock_keys(config: object) -> object:
+    """Translate legacy panel lock keys before validating their entity settings."""
+    if not isinstance(config, dict):
+        return config
+    for old_key, new_key in PANEL_LOCK_ALIASES.items():
+        if old_key not in config:
+            continue
+        config = cv.rename_key(old_key, new_key)(config)
+        _LOGGER.warning(
+            "`%s` has been renamed to `%s`. Update your YAML configuration.",
+            old_key,
+            new_key,
+        )
+    return config
 
 
 def validate_motion(config):
@@ -162,6 +186,7 @@ def display_bounds(config):
 
 CONFIG_SCHEMA = cv.All(
     cv.require_esphome_version(2026, 10, 1),
+    normalize_panel_lock_keys,
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(DeskUART),
@@ -230,8 +255,8 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional("target_height_backend"): text_sensor.text_sensor_schema(
                 entity_category="diagnostic"
             ),
-            cv.Optional("child_lock"): switch.switch_schema(
-                ChildLockSwitch,
+            cv.Optional("panel_lock"): switch.switch_schema(
+                PanelLockSwitch,
                 icon="mdi:account-lock",
                 entity_category="config",
                 default_restore_mode="DISABLED",
@@ -247,10 +272,10 @@ CONFIG_SCHEMA = cv.All(
                     ),
                 }
             ),
-            cv.Optional("child_lock_status"): text_sensor.text_sensor_schema(
+            cv.Optional("panel_lock_status"): text_sensor.text_sensor_schema(
                 entity_category="diagnostic"
             ),
-            cv.Optional("child_lock_available"): binary_sensor.binary_sensor_schema(
+            cv.Optional("panel_lock_available"): binary_sensor.binary_sensor_schema(
                 entity_category="diagnostic"
             ),
             cv.Optional("experimental_reset_controls", default=False): cv.boolean,
@@ -437,7 +462,7 @@ async def to_code(config):
         "control_status",
         "command_result",
         "target_height_backend",
-        "child_lock_status",
+        "panel_lock_status",
         "reset_status",
         "motion_trim_status",
         "display_status",
@@ -459,14 +484,14 @@ async def to_code(config):
             )
         )
     configure_web_controls(config)
-    if "child_lock" in config:
-        child_lock = await switch.new_switch(config["child_lock"])
-        cg.add(child_lock.set_parent(var))
-        cg.add(var.set_child_lock_switch(child_lock))
-    if "child_lock_available" in config:
+    if "panel_lock" in config:
+        panel_lock = await switch.new_switch(config["panel_lock"])
+        cg.add(panel_lock.set_parent(var))
+        cg.add(var.set_panel_lock_switch(panel_lock))
+    if "panel_lock_available" in config:
         cg.add(
-            var.set_child_lock_available(
-                await binary_sensor.new_binary_sensor(config["child_lock_available"])
+            var.set_panel_lock_available(
+                await binary_sensor.new_binary_sensor(config["panel_lock_available"])
             )
         )
     cg.add(var.set_reset_enabled(config["experimental_reset_controls"]))

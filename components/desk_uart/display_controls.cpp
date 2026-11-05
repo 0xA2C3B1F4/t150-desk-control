@@ -224,7 +224,7 @@ void DeskUART::display_loop_(uint32_t now) {
     this->display_message_ = "Display reply missing; not retried";
   }
   const bool allowed = !this->motion_trim_busy_() && this->motion_trim_access_allowed_(now);
-  if (!this->display_.busy() && allowed && this->child_lock_dt02_ &&
+  if (!this->display_.busy() && allowed && this->panel_lock_dt02_ &&
       this->reset_speed_.supported()) {
     if (this->display_restore_pending_ && this->display_.state_known()) {
       this->display_restore_pending_ = false;

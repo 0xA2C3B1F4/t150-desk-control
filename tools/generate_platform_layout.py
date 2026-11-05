@@ -75,6 +75,7 @@ def load_layout(path=None):
         "trim_record",
         "trim_i2c",
         "trim_adapter",
+        "local_lock",
         "future",
         "guard",
     }:

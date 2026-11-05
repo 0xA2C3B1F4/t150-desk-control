@@ -109,7 +109,7 @@ NEW_JSON = (
     OLD_JSON
     + """
   // desk-confirmed-switch-v1: ordinary ESPHome switches do not maintain has_state().
-  if (desk_uart::ChildLockSwitch::is_instance(obj)) {
+  if (desk_uart::PanelLockSwitch::is_instance(obj)) {
     root[ESPHOME_F("desk_panel_lock")] = true;
     if (!obj->has_state()) {
       root[ESPHOME_F("state")] = "UNKNOWN";

@@ -156,7 +156,7 @@ int main() {
     Rig r;
     r.image[25600] = 0x42;
     CHECK(!r.sender.begin(r.image.data(), r.image.size(), Rig::write, &r, r.now));
-    r.header(Sender::Profile::ChildLockCL01);
+    r.header(Sender::Profile::PanelLockCL01);
     const std::string header(r.writes[1].begin() + 3, r.writes[1].begin() + 131);
     CHECK(header.find("26624 ") != std::string::npos);
     for (int i = 0; i < 26; ++i) {
@@ -178,7 +178,7 @@ int main() {
     Rig r;
     r.image[26624] = 0;
     CHECK(!r.sender.begin(r.image.data(), r.image.size(), Rig::write, &r, r.now,
-                          Sender::Profile::ChildLockCL01));
+                          Sender::Profile::PanelLockCL01));
     CHECK(r.writes.empty());
   }
   {
@@ -190,7 +190,7 @@ int main() {
   // The CL01 profile retains the same stop-once behavior at every reply gate.
   for (unsigned stop = 0; stop < 32; ++stop) {
     Rig r;
-    r.begin(Sender::Profile::ChildLockCL01);
+    r.begin(Sender::Profile::PanelLockCL01);
     r.boot();
     std::vector<uint8_t> replies{6, 0x43, 6, 0x43};
     replies.insert(replies.end(), 28, 6);
@@ -208,7 +208,7 @@ int main() {
     for (size_t i = 26624; i < Sender::RESET_SPEED_PAYLOAD_SIZE; ++i)
       r.image[i] = uint8_t(i * 13);
     CHECK(!r.sender.begin(r.image.data(), r.image.size(), Rig::write, &r, r.now,
-                          Sender::Profile::ChildLockCL01));
+                          Sender::Profile::PanelLockCL01));
     r.header(Sender::Profile::ResetSpeedRS01);
     const std::string header(r.writes[1].begin() + 3, r.writes[1].begin() + 131);
     CHECK(header.find("32768 ") != std::string::npos);

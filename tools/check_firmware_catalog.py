@@ -84,6 +84,8 @@ def validate(catalog, probe):
     # Exact builder source/output pins, not catalog-to-schema self-consistency.
     import build_child_lock_patch as cl
     import build_controller_firmware as current
+    import build_display_patch as display
+    import build_local_lock_patch as local_lock
     import build_motion_trim_patch as tr
     import build_platform_patch as fp
     import build_reset_speed_patch as rs
@@ -93,6 +95,11 @@ def validate(catalog, probe):
         current.SOURCE_APP_SHA256 != rs.OUTPUT_APP_SHA256
         or current.OUTPUT_APP_SHA256 != probe["images"][current.FIRMWARE_ID]
         or current.PAYLOAD_SIZE != probe["payload_sizes"][current.FIRMWARE_ID]
+        or current.FIRMWARE_ID != "lk01"
+        or local_lock.OUTPUT_APP_SHA256 != probe["images"]["lk01"]
+        or local_lock.PAYLOAD_SIZE != probe["payload_sizes"]["lk01"]
+        or display.OUTPUT_APP_SHA256 != probe["images"]["ds01"]
+        or display.PAYLOAD_SIZE != probe["payload_sizes"]["ds01"]
         or cl.SOURCE_APP_SHA256 != probe["images"]["dt02"]
         or cl.OUTPUT_APP_SHA256 != probe["images"]["cl01"]
         or rs.SOURCE_APP_SHA256 != cl.OUTPUT_APP_SHA256

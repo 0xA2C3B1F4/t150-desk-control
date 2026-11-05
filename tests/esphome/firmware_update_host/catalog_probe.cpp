@@ -19,6 +19,8 @@ struct Probe : fw::FirmwareUpdate {
     const char* expected = "Cannot prepare the exact reset and speed source";
     if (!std::strcmp(source, fw::CURRENT_SHA)) {
       expected = "Current firmware failed its integrity check";
+    } else if (!std::strcmp(source, fw::DS01_SHA)) {
+      expected = "Cannot restore the exact reset and speed source from display firmware";
     } else if (!std::strcmp(source, fw::BZ01_SHA)) {
       expected = "Cannot restore the exact reset and speed source from sound firmware";
     } else if (!std::strcmp(source, fw::TR01_SHA)) {
@@ -46,9 +48,10 @@ struct Probe : fw::FirmwareUpdate {
   }
 };
 int main() {
-  const char* ids[] = {"stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01", "bz01", "ds01"};
+  const char* ids[] = {"stock", "dt02", "cl01", "rs01-r7", "tb01",
+                       "fp01",  "tr01", "bz01", "ds01",    "lk01"};
   const char* hashes[] = {fw::STOCK_SHA, fw::DT02_SHA, fw::CL01_SHA, fw::RS01_SHA, fw::TB01_SHA,
-                          fw::FP01_SHA,  fw::TR01_SHA, fw::BZ01_SHA, fw::DS01_SHA};
+                          fw::FP01_SHA,  fw::TR01_SHA, fw::BZ01_SHA, fw::DS01_SHA, fw::LK01_SHA};
   Probe probe;
   std::cout << "{\"application_size\":" << fw::IMAGE_SIZE << ",\"images\":{";
   for (unsigned i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i) {

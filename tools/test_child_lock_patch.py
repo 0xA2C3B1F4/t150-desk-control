@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a saved T150 child-lock candidate on Unicorn Cortex-M0, offline.
+"""Run a saved T150 panel lock candidate on Unicorn Cortex-M0, offline.
 
 The real RX parser, UART dispatcher, input predicates, button scanner and patch
 instructions execute. Only the external EEPROM transport is replaced by a
@@ -349,7 +349,7 @@ class Machine:
             value = machine.uc.reg_read(UC_ARM_REG_R0)
             require(
                 address in (0x60, 0x61) and value <= 255,
-                f"write escaped child-lock EEPROM record {address:#x}={value:#x}",
+                f"write escaped panel lock EEPROM record {address:#x}={value:#x}",
             )
             if machine.cut_before_write == len(machine.eeprom_writes):
                 raise PowerCutError()
@@ -442,11 +442,11 @@ class Suite:
         if not reply:
             return None
         body = decode(reply)
-        require(len(body) == 15 and body[:2] == b"\xd4\x01", "child-lock reply format")
-        require(body[7:11] == b"CL01", "child-lock build marker")
+        require(len(body) == 15 and body[:2] == b"\xd4\x01", "panel lock reply format")
+        require(body[7:11] == b"CL01", "panel lock build marker")
         require(
             body[2] == operation and body[11:13] == nonce.to_bytes(2, "big"),
-            "child-lock operation/nonce echo",
+            "panel lock operation/nonce echo",
         )
         self.collect(machine)
         return {
@@ -1272,7 +1272,7 @@ class Suite:
                     and machine.get(0x88D) == old_mode,
                     "rejected/query DT02 request changed target or mode",
                 )
-            require(not machine.eeprom_writes, "DT02 wrote child-lock persistence")
+            require(not machine.eeprom_writes, "DT02 wrote panel lock persistence")
             require(machine.get(0xFC8) == 1, "DT02 cleared physical lock")
             self.collect(machine)
             return machine

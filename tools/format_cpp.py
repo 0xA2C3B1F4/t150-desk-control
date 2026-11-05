@@ -16,6 +16,10 @@ from install_ci_llvm import verify_clang_format
 ROOT = Path(__file__).resolve().parents[1]
 SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".h", ".hpp"}
 EXTRA_SOURCES = {
+    "tools/patches/local_lock_controller.h",
+    "tools/patches/local_lock_controller.c",
+    "tools/patches/local_lock_core.h",
+    "tools/patches/local_lock_core.c",
     "tools/patches/display_controller.h",
     "tools/patches/display_controller.c",
     "tools/patches/display_core.h",
@@ -66,6 +70,7 @@ EXCLUDED = {
     "components/desk_firmware_update/motion_trim_patch.h",
     "components/desk_firmware_update/buzzer_patch.h",
     "components/desk_firmware_update/display_patch.h",
+    "components/desk_firmware_update/local_lock_patch.h",
     "components/desk_uart/desk_protocol/firmware_layout.h",
 }
 

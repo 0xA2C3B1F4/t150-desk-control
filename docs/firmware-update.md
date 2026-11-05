@@ -22,7 +22,7 @@ Open **Open firmware maintenance** in the main page's Firmware group, or
 network; `web_server.auth` is required. Reload after updating the ESP32.
 
 The local example includes `stamp-c3.yaml` and the `firmware-update.yaml`,
-`child-lock.yaml` and `reset-speed.yaml` files under `packages/`. Keep that layout
+`panel-lock.yaml` and `reset-speed.yaml` files under `packages/`. Keep that layout
 and place `secrets.yaml` beside the device YAML when copying a local configuration.
 For a moved local checkout, update the base source and `firmware_components_path`;
 both resolve from the main device YAML. See [configuration paths](esphome.md#configuration-paths).
@@ -37,8 +37,8 @@ and cannot be combined with this build. A rejected OTA attempt logs
 `OTA refused: firmware operation active or queued`; retry after the operation ends.
 The OTA guard checks the reviewed ESPHome source. If a different ESPHome version
 fails with `Unreviewed ESPHome OTA source`, use the supported version above.
-With patched controller firmware, keep the
-[panel-lock package](child-lock.md) enabled so you can unlock the panel.
+Keep the [panel-lock package](panel-lock.md) enabled for remote lock controls.
+Firmware before LK01 requires these controls to unlock the panel.
 
 ## Read, patch and verify
 
@@ -54,12 +54,14 @@ Follow the active instruction panel. Keep the ESP32 powered throughout.
 3. Download the backup and confirm it is saved on your computer. Closing the
    page loses its browser-memory copy.
 4. Select **Prepare current firmware**. This includes direct height control,
-   panel locking, calibration, Normal/Slow speeds, timer and buzzer controls,
+   panel locking with local unlocking and Stop, calibration, Normal/Slow speeds,
+   timer and buzzer controls,
    [motion trims](motion-trims.md), and [display timing](display.md). The page shows the target version.
    If it is already installed, the same action prepares a reinstall.
    To restore an older supported image, use **Prepare selected file**.
-   Configure the panel-lock controls before installation. Without a valid saved
-   lock setting, physical buttons start locked, including local stopping.
+   Without a valid saved lock setting, the panel starts locked. Use
+   [M + T](panel-lock.md#use-the-panel) or the remote controls to unlock it.
+   Local Stop remains available while locked in LK01.
 5. Confirm and select **Arm installation**, then power-cycle only the controller.
    Leave power connected throughout writing.
 6. At `readback required`, select **Verify by full readback** and power-cycle
@@ -78,13 +80,16 @@ keep both devices powered until status returns. Writes never retry automatically
 
 ## Accepted images and storage
 
-Writing accepts only the exact original, DT02, CL01, RS01 R7, TB01, FP01 and TR01
-applications. **Prepare current firmware** accepts all seven as starting points.
+Writing accepts only the exact original, DT02, CL01, RS01 R7, TB01, FP01, TR01,
+BZ01, DS01 and LK01 applications. **Prepare current firmware** accepts all ten
+as starting points.
 The current image requires the documented STM32F030C8T6 controller with 8 KiB
 SRAM. A fresh read identifies the installed image.
 Other images need a separately reviewed patch; profile recognition alone does
 not authorize writing.
 
+Restoring DS01 or an earlier image removes local unlocking and the new local
+Stop behavior. Keep remote lock controls enabled when reverting.
 To remove trims, install and verify a saved FP01 or earlier supported image.
 The saved trim bytes remain available for a later TR01 installation.
 To remove FP01, install and verify a saved TB01, R7, CL01, DT02 or original image.

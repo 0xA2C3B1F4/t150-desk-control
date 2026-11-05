@@ -16,6 +16,11 @@ trim_selector:
   push {r0,r2,r3,r4,r5,lr}
   mov r5, r4
   mov r4, r12
+#ifdef DESK_LOCAL_PANEL_LOCK
+  bl local_lock_controller_sleep_blocked
+  cmp r0, #0
+  bne 1f
+#endif
   bl trim_controller_blocks_native
   cmp r0, #0
   bne 1f
@@ -34,6 +39,9 @@ trim_foreground:
   push {r4,r5,r6,lr}
   mov r4, r12
   bl trim_controller_poll
+#ifdef DESK_LOCAL_PANEL_LOCK
+  bl local_lock_controller_poll
+#endif
   bl trim_controller_blocks_native
   cmp r0, #0
   bne 3f
@@ -63,6 +71,10 @@ trim_gpio:
   mov r6, r12
   bl trim_controller_inputs_blocked
   mov r7, r0
+#ifdef DESK_LOCAL_PANEL_LOCK
+  bl local_lock_controller_inputs_blocked
+  orrs r7, r0
+#endif
   mov r0, r4
   mov r1, r5
   ldr r3, =0x08008ca9

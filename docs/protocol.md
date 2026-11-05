@@ -631,7 +631,7 @@ is generated. The adapter cancels detection on other commands, waits at least
 ## CL01 panel lock extension
 
 CL01 adds panel locking to DT02. A DT02 capability reply alone does not establish
-CL01 support. `child_lock.h` validates the operation, version, build, nonce,
+CL01 support. `panel_lock.h` validates the operation, version, build, nonce,
 status, boolean fields and sequence against current telemetry. GET is read-only;
 SET requires an idle controller and is never retried automatically.
 
@@ -676,6 +676,18 @@ reservation at `0x08008C00`. The physical release gate checks one GPIO sample;
 it is not a debounce guarantee. EEPROM I/O runs with saved/restored interrupt
 masking. See [child_lock.S](../tools/patches/child_lock.S) for the exact write
 sequence and [validation](validation.md) for completed checks.
+
+### LK01 local panel operation
+
+LK01 keeps the D3/D4 wire format and CL01 record. The panel combination changes
+that same record; the next GET reports its state. Remote LOCK and UNLOCK remain
+absolute operations rather than toggles.
+
+Both local and remote changes require idle controls, an idle or paused RS01
+state, inactive motor outputs and an available storage path. GET remains
+read-only during a storage operation. A held local Stop blocks new native,
+direct-target and reset/resume movement until all panel buttons are released,
+even if a remote command unlocks the panel during the hold.
 
 ## RS01 reset and speed extension
 

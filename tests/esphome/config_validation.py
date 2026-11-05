@@ -137,36 +137,36 @@ cases = [
         True,
     ),
     (
-        "child_lock",
+        "panel_lock",
         base
-        + "  child_lock:\n    name: Child lock\n  child_lock_status:\n    name: Child lock status\n  child_lock_available:\n    name: Child lock available\n",
+        + "  panel_lock:\n    name: Panel lock\n  panel_lock_status:\n    name: Panel lock status\n  panel_lock_available:\n    name: Panel lock available\n",
         True,
     ),
     (
         "concise_panel_lock",
         base
-        + "  child_lock:\n    name: Panel lock\n  control_status:\n    name: Control status\n",
+        + "  panel_lock:\n    name: Panel lock\n  control_status:\n    name: Control status\n",
         True,
     ),
     (
-        "child_lock_diagnostics_only",
+        "panel_lock_diagnostics_only",
         base
-        + "  child_lock_status:\n    name: Child lock status\n  child_lock_available:\n    name: Child lock available\n",
+        + "  panel_lock_status:\n    name: Panel lock status\n  panel_lock_available:\n    name: Panel lock available\n",
         True,
     ),
     (
-        "child_lock_restore_disabled",
-        base + "  child_lock:\n    name: Child lock\n    restore_mode: DISABLED\n",
+        "panel_lock_restore_disabled",
+        base + "  panel_lock:\n    name: Panel lock\n    restore_mode: DISABLED\n",
         True,
     ),
     (
-        "child_lock_rejects_restore",
-        base + "  child_lock:\n    name: Child lock\n    restore_mode: ALWAYS_OFF\n",
+        "panel_lock_rejects_restore",
+        base + "  panel_lock:\n    name: Panel lock\n    restore_mode: ALWAYS_OFF\n",
         False,
     ),
     (
-        "child_lock_rejects_inversion",
-        base + "  child_lock:\n    name: Child lock\n    inverted: true\n",
+        "panel_lock_rejects_inversion",
+        base + "  panel_lock:\n    name: Panel lock\n    inverted: true\n",
         False,
     ),
     ("direct_requires_opt_in", base + "  target_height_mode: direct\n", False),
@@ -299,8 +299,8 @@ for name, text, expected in cases:
     (work / (name + ".log")).write_text(result.stdout + result.stderr)
     passed = result.returncode == 0
     assert passed == expected, f"{name}: unexpected result, see log"
-    if name == "child_lock":
-        lock = yaml.safe_load(result.stdout)["desk_uart"][0]["child_lock"]
+    if name == "panel_lock":
+        lock = yaml.safe_load(result.stdout)["desk_uart"][0]["panel_lock"]
         assert lock["restore_mode"] == "DISABLED", lock
     if name == "motion_trim_boxes":
         desk = yaml.safe_load(result.stdout)["desk_uart"][0]

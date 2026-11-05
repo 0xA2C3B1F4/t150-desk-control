@@ -1,6 +1,9 @@
 #ifdef DESK_DISPLAY_TIMEOUT
 #include "display_controller.h"
 #endif
+#ifdef DESK_LOCAL_PANEL_LOCK
+#include "local_lock_controller.h"
+#endif
 #include "motion_trim_controller.h"
 #include "motion_trim_motion.h"
 #include "motion_trim_native.h"
@@ -265,6 +268,11 @@ static bool native_request_allowed(const volatile uint8_t* request, uint8_t leng
 }
 
 int trim_controller_route(void) {
+#ifdef DESK_LOCAL_PANEL_LOCK
+  if (local_lock_controller_route()) {
+    return 1;
+  }
+#endif
 #ifdef DESK_DISPLAY_TIMEOUT
   if (display_controller_route()) {
     return 1;

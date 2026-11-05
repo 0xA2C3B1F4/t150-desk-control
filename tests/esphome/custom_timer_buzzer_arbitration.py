@@ -95,9 +95,9 @@ desk_uart:
     name: Speed available
     on_state:
       - lambda: ESP_LOGI("custom_regression", "speed_available=%d", x);
-  child_lock:
+  panel_lock:
     name: Lock
-  child_lock_available:
+  panel_lock_available:
     name: Lock available
     on_state:
       - lambda: ESP_LOGI("custom_regression", "lock_available=%d", x);

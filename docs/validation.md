@@ -3,6 +3,15 @@
 Hardware results apply to the [tested controller](hardware.md#desk-and-controller-compatibility).
 Host tests and successful builds do not establish physical behavior.
 
+## Local panel lock
+
+LK01 adds M + T locking and unlocking, with physical Stop while locked.
+Linked-code tests cover native button handling, pending motion, release gates,
+sleep/wake, storage faults and display priority. Host tests confirm that local
+changes reach the existing web/HA switch without a write-back. The updater passed
+all 100 supported install/restore image pairs, and the complete Stamp-C3 build
+passed. Earlier image hashes remain unchanged.
+
 ## Display timeout
 
 DS01 adds configurable idle-display timing. Offline checks cover deadline limits,
@@ -22,6 +31,14 @@ The Stamp-C3 build includes the controls, encrypted API, web interface, OTA and
 firmware maintenance. Earlier firmware reconstruction bytes remain pinned.
 
 ## Hardware validation
+
+### Local panel lock
+
+LK01 passed firmware-maintenance installation and full application readback.
+Repeated local toggles with either button first showed matching `Loc`/`UnL`
+feedback and reported states. Toggles also worked with ESPHome UART access paused,
+and the local lock survived controller power cycles. Physical Stop worked in both
+movement directions while keeping the panel locked.
 
 ### Display timeout
 
@@ -363,13 +380,13 @@ python tools/test_platform_patch.py --llvm-bin /path/to/llvm/bin
 The instruction tests cover startup, profile rejection, RAM guards and the moved
 TB01 state. Installer tests cover the accepted image transitions, full readback,
 interrupted writes and repeated original-image recovery. The complete installer
-matrix requires private images for all seven supported versions. These checks model RAM
+matrix requires saved images for all supported versions. These checks model RAM
 and peripherals; they do not measure physical SRAM or reset behavior.
 
 ### TR01 reproduction
 
-Offline checks reproduced identical full, application and payload images with
-the current controller builder and its TR01 predecessor.
+Offline checks reproduced the pinned TR01 full, application and payload images.
+The current builder below produces LK01, which includes the trim support.
 
 Use the same LLVM toolchain and Unicorn version as FP01:
 
@@ -394,6 +411,18 @@ The fixed-profile checks reject unknown source images, changed patch sections,
 missing identity pins and overwritten output directories. Instruction tests in CI
 cover trim transactions, independent storage and the original firmware's EEPROM
 writers.
+
+### LK01 reproduction
+
+The builder checks need no manufacturer image. Exact native-button tests also
+require a saved full R7 image:
+
+```sh
+python tools/embed_local_lock_patch.py --check --llvm-bin /path/to/llvm/bin
+python tools/test_local_lock_builder.py --llvm-bin /path/to/llvm/bin
+python tools/test_local_lock_runtime.py --source-r7 /path/to/saved-full-r7.bin \
+  --llvm-bin /path/to/llvm/bin
+```
 
 ## ESPHome 2026.10.1
 

@@ -155,7 +155,7 @@ def main():
         assert int(config["uart"][0]["rx_buffer_size"]) == 4096
     if args.example.endswith("update"):
         assert (
-            "child_lock" in config["desk_uart"][0]
+            "panel_lock" in config["desk_uart"][0]
             and "motion_speed" in config["desk_uart"][0]
         )
         assert "desk_firmware_update" in config

@@ -151,7 +151,7 @@ def main():
             ESP_LOGI("rs_test", "load_blocked=%d", !id(desk)->set_load_limit(desk_protocol::LoadLimit::Upward, 4800));
             ESP_LOGI("rs_test", "restore_blocked=%d", !id(desk)->restore_temporary_preset());
             ESP_LOGI("rs_test", "accept_blocked=%d", !id(desk)->accept_current_preset());
-            ESP_LOGI("rs_test", "panel_lock_blocked=%d", !id(desk)->set_child_lock(true));
+            ESP_LOGI("rs_test", "panel_lock_blocked=%d", !id(desk)->set_panel_lock(true));
             ESP_LOGI("rs_test", "speed_blocked=%d", !id(desk)->set_motion_speed(true));
             ESP_LOGI("rs_test", "maintenance_blocked=%d", !id(desk)->begin_firmware_export(true));
           }}
@@ -232,7 +232,7 @@ desk_uart:
     name: Motion speed available
     on_state:
       - lambda: ESP_LOGI("rs_test", "speed_public=%d", x);
-  child_lock_available:
+  panel_lock_available:
     name: Panel lock available
     on_state:
       - lambda: ESP_LOGI("rs_test", "lock_public=%d", x);
@@ -251,7 +251,7 @@ desk_uart:
         for key in (
             "reset_available",
             "motion_speed_available",
-            "child_lock_available",
+            "panel_lock_available",
         ):
             concise["desk_uart"].pop(key)
         config = yaml.safe_dump(concise, sort_keys=False)

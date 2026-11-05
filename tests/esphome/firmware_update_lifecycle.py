@@ -28,6 +28,7 @@ parser.add_argument("--platform", type=Path)
 parser.add_argument("--motion-trims", type=Path)
 parser.add_argument("--current", type=Path)
 parser.add_argument("--buzzer", type=Path)
+parser.add_argument("--display-timeout", type=Path)
 parser.add_argument("--recovery-record", type=Path)
 args = parse_args(parser=parser)
 required_images = (
@@ -40,6 +41,7 @@ required_images = (
     "motion_trims",
     "current",
     "buzzer",
+    "display_timeout",
 )
 if (
     args.interrupted
@@ -53,7 +55,7 @@ if (
     ]
     if missing:
         parser.error(
-            "Complete lifecycle requires all nine images; missing " + ", ".join(missing)
+            "Complete lifecycle requires all ten images; missing " + ", ".join(missing)
         )
 work = args.work_dir
 host = ROOT / "tests/esphome/firmware_export_host"
@@ -120,7 +122,11 @@ if args.motion_trims:
     command += [str(args.motion_trims.resolve())]
 if args.current:
     command += [str(args.recovery_record.resolve()) if args.recovery_record else "-"]
-    command += [str(args.current.resolve()), str(args.buzzer.resolve())]
+    command += [
+        str(args.current.resolve()),
+        str(args.buzzer.resolve()),
+        str(args.display_timeout.resolve()),
+    ]
 with (work / "run.log").open("w") as log:
     subprocess.run(
         command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=60
@@ -132,8 +138,8 @@ if (
 ):
     raise SystemExit("Prior updater recovery record was not exercised")
 if args.platform:
-    identities = "TB01/FP01/TR01/BZ01/DS01"
-    pairs = 81
+    identities = "TB01/FP01/TR01/BZ01/DS01/LK01"
+    pairs = 100
     expected = (
         f"{identities} exact preparation, {pairs} modeled transitions, 53-to-32 erase, final ACK loss, "
         "torn blocks 33/53 and repeated original recovery passed"
@@ -159,6 +165,7 @@ summary = dict(
     motion_trims_image=bool(args.motion_trims),
     current_image=bool(args.current),
     buzzer_image=bool(args.buzzer),
+    display_timeout_image=bool(args.display_timeout),
     prior_recovery_record=bool(args.recovery_record),
     interrupted_image=interrupted,
     hardware_access=False,
@@ -175,6 +182,7 @@ for name in (
     "motion_trims",
     "current",
     "buzzer",
+    "display_timeout",
     "interrupted",
 ):
     path = getattr(args, name)

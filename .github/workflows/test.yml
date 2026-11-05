@@ -108,7 +108,7 @@ jobs:
       - name: Firmware UI state transitions
         if: matrix.build_type == 'Debug'
         run: node tests/esphome/firmware_ui_test.cjs
-      - name: Offline child-lock builder and protocol
+      - name: Historical CL01 builder and protocol
         if: matrix.build_type == 'Debug'
         env:
           TMPDIR: ${{ runner.temp }}
@@ -140,6 +140,7 @@ jobs:
           python3 tools/embed_motion_trim_patch.py --check
           python3 tools/embed_buzzer_patch.py --check
           python3 tools/embed_display_patch.py --check
+          python3 tools/embed_local_lock_patch.py --check
       - name: Test controller extensions against synthetic helpers
         if: matrix.build_type == 'Debug'
         env:
@@ -151,6 +152,7 @@ jobs:
           python3 tools/test_tb01_patch.py
           python3 tools/test_platform_patch.py
           python3 tools/test_display_builder.py
+          python3 tools/test_local_lock_builder.py
           python3 tools/test_display_runtime.py
           python3 tools/test_buzzer_builder.py
           python3 tools/test_buzzer_runtime.py
@@ -181,6 +183,7 @@ jobs:
             component_packaging,
             component_layout,
             config_validation,
+            panel_lock_config,
             identity_integration,
             firmware_export_config,
             firmware_export_integration,
@@ -197,7 +200,7 @@ jobs:
             retarget_phase_integration,
             auto_target_integration,
             backend_journal_integration,
-            child_lock_integration,
+            panel_lock_integration,
             reset_speed_integration,
             motion_trim_integration,
             motion_trim_target_integration,
