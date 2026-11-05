@@ -25,6 +25,7 @@ class WrapperArgumentsTest(unittest.TestCase):
             "--motion-trims",
             "--current",
             "--buzzer",
+            "--display-timeout",
         )
         with tempfile.TemporaryDirectory(
             dir=os.environ["TMPDIR"], prefix="desk-wrapper-"
@@ -54,7 +55,7 @@ class WrapperArgumentsTest(unittest.TestCase):
                         result.returncode, 2, result.stdout + result.stderr
                     )
                     self.assertIn(
-                        "requires all nine images; missing " + missing + "\n",
+                        "requires all ten images; missing " + missing + "\n",
                         result.stderr,
                     )
                     self.assertFalse((work / "include").exists())

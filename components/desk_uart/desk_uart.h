@@ -5,7 +5,7 @@
 #include "desk_protocol/target.h"
 #include "desk_protocol/direct_target.h"
 #include "desk_protocol/target_detection.h"
-#include "desk_protocol/child_lock.h"
+#include "desk_protocol/panel_lock.h"
 #include "desk_protocol/reset_speed.h"
 #include "desk_protocol/motion_trim.h"
 #include "desk_protocol/display_settings.h"
@@ -30,7 +30,7 @@
 namespace esphome {
 namespace desk_uart {
 
-class ChildLockSwitch;
+class PanelLockSwitch;
 class MotionSpeedSelect;
 class MotionTrimNumber;
 class DisplayModeSelect;
@@ -74,12 +74,12 @@ class DeskUART : public Component, public uart::UARTDevice {
   void set_keep_awake_enabled(bool enabled) { keep_awake_enabled_ = enabled; }
   void set_auto_target_mode(bool enabled) { auto_target_mode_ = enabled; }
   void set_target_height_backend(text_sensor::TextSensor* s) { target_backend_sensor_ = s; }
-  void set_child_lock_switch(ChildLockSwitch* s) { child_lock_switch_ = s; }
-  void set_child_lock_status(text_sensor::TextSensor* s) { child_lock_status_ = s; }
-  void set_child_lock_available(binary_sensor::BinarySensor* s) { child_lock_available_ = s; }
+  void set_panel_lock_switch(PanelLockSwitch* s) { panel_lock_switch_ = s; }
+  void set_panel_lock_status(text_sensor::TextSensor* s) { panel_lock_status_ = s; }
+  void set_panel_lock_available(binary_sensor::BinarySensor* s) { panel_lock_available_ = s; }
   // Single attempt, no queue or optimistic state. Same-state SET explicitly
   // re-verifies the controller's persistent record, including after a fault.
-  bool set_child_lock(bool locked);
+  bool set_panel_lock(bool locked);
   void set_reset_enabled(bool enabled) { reset_enabled_ = enabled; }
   void set_reset_status(text_sensor::TextSensor* s) { reset_status_ = s; }
   void set_reset_available(binary_sensor::BinarySensor* s) { reset_available_ = s; }
@@ -205,7 +205,7 @@ class DeskUART : public Component, public uart::UARTDevice {
   const char* last_timer_error_{nullptr};
   void target_loop_(uint32_t now);
   void direct_loop_(uint32_t now);
-  void child_lock_loop_(uint32_t now);
+  void panel_lock_loop_(uint32_t now);
   void reset_speed_loop_(uint32_t now);
   void display_setup_(uint32_t boot);
   void display_observe_height_(uint16_t sequence);
@@ -284,26 +284,26 @@ class DeskUART : public Component, public uart::UARTDevice {
   bool last_reset_available_{false}, last_speed_available_{false};
   uint32_t last_reset_speed_query_{0}, last_reset_lease_tx_{0};
   const char* last_reset_status_{nullptr};
-  void child_lock_result_();
-  void publish_child_lock_(uint32_t now);
-  const char* child_lock_status_text_(uint32_t now) const;
-  void invalidate_child_lock_(const char* reason, bool publish = true, bool report_failure = true);
-  void yield_child_lock_read_();
-  bool child_lock_access_allowed_(uint32_t now, bool read = false, bool presentation = false) const;
-  bool child_lock_busy_() const { return child_lock_.busy() || child_lock_detection_.busy(); }
-  bool child_lock_enabled_() const {
-    return child_lock_switch_ || child_lock_status_ || child_lock_available_ ||
+  void panel_lock_result_();
+  void publish_panel_lock_(uint32_t now);
+  const char* panel_lock_status_text_(uint32_t now) const;
+  void invalidate_panel_lock_(const char* reason, bool publish = true, bool report_failure = true);
+  void yield_panel_lock_read_();
+  bool panel_lock_access_allowed_(uint32_t now, bool read = false, bool presentation = false) const;
+  bool panel_lock_busy_() const { return panel_lock_.busy() || panel_lock_detection_.busy(); }
+  bool panel_lock_enabled_() const {
+    return panel_lock_switch_ || panel_lock_status_ || panel_lock_available_ ||
            reset_speed_enabled_();
   }
-  desk_protocol::ChildLock child_lock_{};
-  desk_protocol::TargetDetection child_lock_detection_{};
-  ChildLockSwitch* child_lock_switch_{nullptr};
-  text_sensor::TextSensor* child_lock_status_{nullptr};
-  binary_sensor::BinarySensor* child_lock_available_{nullptr};
-  bool child_lock_probed_{false}, child_lock_dt02_{false}, child_lock_sending_{false},
-      last_child_lock_available_{false};
-  uint32_t last_child_lock_query_{0};
-  const char* last_child_lock_status_{nullptr};
+  desk_protocol::PanelLock panel_lock_{};
+  desk_protocol::TargetDetection panel_lock_detection_{};
+  PanelLockSwitch* panel_lock_switch_{nullptr};
+  text_sensor::TextSensor* panel_lock_status_{nullptr};
+  binary_sensor::BinarySensor* panel_lock_available_{nullptr};
+  bool panel_lock_probed_{false}, panel_lock_dt02_{false}, panel_lock_sending_{false},
+      last_panel_lock_available_{false};
+  uint32_t last_panel_lock_query_{0};
+  const char* last_panel_lock_status_{nullptr};
   bool discovery_access_allowed_(uint32_t now) const;
   bool legacy_ownership_active_() const;
   bool legacy_backend_ready_() const {
@@ -464,9 +464,9 @@ class MotionTrimNumber : public number::Number {
   MotionTrimNumber* next_{nullptr};
 };
 
-class ChildLockSwitch : public switch_::Switch {
+class PanelLockSwitch : public switch_::Switch {
  public:
-  ChildLockSwitch();
+  PanelLockSwitch();
   static bool is_instance(const switch_::Switch* candidate);
   void set_parent(DeskUART* parent) { parent_ = parent; }
   // ESPHome's switch API has no unknown-state message. The companion status
@@ -479,12 +479,12 @@ class ChildLockSwitch : public switch_::Switch {
   }
 
  protected:
-  void write_state(bool locked) override { parent_->set_child_lock(locked); }
+  void write_state(bool locked) override { parent_->set_panel_lock(locked); }
   DeskUART* parent_{nullptr};
   // ESPHome entities live for the lifetime of the application. Identify this
   // subclass without RTTI so the web hook leaves other switch types unchanged.
-  static ChildLockSwitch* first_;
-  ChildLockSwitch* next_{nullptr};
+  static PanelLockSwitch* first_;
+  PanelLockSwitch* next_{nullptr};
 };
 
 class MotionSpeedSelect : public select::Select {

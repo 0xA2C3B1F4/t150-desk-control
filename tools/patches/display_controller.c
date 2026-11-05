@@ -2,6 +2,9 @@
 #include "display_core.h"
 #include "motion_trim_controller.h"
 #include "platform_runtime.h"
+#ifdef DESK_LOCAL_PANEL_LOCK
+#include "local_lock_controller.h"
+#endif
 
 #define BYTE(offset) (*(volatile uint8_t*)(0x20000000u + (offset)))
 #define HALF(offset) (*(volatile uint16_t*)(0x20000000u + (offset)))
@@ -76,6 +79,11 @@ void display_controller_sleep(void) {
 }
 
 void display_controller_render(void) {
+#ifdef DESK_LOCAL_PANEL_LOCK
+  if (local_lock_controller_render()) {
+    return;
+  }
+#endif
   uint32_t previous = mask();
   bool blank = ready() && display_render_blank(DISPLAY, WORD(0x75c), attention());
   restore(previous);

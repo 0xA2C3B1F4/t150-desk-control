@@ -49,7 +49,7 @@ def main():
             "uart:\n  id: serial\n  baud_rate: 115200\n"
             + uart
             + "desk_uart:\n  id: desk\n  uart_id: serial\n  height:\n    name: Height\n"
-            "  child_lock:\n    name: Panel lock\n"
+            "  panel_lock:\n    name: Panel lock\n"
             "  motion_speed:\n    name: Motion speed\n"
             "  control_status:\n    name: Control status\n"
         )

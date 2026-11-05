@@ -1,4 +1,4 @@
-#include "desk_protocol/child_lock.h"
+#include "desk_protocol/panel_lock.h"
 #include <cstdlib>
 #include <iostream>
 using namespace desk_protocol;
@@ -28,7 +28,7 @@ static Frame reply(const Frame& request, bool locked = true, uint8_t status = 0,
   f.bytes[14] = static_cast<uint8_t>(sequence);
   return f;
 }
-static Frame discover(ChildLock& lock, uint32_t now = 0, uint16_t sequence = 1,
+static Frame discover(PanelLock& lock, uint32_t now = 0, uint16_t sequence = 1,
                       bool fault = false) {
   Frame f;
   CHECK(lock.probe(now));
@@ -44,7 +44,7 @@ static Frame discover(ChildLock& lock, uint32_t now = 0, uint16_t sequence = 1,
 int main() {
   Frame f;
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock);
     CHECK(lock.probe(2) && lock.take_frame(f));
     const Frame old_read = f;
@@ -65,7 +65,7 @@ int main() {
     CHECK(!lock.take_frame(f) && lock.state_known());
   }
   {
-    ChildLock lock;
+    PanelLock lock;
     CHECK(!lock.set(true, 0));
     CHECK(!lock.take_frame(f));
     lock.seed(0xFFFF);
@@ -85,7 +85,7 @@ int main() {
   // SET is legal after a cached GET reports a storage fault, even to the same
   // effective locked state. Only the successful SET proves persistence again.
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock, 0, 1, true);
     CHECK(lock.reply().locked && lock.reply().storage_fault && !lock.state_known());
     CHECK(lock.set(true, 2));
@@ -100,7 +100,7 @@ int main() {
     CHECK(lock.state_known());
   }
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock);
     CHECK(lock.set(false, 2));
     CHECK(lock.take_frame(f));
@@ -110,7 +110,7 @@ int main() {
   }
   // Magic, version, bools, status and successful SET semantics are strict.
   for (unsigned offset : {1U, 3U, 4U, 5U, 6U, 7U, 10U}) {
-    ChildLock lock;
+    PanelLock lock;
     CHECK(lock.probe(0));
     CHECK(lock.take_frame(f));
     Frame bad = reply(f);
@@ -119,7 +119,7 @@ int main() {
     CHECK(!lock.supported() && !lock.state_known() && !lock.busy());
   }
   for (unsigned offset : {2U, 11U, 12U}) {
-    ChildLock lock;
+    PanelLock lock;
     CHECK(lock.probe(0));
     CHECK(lock.take_frame(f));
     Frame stale = reply(f);
@@ -130,7 +130,7 @@ int main() {
     CHECK(!lock.busy() && !lock.supported() && !lock.take_frame(f));
   }
   {
-    ChildLock lock;
+    PanelLock lock;
     CHECK(lock.probe(0));
     CHECK(lock.take_frame(f));
     Frame malformed = reply(f);
@@ -141,7 +141,7 @@ int main() {
     CHECK(!lock.busy());
   }
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock);
     CHECK(lock.set(false, 2));
     CHECK(lock.take_frame(f));
@@ -149,7 +149,7 @@ int main() {
     CHECK(!lock.supported() && !lock.state_known());
   }
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock);
     CHECK(lock.set(true, 2));
     CHECK(lock.take_frame(f));
@@ -157,7 +157,7 @@ int main() {
     CHECK(!lock.supported() && !lock.state_known());
   }
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock);
     CHECK(lock.probe(2));
     CHECK(lock.take_frame(f));
@@ -165,7 +165,7 @@ int main() {
     CHECK(!lock.supported() && !lock.state_known());
   }
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock, 0, 0xFFFF);
     CHECK(lock.probe(2));
     CHECK(lock.take_frame(f));
@@ -174,7 +174,7 @@ int main() {
   }
   // An unbound generic DT02 error never establishes CL01 support.
   {
-    ChildLock lock;
+    PanelLock lock;
     CHECK(lock.probe(0));
     CHECK(lock.take_frame(f));
     Frame unsupported;
@@ -186,7 +186,7 @@ int main() {
     CHECK(!lock.supported() && !lock.state_known());
   }
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock);
     CHECK(lock.set(false, 2));
     CHECK(lock.take_frame(f));
@@ -194,14 +194,14 @@ int main() {
     CHECK(!lock.supported() && !lock.state_known() && !lock.take_frame(f));
   }
   {
-    ChildLock lock;
+    PanelLock lock;
     CHECK(lock.probe(0xFFFFFF00U));
     CHECK(lock.take_frame(f));
     lock.tick(0x220, true);
     CHECK(!lock.busy() && !lock.supported());
   }
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock);
     CHECK(lock.set(false, 2));
     CHECK(lock.take_frame(f));
@@ -215,7 +215,7 @@ int main() {
   }
   // A reply before the request leaves the queue cannot bind to that request.
   {
-    ChildLock lock;
+    PanelLock lock;
     CHECK(lock.probe(0));
     Frame guessed;
     guessed.size = 5;
@@ -225,7 +225,7 @@ int main() {
   // Fresh shared telemetry, rather than the previous D4, binds a reply after
   // a long idle interval spanning more than half the controller's counter.
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock);
     lock.observe_sequence(0x9000);
     CHECK(lock.probe(2));
@@ -234,7 +234,7 @@ int main() {
     CHECK(lock.state_known());
   }
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock);
     lock.observe_sequence(0x9000);
     CHECK(lock.probe(2));
@@ -245,7 +245,7 @@ int main() {
   // Timeouts produce one failed SET result; a later fresh GET restores support
   // before another explicit SET. Neither the timeout nor GET queues a SET.
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock);
     CHECK(lock.set(false, 2));
     CHECK(lock.take_frame(f));
@@ -267,7 +267,7 @@ int main() {
     CHECK(f.bytes[2] == 2);
   }
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock);
     CHECK(lock.set(false, 2));
     CHECK(lock.take_frame(f));
@@ -275,7 +275,7 @@ int main() {
     CHECK(lock.take_failure() && !lock.take_failure());
   }
   {
-    ChildLock lock;
+    PanelLock lock;
     discover(lock);
     CHECK(lock.set(false, 2));
     CHECK(lock.take_frame(f));

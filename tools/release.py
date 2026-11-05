@@ -44,7 +44,7 @@ YAMLS.update(
     {
         name: "examples/esphome/packages/" + name
         for name in (
-            "child-lock.yaml",
+            "panel-lock.yaml",
             "reset-speed.yaml",
             "motion-trims.yaml",
             "custom-timer-buzzer.yaml",

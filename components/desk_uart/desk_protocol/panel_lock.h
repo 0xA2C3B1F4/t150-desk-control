@@ -4,18 +4,18 @@
 
 namespace desk_protocol {
 
-struct ChildLockReply {
+struct PanelLockReply {
   uint8_t operation{0}, status{0};
   bool locked{false}, physical_gate{false}, storage_fault{false};
   uint16_t nonce{0}, sequence{0};
 };
 
-inline bool child_lock_reply(const Frame& frame, ChildLockReply& out) {
+inline bool panel_lock_reply(const Frame& frame, PanelLockReply& out) {
   if (frame.size != 15 || frame.bytes[0] != 0xD4 || frame.bytes[1] != 1 || frame.bytes[2] > 2 ||
       frame.bytes[3] > 3 || frame.bytes[4] > 1 || frame.bytes[5] > 1 || frame.bytes[6] > 1 ||
       std::memcmp(frame.bytes + 7, "CL01", 4) != 0)
     return false;
-  ChildLockReply r;
+  PanelLockReply r;
   r.operation = frame.bytes[2];
   r.status = frame.bytes[3];
   r.locked = frame.bytes[4];
@@ -35,7 +35,7 @@ inline bool child_lock_reply(const Frame& frame, ChildLockReply& out) {
 
 // Single-attempt CL01 GET/SET. The caller owns UART exclusivity, settling and
 // cancellation. A cached GET with storage_fault never proves a durable lock.
-class ChildLock {
+class PanelLock {
  public:
   void seed(uint16_t nonce) { next_nonce_ = nonce; }
   uint16_t next_nonce() const { return next_nonce_; }
@@ -72,8 +72,8 @@ class ChildLock {
       timeout_();
       return;
     }
-    ChildLockReply r;
-    if (!child_lock_reply(frame, r) ||
+    PanelLockReply r;
+    if (!panel_lock_reply(frame, r) ||
         (have_sequence_ && (static_cast<uint16_t>(r.sequence - sequence_) == 0 ||
                             static_cast<uint16_t>(r.sequence - sequence_) >= 0x8000))) {
       disconnect("Panel-lock reply invalid or too old; lock state unknown");
@@ -129,7 +129,7 @@ class ChildLock {
   bool supported() const { return supported_; }
   bool state_known() const { return state_known_; }
   uint8_t operation() const { return operation_; }
-  const ChildLockReply& reply() const { return reply_; }
+  const PanelLockReply& reply() const { return reply_; }
   const char* error() const { return error_; }
 
  private:
@@ -155,7 +155,7 @@ class ChildLock {
             : "Panel-lock status unavailable; lock state unknown");
   }
   Frame frame_{};
-  ChildLockReply reply_{};
+  PanelLockReply reply_{};
   uint16_t next_nonce_{0}, nonce_{0}, sequence_{0};
   uint32_t sent_at_{0};
   uint8_t operation_{0};

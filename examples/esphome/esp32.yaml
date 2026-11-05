@@ -5,7 +5,7 @@
 # Power the ESP32 separately through its USB connector.
 # Optional CL01 panel lock and RS01 reset/speed controls.
 # packages:
-#   panel_lock: !include packages/child-lock.yaml
+#   panel_lock: !include packages/panel-lock.yaml
 #   reset_speed: !include packages/reset-speed.yaml
 substitutions:
   device_name: t150-desk-control-esp32

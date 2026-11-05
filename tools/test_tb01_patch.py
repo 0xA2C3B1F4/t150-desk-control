@@ -587,7 +587,7 @@ class PatchTests(unittest.TestCase):
         self.assertEqual(desk.reg(EXTI_PR) & (1 << 17), 0)
 
     def test_admission_and_preexisting_route(self):
-        """Block native activity, motion, menu, reset, child-lock and inherited IRQ masks."""
+        """Block native activity, motion, menu, reset, panel lock and inherited IRQ masks."""
         for offset, width, value in (
             (0x88D, 1, 7),
             (0x75A, 2, 1),

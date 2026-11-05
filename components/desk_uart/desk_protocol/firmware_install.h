@@ -21,7 +21,7 @@ class FirmwareInstall {
     Complete,
     Failed
   };
-  enum class Profile { OriginalDT02, ChildLockCL01, ResetSpeedRS01, TimerBuzzerTB01, PlatformFP01 };
+  enum class Profile { OriginalDT02, PanelLockCL01, ResetSpeedRS01, TimerBuzzerTB01, PlatformFP01 };
   static constexpr size_t RESET_SPEED_PAYLOAD_SIZE = 32768;
   static constexpr size_t PLATFORM_PAYLOAD_SIZE = firmware_layout::PAYLOAD_SIZE;
   using Write = FirmwareExport::Write;
@@ -31,14 +31,14 @@ class FirmwareInstall {
              Profile profile = Profile::OriginalDT02) {
     if (active() || !image || size != firmware_layout::APPLICATION_SIZE || !write)
       return false;
-    if (profile != Profile::OriginalDT02 && profile != Profile::ChildLockCL01 &&
+    if (profile != Profile::OriginalDT02 && profile != Profile::PanelLockCL01 &&
         profile != Profile::ResetSpeedRS01 && profile != Profile::TimerBuzzerTB01 &&
         profile != Profile::PlatformFP01)
       return false;
     payload_size_ = profile == Profile::PlatformFP01 ? PLATFORM_PAYLOAD_SIZE
                     : (profile == Profile::ResetSpeedRS01 || profile == Profile::TimerBuzzerTB01)
                         ? RESET_SPEED_PAYLOAD_SIZE
-                    : profile == Profile::ChildLockCL01 ? 26624
+                    : profile == Profile::PanelLockCL01 ? 26624
                                                         : 25600;
     // This erase profile leaves the final page untouched. Everything after
     // the explicitly selected 25/26/32/53-block profile must be erased in the target.

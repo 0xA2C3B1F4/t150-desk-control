@@ -119,6 +119,7 @@ async function page() {
   for (const id of [
     "patch",
     "patchChildLock",
+    "patchPanelLock",
     "patchResetSpeed",
     "patchTimerBuzzer",
     "patchPlatform",

@@ -14,7 +14,7 @@ subprocess.run(
     check=True,
 )
 subprocess.run(
-    [sys.executable, str(ROOT / "tests/esphome/child_lock_web_test.py")], check=True
+    [sys.executable, str(ROOT / "tests/esphome/panel_lock_web_test.py")], check=True
 )
 subprocess.run(
     [sys.executable, str(ROOT / "tools/embed_firmware_ui.py"), "--check"], check=True
@@ -28,7 +28,7 @@ w = args.work_dir
 for name in [
     "firmware-export",
     "firmware-update",
-    "child-lock",
+    "panel-lock",
     "reset-speed",
     "display",
 ]:
@@ -59,13 +59,13 @@ for name, packages, valid in [
     ("normal", [], True),
     ("reader", ["firmware-export"], True),
     ("updater", ["firmware-update"], True),
-    ("updater_with_lock", ["firmware-update", "child-lock"], True),
-    ("panel_lock", ["child-lock"], True),
+    ("updater_with_lock", ["firmware-update", "panel-lock"], True),
+    ("panel_lock", ["panel-lock"], True),
     ("display", ["display"], True),
     ("updater_with_display", ["firmware-update", "display"], True),
-    ("reset_speed", ["child-lock", "reset-speed"], True),
+    ("reset_speed", ["panel-lock", "reset-speed"], True),
     ("reset_speed_without_lock_entity", ["reset-speed"], True),
-    ("updater_with_reset", ["firmware-update", "child-lock", "reset-speed"], True),
+    ("updater_with_reset", ["firmware-update", "panel-lock", "reset-speed"], True),
     ("both", ["firmware-export", "firmware-update"], False),
     ("no_auth", ["firmware-update"], False),
     ("with_ota", ["firmware-update"], True),
@@ -110,10 +110,13 @@ for name, packages, valid in [
         assert ("desk_firmware_update::FirmwareUpdate" in generated) == (
             "firmware-update" in packages
         )
-        assert ("set_child_lock_switch" in generated) == ("child-lock" in packages)
+        assert ("set_panel_lock_switch" in generated) == ("panel-lock" in packages)
         assert ("set_display_mode_select" in generated) == ("display" in packages)
         assert ("set_display_timeout_number" in generated) == ("display" in packages)
-        controls = any(p in packages for p in ("child-lock", "reset-speed", "display"))
+        controls = any(
+            p in packages
+            for p in ("panel-lock", "child-lock", "reset-speed", "display")
+        )
         patched = controls or "firmware-update" in packages
         assert ("t150_web_patch_guard();" in generated) == patched
         if patched or (name != "no_ota" and "firmware-export" in packages):

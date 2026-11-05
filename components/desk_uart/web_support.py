@@ -16,7 +16,7 @@ def patch_features(full_config):
         any(
             key in desk
             for key in (
-                "child_lock",
+                "panel_lock",
                 "motion_speed",
                 "display_mode",
                 "display_timeout",

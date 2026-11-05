@@ -174,11 +174,39 @@
         "display-timeout"
       ],
       "validation": "docs/validation.md#display-timeout"
+    },
+    {
+      "id": "lk01",
+      "name": "T150 Desk Control with local panel lock",
+      "sha256": "040fa9a6de9b98124f90e9f631c26d3ec8860980a1c03f246b8f898e1b2aa6e1",
+      "application_size": 55296,
+      "application_offset": 10240,
+      "flash_size": 65536,
+      "payload_size": 54272,
+      "erase_size": 54272,
+      "features": [
+        "direct-height",
+        "sleep-fix",
+        "panel-lock",
+        "reset-control",
+        "motion-speed",
+        "uart-parser-fix",
+        "custom-timer",
+        "custom-buzzer",
+        "shared-firmware-platform",
+        "motion-trims",
+        "buzzer-volume",
+        "buzzer-envelope",
+        "timer-sound-profile",
+        "display-timeout",
+        "local-panel-lock"
+      ],
+      "validation": "docs/validation.md#local-panel-lock"
     }
   ],
   "prepare": {
-    "target": "ds01",
-    "sources": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01", "bz01", "ds01"]
+    "target": "lk01",
+    "sources": ["stock", "dt02", "cl01", "rs01-r7", "tb01", "fp01", "tr01", "bz01", "ds01", "lk01"]
   },
   "install": [
     ["stock", "stock"],
@@ -261,14 +289,33 @@
     ["ds01", "fp01"],
     ["ds01", "tr01"],
     ["ds01", "bz01"],
-    ["ds01", "ds01"]
+    ["ds01", "ds01"],
+    ["stock", "lk01"],
+    ["dt02", "lk01"],
+    ["cl01", "lk01"],
+    ["rs01-r7", "lk01"],
+    ["tb01", "lk01"],
+    ["fp01", "lk01"],
+    ["tr01", "lk01"],
+    ["bz01", "lk01"],
+    ["ds01", "lk01"],
+    ["lk01", "stock"],
+    ["lk01", "dt02"],
+    ["lk01", "cl01"],
+    ["lk01", "rs01-r7"],
+    ["lk01", "tb01"],
+    ["lk01", "fp01"],
+    ["lk01", "tr01"],
+    ["lk01", "bz01"],
+    ["lk01", "ds01"],
+    ["lk01", "lk01"]
   ],
   "recovery": {
     "target": "stock",
     "documentation": "docs/firmware-update.md"
   },
   "current": {
-    "id": "ds01",
+    "id": "lk01",
     "profile": "STM32F030C8T6-8KiB-exact-R7"
   }
 }

@@ -1,0 +1,10 @@
+# Optional panel lock controls for the supplied desk examples (id: desk).
+# Local unlocking and Stop require LK01. See docs/panel-lock.md.
+# Keep this package enabled for remote lock controls.
+desk_uart:
+  id: desk
+  panel_lock:
+    name: Panel lock
+    web_server:
+      sorting_group_id: desk_group_control
+      sorting_weight: 30

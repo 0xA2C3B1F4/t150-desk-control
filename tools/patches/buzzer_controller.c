@@ -1,6 +1,9 @@
 #ifdef DESK_DISPLAY_TIMEOUT
 #include "display_controller.h"
 #endif
+#ifdef DESK_LOCAL_PANEL_LOCK
+#include "local_lock_controller.h"
+#endif
 #include "buzzer_layout.h"
 #include "buzzer_pwm.h"
 #include "platform_runtime.h"
@@ -198,6 +201,9 @@ void tb01_init(void) {
 #ifdef DESK_DISPLAY_TIMEOUT
     display_controller_init();
 #endif
+#ifdef DESK_LOCAL_PANEL_LOCK
+    local_lock_controller_init();
+#endif
   }
   unlock(saved);
   FN(0x080094a1u, void (*)(void))();
@@ -225,11 +231,17 @@ void tb01_watchdog(void) {
 }
 
 void tb01_sleep(void) {
+#ifdef DESK_LOCAL_PANEL_LOCK
+  local_lock_controller_before_sleep();
+#endif
 #ifdef DESK_DISPLAY_TIMEOUT
   display_controller_sleep();
 #endif
   tb01_abort();
   FN(0x08007569u, void (*)(void))();
+#ifdef DESK_LOCAL_PANEL_LOCK
+  local_lock_controller_after_wake();
+#endif
 }
 
 static uint8_t status_bits(void) {

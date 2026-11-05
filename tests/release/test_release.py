@@ -82,6 +82,9 @@ class ReleaseTest(unittest.TestCase):
             first, release.package_bytes(self.root, self.version, self.sha)
         )
         self.assertEqual(set(first), release.ASSETS)
+        self.assertIn("panel-lock.yaml", first)
+        self.assertNotIn("child-lock.yaml", first)
+        self.assertIn("panel_lock:", first["panel-lock.yaml"].decode())
         directory = self.package()
         release.verify_package(directory, self.version, self.sha)
         source = f"source: github://{release.REPOSITORY}@v{self.version}"

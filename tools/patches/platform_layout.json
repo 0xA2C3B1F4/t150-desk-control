@@ -74,9 +74,14 @@
       "size": 128
     },
     {
-      "name": "future",
+      "name": "local_lock",
       "offset": 664,
-      "size": 344
+      "size": 32
+    },
+    {
+      "name": "future",
+      "offset": 696,
+      "size": 312
     },
     {
       "name": "guard",

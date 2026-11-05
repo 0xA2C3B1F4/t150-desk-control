@@ -45,7 +45,7 @@ class CustomTimerBuzzerAccess : public esphome::desk_uart::DeskUART {
     const char* test = std::getenv("DESK_CUSTOM_CASE");
     auto custom_member = &CustomTimerBuzzerAccess::custom_;
     auto reset_member = &CustomTimerBuzzerAccess::reset_speed_;
-    auto lock_member = &CustomTimerBuzzerAccess::child_lock_;
+    auto lock_member = &CustomTimerBuzzerAccess::panel_lock_;
     auto direct_member = &CustomTimerBuzzerAccess::direct_;
     auto result_member = &CustomTimerBuzzerAccess::command_result_;
     auto reason_member = &CustomTimerBuzzerAccess::control_reason_;
@@ -83,15 +83,15 @@ class CustomTimerBuzzerAccess : public esphome::desk_uart::DeskUART {
       finish(accepted && !custom.pending());
       desk->stop();
     } else if (probe && std::strcmp(test, "probe_lock") == 0) {
-      finish(desk->set_child_lock(true) && !custom.pending());
+      finish(desk->set_panel_lock(true) && !custom.pending());
     } else if (probe && std::strcmp(test, "probe_maintenance") == 0) {
       finish(desk->begin_firmware_export(false) && !custom.pending());
     } else if (probe && std::strcmp(test, "probe_status") == 0) {
       auto reset_available_member = &CustomTimerBuzzerAccess::reset_available_;
       auto speed_available_member = &CustomTimerBuzzerAccess::motion_speed_available_;
-      auto lock_available_member = &CustomTimerBuzzerAccess::child_lock_available_;
+      auto lock_available_member = &CustomTimerBuzzerAccess::panel_lock_available_;
       auto publish_reset_member = &CustomTimerBuzzerAccess::publish_reset_speed_;
-      auto publish_lock_member = &CustomTimerBuzzerAccess::publish_child_lock_;
+      auto publish_lock_member = &CustomTimerBuzzerAccess::publish_panel_lock_;
       (desk->*publish_reset_member)(esphome::millis());
       (desk->*publish_lock_member)(esphome::millis());
       finish((desk->*reset_available_member)->state && (desk->*speed_available_member)->state &&
@@ -112,7 +112,7 @@ class CustomTimerBuzzerAccess : public esphome::desk_uart::DeskUART {
     } else if (custom.available() && std::strcmp(test, "custom_cl_get") == 0 && lock.busy() &&
                lock.operation() == 0) {
       const bool accepted = desk->custom_set_timer(15);
-      auto switch_member = &CustomTimerBuzzerAccess::child_lock_switch_;
+      auto switch_member = &CustomTimerBuzzerAccess::panel_lock_switch_;
       finish(accepted && custom.pending() && !lock.busy() && lock.state_known() &&
              lock.supported() && (desk->*switch_member)->has_state());
     } else if (custom.available() && std::strcmp(test, "maintenance_rs_get") == 0 && reset.busy() &&
@@ -123,7 +123,7 @@ class CustomTimerBuzzerAccess : public esphome::desk_uart::DeskUART {
       finish(desk->begin_firmware_export(false) && !lock.busy());
     } else if (custom.available() && std::strcmp(test, "lock_cl_get") == 0 && lock.busy() &&
                lock.operation() == 0) {
-      finish(desk->set_child_lock(true) && lock.busy() && lock.operation() == 1);
+      finish(desk->set_panel_lock(true) && lock.busy() && lock.operation() == 1);
     } else if (custom.available() && std::strcmp(test, "beep_keep_awake") == 0) {
       if (!beep_sent) {
         beep_sent = desk->custom_beep(2000, 5000, 20);
@@ -135,7 +135,7 @@ class CustomTimerBuzzerAccess : public esphome::desk_uart::DeskUART {
         short_beep_sent = desk->custom_beep(50, 50, 1);
         return;
       }
-      auto yield_member = &CustomTimerBuzzerAccess::yield_child_lock_read_;
+      auto yield_member = &CustomTimerBuzzerAccess::yield_panel_lock_read_;
       (desk->*yield_member)();
       auto direct_mode_member = &CustomTimerBuzzerAccess::direct_mode_;
       auto auto_mode_member = &CustomTimerBuzzerAccess::auto_target_mode_;

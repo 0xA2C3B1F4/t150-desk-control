@@ -6,7 +6,7 @@ namespace desk_protocol {
 // RS01 runtime advertisement and replay guards, not firmware authentication.
 struct ResetSpeedReply {
   uint8_t operation{0}, result{0}, state{0}, reason{0}, speed{0}, flags{0};
-  uint8_t mode{0}, previous{0}, child_lock{0}, fault_a{0}, fault_b{0}, error{0}, direction{0};
+  uint8_t mode{0}, previous{0}, panel_lock{0}, fault_a{0}, fault_b{0}, error{0}, direction{0};
   bool admission_diagnostics{false};
   uint8_t start_result{0}, resume_result{0};
   uint16_t nonce{0}, lease{0}, speed_raw{0}, pwm{0}, sequence{0};
@@ -35,7 +35,7 @@ inline bool reset_speed_reply(const Frame& f, ResetSpeedReply& out) {
   r.flags = f.bytes[8];
   r.mode = f.bytes[9];
   r.previous = f.bytes[10];
-  r.child_lock = f.bytes[11];
+  r.panel_lock = f.bytes[11];
   r.nonce = be16(f.bytes + 12);
   r.token = direct_be32(f.bytes + 14);
   r.lease = be16(f.bytes + 18);
@@ -56,8 +56,8 @@ inline bool reset_speed_reply(const Frame& f, ResetSpeedReply& out) {
   if (r.lease > 1500 || r.lease_active() != (r.lease != 0) || (r.active() && !r.lease_active()) ||
       (r.active() && !r.token) || (!r.active() && r.lease_active()) ||
       ((r.state == 3 || r.state == 4 || r.state == 5) && !r.outputs_off()) ||
-      (r.state == 4 && (r.mode || r.previous)) || ((r.flags & 1) && (r.active() || r.child_lock)) ||
-      ((r.flags & 2) && (r.state != 3 || r.child_lock)))
+      (r.state == 4 && (r.mode || r.previous)) || ((r.flags & 1) && (r.active() || r.panel_lock)) ||
+      ((r.flags & 2) && (r.state != 3 || r.panel_lock)))
     return false;
   out = r;
   return true;
@@ -80,7 +80,7 @@ class ResetSpeed {
     return true;
   }
   bool begin(bool resume, uint32_t now) {
-    if (busy_ || owned_ || !fresh(now) || !reply_.token || reply_.child_lock ||
+    if (busy_ || owned_ || !fresh(now) || !reply_.token || reply_.panel_lock ||
         !(reply_.flags & (resume ? 2 : 1)) || (resume ? reply_.state != 3 : reply_.active()))
       return false;
     uncertain_ = true;
@@ -138,7 +138,7 @@ class ResetSpeed {
     const bool owned_completion =
         operation_ == Renew && owned_ && r.result == 2 && completed && !r.token;
     if (r.result == 0 &&
-        ((motion_op && !completed && (!r.active() || !r.lease_active() || r.child_lock)) ||
+        ((motion_op && !completed && (!r.active() || !r.lease_active() || r.panel_lock)) ||
          (operation_ == Cancel && (r.active() || !r.outputs_off())) ||
          (operation_ == Speed && r.speed != argument_))) {
       fail_(

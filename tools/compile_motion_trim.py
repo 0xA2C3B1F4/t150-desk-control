@@ -51,10 +51,14 @@ SOURCES = (
 )
 
 
-def compile_patch(llvm_bin=None, *, boot_profile=None, buzzer=False, display=False):
+def compile_patch(
+    llvm_bin=None, *, boot_profile=None, buzzer=False, display=False, local_lock=False
+):
     """Return linked sections, symbols and provenance for offline integration tests."""
     if display and not buzzer:
         raise ValueError("Display integration requires the cumulative buzzer profile")
+    if local_lock and not display:
+        raise ValueError("Local lock requires the cumulative display profile")
     boot_fields = {
         "timing": 0xFFFFFFFF,
         "transfer_ticks": 0xFFFFFFFF,
@@ -94,6 +98,8 @@ def compile_patch(llvm_bin=None, *, boot_profile=None, buzzer=False, display=Fal
         ) + ("buzzer_profile.c", "buzzer_pwm.c")
     if display:
         sources += ("display_core.c", "display_controller.c", "display_hooks.S")
+    if local_lock:
+        sources += ("local_lock_core.c", "local_lock_controller.c")
     commands = []
     with tempfile.TemporaryDirectory(
         prefix="t150-trim-link-", dir=os.environ["TMPDIR"]
@@ -132,6 +138,8 @@ def compile_patch(llvm_bin=None, *, boot_profile=None, buzzer=False, display=Fal
                 ]
             if display:
                 flags += ["-DDESK_DISPLAY_TIMEOUT"]
+            if local_lock:
+                flags += ["-DDESK_LOCAL_PANEL_LOCK"]
             if buzzer and name == "platform_runtime.c":
                 flags += ["-DDESK_BUZZER_PROFILES"]
             if name == "motion_trim_boot.c" and boot_profile is not None:
@@ -153,7 +161,9 @@ def compile_patch(llvm_bin=None, *, boot_profile=None, buzzer=False, display=Fal
                 "-T",
                 PATCHES
                 / (
-                    "display_patch.ld"
+                    "local_lock_patch.ld"
+                    if local_lock
+                    else "display_patch.ld"
                     if display
                     else "buzzer_patch.ld"
                     if buzzer
@@ -200,6 +210,9 @@ def compile_patch(llvm_bin=None, *, boot_profile=None, buzzer=False, display=Fal
     if display:
         dependencies.update(path.name for path in PATCHES.glob("display_*.h"))
         dependencies.add("display_patch.ld")
+    if local_lock:
+        dependencies.update(path.name for path in PATCHES.glob("local_lock_*.h"))
+        dependencies.add("local_lock_patch.ld")
     manifest = {
         "toolchain": versions,
         "commands": commands,

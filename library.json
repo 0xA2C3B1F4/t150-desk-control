@@ -16,7 +16,7 @@
       "LICENSE",
       "README.md",
       "lib/desk_protocol/CMakeLists.txt",
-      "components/desk_uart/desk_protocol/child_lock.h",
+      "components/desk_uart/desk_protocol/panel_lock.h",
       "components/desk_uart/desk_protocol/custom_timer_buzzer.h",
       "components/desk_uart/desk_protocol/direct_target.h",
       "components/desk_uart/desk_protocol/display_settings.h",

@@ -1242,7 +1242,7 @@ def run(image, stock_image=None, *, unknown_command=0xD7):
     fixture = Fixture(image, REMOTE_UP)
     fixture.machine.uc.mem_write(RAM + 0xFEC, bytes((0xA5,)) * 4)
     # Stop at rs_boot's child_lock_boot call, after both rs_init and
-    # rs_parser_init have run. The child-lock EEPROM transport is unrelated
+    # rs_parser_init have run. The panel lock EEPROM transport is unrelated
     # to this parser test and is not modeled here.
     fixture.machine.call(0x080085F8, stops={0x0800940A})
     fixture.machine.uc.reg_write(UC_ARM_REG_SP, SP)

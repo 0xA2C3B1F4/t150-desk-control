@@ -29,6 +29,18 @@ class CatalogTest(unittest.TestCase):
             "erase_size": 54272,
         }
 
+    def test_all_ten_images_remain_installable(self):
+        """Retain DS01 and every earlier image while making LK01 the one target."""
+        ids = {image["id"] for image in self.catalog["images"]}
+        self.assertEqual(len(ids), 10)
+        self.assertEqual(self.catalog["current"]["id"], "lk01")
+        self.assertIn("ds01", ids)
+        self.assertEqual(set(self.catalog["prepare"]["sources"]), ids)
+        self.assertEqual(
+            {tuple(pair) for pair in self.catalog["install"]},
+            {(source, target) for source in ids for target in ids},
+        )
+
     def test_rejects_metadata_divergence(self):
         """Reject divergent image metadata and unsupported firmware transitions."""
         mutations = [
