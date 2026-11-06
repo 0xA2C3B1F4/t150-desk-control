@@ -9,11 +9,16 @@ import os
 from pathlib import Path
 import platform
 import re
+import stat
+import tempfile
 import urllib.parse
 import urllib.request
 import zipfile
 
 import release
+import release_binary
+
+ARTIFACT_LIMIT = 10_000_000
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -89,8 +94,8 @@ class API:
                 raise ValueError("Artifact redirect is not HTTPS")
             # Signed blob download receives no GitHub Authorization header.
             with urllib.request.urlopen(location, timeout=60) as response:
-                data = response.read(10_000_001)
-            if len(data) > 10_000_000:
+                data = response.read(ARTIFACT_LIMIT + 1)
+            if len(data) > ARTIFACT_LIMIT:
                 raise ValueError("Release artifact too large")
             return data
         raise ValueError("Artifact API did not return a download redirect")
@@ -114,8 +119,13 @@ def required_jobs(root):
             "native (Release)",
             "release-checks",
             "release-examples",
+            "distribution-build",
         }
-        | {"esphome (" + name + ")" for name in tests if name != "github_example_build"}
+        | {
+            "esphome (" + name + ")"
+            for name in tests
+            if name not in {"github_example_build", "distribution_build"}
+        }
         | {
             "github-example (" + name + ")"
             for name in (
@@ -132,7 +142,7 @@ def required_jobs(root):
 def validate_report(report, version, commit, stage=None):
     """Reject report metadata with mismatched identity, stage or failed job results."""
     if (
-        report.get("schema_version") != 1
+        report.get("schema_version") != 2
         or report.get("passed") is not True
         or report.get("repository") != release.REPOSITORY
         or report.get("version") != version
@@ -148,7 +158,7 @@ def validate_report(report, version, commit, stage=None):
         raise ValueError("Invalid validation report")
 
 
-def verify_run(run, workflow_id, successful):
+def verify_run(run, workflow_id, successful, run_id=None):
     """Require the expected repository, workflow and main-branch dispatch context.
 
     Also require successful completion when requested by the caller.
@@ -158,6 +168,8 @@ def verify_run(run, workflow_id, successful):
         or run.get("workflow_id") != workflow_id
         or run.get("event") != "workflow_dispatch"
         or run.get("head_branch") != "main"
+        or run_id is not None
+        and run.get("id") != run_id
         or successful
         and (run.get("status") != "completed" or run.get("conclusion") != "success")
     ):
@@ -165,7 +177,16 @@ def verify_run(run, workflow_id, successful):
 
 
 def build_report(
-    api, root, version, commit, workflow_sha, run_id, stage, candidate_run_id=None
+    api,
+    root,
+    version,
+    commit,
+    workflow_sha,
+    run_id,
+    stage,
+    candidate_run_id=None,
+    package=None,
+    candidate_artifact=None,
 ):
     """Require exactly one successful latest job per required CI check.
 
@@ -173,13 +194,25 @@ def build_report(
     and tool metadata. Artifact contents are checked separately.
     """
     if stage == "tagged-draft" and (
-        not isinstance(candidate_run_id, int) or candidate_run_id < 1
+        not isinstance(candidate_run_id, int)
+        or candidate_run_id < 1
+        or not isinstance(candidate_artifact, dict)
+        or set(candidate_artifact) != {"id", "run_id", "archive_sha256"}
+        or type(candidate_artifact.get("id")) is not int
+        or candidate_artifact["id"] < 1
+        or candidate_artifact.get("run_id") != candidate_run_id
+        or not re.fullmatch(
+            r"[0-9a-f]{64}", candidate_artifact.get("archive_sha256", "")
+        )
     ):
         raise ValueError("Tagged report requires its candidate-check run ID")
+    if package is None:
+        raise ValueError("Validation report requires its verified package")
+    manifest = release.verify_package(package, version, commit)
     base = f"/repos/{release.REPOSITORY}"
     workflow_id = api.request(base + "/actions/workflows/release.yml")["id"]
     run = api.request(base + f"/actions/runs/{run_id}")
-    verify_run(run, workflow_id, False)
+    verify_run(run, workflow_id, False, run_id)
     if run["head_sha"] != workflow_sha:
         raise ValueError("Dispatch SHA differs")
     all_jobs = api.pages(base + f"/actions/runs/{run_id}/jobs?filter=latest", "jobs")
@@ -194,7 +227,7 @@ def build_report(
     ):
         raise ValueError("Required CI jobs are missing, skipped or failed")
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "passed": True,
         "repository": release.REPOSITORY,
         "version": version,
@@ -204,6 +237,11 @@ def build_report(
         "workflow_id": workflow_id,
         "stage": stage,
         "candidate_run_id": candidate_run_id,
+        "candidate_artifact": candidate_artifact,
+        "binary": manifest["binary"],
+        "binary_build_report_sha256": release.digest(
+            (Path(package) / release_binary.REPORT).read_bytes()
+        ),
         "jobs": {k: v[0]["conclusion"] for k, v in sorted(matched.items())},
         "tools": {
             "python": platform.python_version(),
@@ -215,19 +253,34 @@ def build_report(
     }
 
 
-def unpack(data, directory):
+def unpack(data, directory, version):
     """Extract artifact files whose names exactly match the allowlist.
 
     Enforce the expanded-size limit and require a new output directory.
     """
-    expected = {"package/" + name for name in release.ASSETS} | {
+    if len(data) > ARTIFACT_LIMIT:
+        raise ValueError("Release artifact too large")
+    expected = {"package/" + name for name in release.asset_names(version)} | {
         "validation-report.json"
     }
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         entries = [x for x in archive.infolist() if not x.is_dir()]
-        if len(entries) != len(expected) or {x.filename for x in entries} != expected:
+        names = [x.filename for x in archive.infolist()]
+        if (
+            len(entries) != len(expected)
+            or {x.filename for x in entries} != expected
+            or len(names) != len(set(names))
+            or any(x.is_dir() and x.filename != "package/" for x in archive.infolist())
+            or any(
+                stat.S_ISLNK(x.external_attr >> 16) or x.flag_bits & 1 for x in entries
+            )
+        ):
             raise ValueError("Unexpected artifact entries")
-        if sum(x.file_size for x in entries) > 10_000_000:
+        if sum(x.file_size for x in entries) > ARTIFACT_LIMIT or any(
+            x.file_size
+            > (release_binary.FLASH_SIZE if x.filename.endswith(".bin") else 1_000_000)
+            for x in entries
+        ):
             raise ValueError("Expanded artifact too large")
         directory.mkdir(parents=True, exist_ok=False)
         for entry in entries:
@@ -245,17 +298,28 @@ def previous_candidate(api, run_id, directory, root, version, commit):
     base = f"/repos/{release.REPOSITORY}"
     workflow_id = api.request(base + "/actions/workflows/release.yml")["id"]
     run = api.request(base + f"/actions/runs/{run_id}")
-    verify_run(run, workflow_id, True)
+    verify_run(run, workflow_id, True, run_id)
     artifacts = [
         x
         for x in api.pages(base + f"/actions/runs/{run_id}/artifacts", "artifacts")
-        if x["name"] == "release-package" and not x["expired"]
+        if x["name"] == "release-package"
     ]
-    if len(artifacts) != 1:
+    if len(artifacts) != 1 or artifacts[0]["expired"]:
         raise ValueError(
             "Candidate artifact missing or ambiguous; rerun candidate-check"
         )
-    unpack(api.archive(artifacts[0]["id"]), directory)
+    artifact = artifacts[0]
+    if (
+        artifact.get("workflow_run", {}).get("id") != run_id
+        or artifact["workflow_run"].get("head_sha") != run["head_sha"]
+        or type(artifact.get("id")) is not int
+        or artifact["id"] < 1
+    ):
+        raise ValueError("Artifact differs from selected candidate run")
+    archive = api.archive(artifact["id"])
+    if artifact.get("digest") != "sha256:" + release.digest(archive):
+        raise ValueError("Candidate artifact archive digest differs")
+    unpack(archive, directory, version)
     report = json.loads((directory / "validation-report.json").read_text())
     validate_report(report, version, commit, "candidate-check")
     if (
@@ -266,15 +330,29 @@ def previous_candidate(api, run_id, directory, root, version, commit):
     ):
         raise ValueError("Report does not describe the selected candidate run")
     expected = build_report(
-        api, root, version, commit, run["head_sha"], run_id, "candidate-check"
+        api,
+        root,
+        version,
+        commit,
+        run["head_sha"],
+        run_id,
+        "candidate-check",
+        package=directory / "package",
     )
     if (
         report["infrastructure"] != expected["infrastructure"]
         or report["jobs"] != expected["jobs"]
+        or report.get("binary") != expected["binary"]
+        or report.get("binary_build_report_sha256")
+        != expected["binary_build_report_sha256"]
+        or report.get("candidate_run_id") is not None
+        or report.get("candidate_artifact") is not None
     ):
         raise ValueError("Candidate report differs from actual job results")
     release.verify_package(directory / "package", version, commit)
-    generated = release.package_bytes(root, version, commit)
+    generated = release.package_bytes(
+        root, version, commit, directory / "package", existing_package=True
+    )
     if any(
         (directory / "package" / name).read_bytes() != data
         for name, data in generated.items()
@@ -282,6 +360,11 @@ def previous_candidate(api, run_id, directory, root, version, commit):
         raise ValueError(
             "Candidate artifact differs from current deterministic package"
         )
+    return {
+        "id": artifact["id"],
+        "run_id": run_id,
+        "archive_sha256": release.digest(archive),
+    }
 
 
 def remote_tag(api, version, commit):
@@ -321,14 +404,31 @@ def draft(api, directory, root, version, commit, run_id, workflow_sha):
         run_id,
         "tagged-draft",
         report.get("candidate_run_id"),
+        package=directory / "package",
+        candidate_artifact=report.get("candidate_artifact"),
     )
     if any(
         report.get(key) != value for key, value in expected.items() if key != "tools"
     ):
         raise ValueError("Draft report differs from verified job results")
-    for name, data in release.package_bytes(root, version, commit).items():
+    for name, data in release.package_bytes(
+        root, version, commit, directory / "package", existing_package=True
+    ).items():
         if (directory / "package" / name).read_bytes() != data:
             raise ValueError("Draft asset differs from source: " + name)
+    with tempfile.TemporaryDirectory(
+        dir=os.environ["TMPDIR"], prefix="desk-candidate-"
+    ) as work:
+        previous = Path(work) / "candidate"
+        selected = previous_candidate(
+            api, report["candidate_run_id"], previous, root, version, commit
+        )
+        if selected != report["candidate_artifact"] or any(
+            (previous / "package" / name).read_bytes()
+            != (directory / "package" / name).read_bytes()
+            for name in release.asset_names(version)
+        ):
+            raise ValueError("Draft differs from selected candidate artifact bytes")
     base = f"/repos/{release.REPOSITORY}"
     matches = [
         x for x in api.pages(base + "/releases") if x["tag_name"] == "v" + version
@@ -357,10 +457,12 @@ def draft(api, directory, root, version, commit, run_id, workflow_sha):
         raise ValueError("Refusing to alter a published release")
     rid = item["id"]
     for asset in api.pages(base + f"/releases/{rid}/assets"):
-        if asset["name"] not in release.ASSETS | {"validation-report.json"}:
+        if asset["name"] not in release.asset_names(version) | {
+            "validation-report.json"
+        }:
             raise ValueError("Existing draft contains an unexpected asset")
         api.request(base + f"/releases/assets/{asset['id']}", "DELETE")
-    for name in sorted(release.ASSETS | {"validation-report.json"}):
+    for name in sorted(release.asset_names(version) | {"validation-report.json"}):
         path = (
             directory / name
             if name == "validation-report.json"
@@ -395,12 +497,16 @@ def main():
     p.add_argument("--candidate-run", type=int)
     p.add_argument("--stage", choices=["candidate-check", "tagged-draft"])
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--package", type=Path)
     args = p.parse_args()
     release.validate(args.source_root, args.version, args.commit)
     api = API(os.environ["GH_TOKEN"])
     if args.command == "report":
         if not args.stage:
             raise ValueError("Report stage required")
+        provenance = None
+        if args.stage == "tagged-draft":
+            provenance = json.loads(args.output.read_text()).get("selected_artifact")
         args.output.write_bytes(
             release.json_bytes(
                 build_report(
@@ -412,13 +518,19 @@ def main():
                     args.run_id,
                     args.stage,
                     args.candidate_run,
+                    package=args.package,
+                    candidate_artifact=provenance,
                 )
             )
         )
     elif args.command == "candidate-download":
-        previous_candidate(
+        selected = previous_candidate(
             api, args.run_id, args.output, args.source_root, args.version, args.commit
         )
+        path = args.output / "validation-report.json"
+        report = json.loads(path.read_text())
+        report["selected_artifact"] = selected
+        path.write_bytes(release.json_bytes(report))
     else:
         draft(
             api,

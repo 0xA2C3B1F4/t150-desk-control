@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a clean release candidate and produce deterministic text assets.
+"""Validate a clean release candidate and package its explicit binary build.
 
 This tool never creates tags or publishes releases. It uses only the standard
 library. GitHub draft handling lives in release_github.py and is checked as
@@ -14,6 +14,8 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+
+import release_binary
 
 REPOSITORY = "0xA2C3B1F4/t150-desk-control"
 VERSION = r"[0-9]{4}\.(?:[1-9]|1[0-2])\.(?:0|[1-9][0-9]*)"
@@ -50,6 +52,7 @@ YAMLS.update(
             "custom-timer-buzzer.yaml",
             "firmware-export.yaml",
             "firmware-update.yaml",
+            "stamp-c3-controls.yaml",
         )
     }
 )
@@ -59,7 +62,13 @@ ASSETS = frozenset(YAMLS) | {
     "INSTALL.md",
     "release-manifest.json",
     "SHA256SUMS",
+    release_binary.REPORT,
 }
+
+
+def asset_names(version):
+    """Return the exact release allowlist, including its single named binary."""
+    return ASSETS | {release_binary.binary_name(version)}
 
 
 def digest(data):
@@ -139,6 +148,7 @@ def validate(root, version, commit):
         "metadata/firmware-catalog.json",
         "CHANGELOG.md",
         "requirements-dev.txt",
+        release_binary.CONFIG,
         *YAMLS.values(),
     ]:
         if (root / path).is_symlink() or (root / path).read_bytes() != git(
@@ -241,7 +251,16 @@ def tagged_yaml(name, original, ref):
     ).encode()
 
 
-def package_bytes(root, version, commit):
+def yaml_bytes(root, version, commit):
+    """Render only source configurations for the independent YAML build checks."""
+    root = validate(root, version, commit)
+    return {
+        name: tagged_yaml(name, (root / path).read_text(), "v" + version)
+        for name, path in YAMLS.items()
+    }
+
+
+def package_bytes(root, version, commit, binary_build, *, existing_package=False):
     """Return deterministic release assets for a validated candidate.
 
     Generate tagged YAML, release notes, a manifest and checksums without
@@ -249,10 +268,15 @@ def package_bytes(root, version, commit):
     """
     root = validate(root, version, commit)
     tag = "v" + version
-    data = {
-        name: tagged_yaml(name, (root / path).read_text(), tag)
-        for name, path in YAMLS.items()
-    }
+    data = yaml_bytes(root, version, commit)
+    binary, build_report = release_binary.read_build(
+        binary_build, version, commit, esphome_pin(root), exact=not existing_package
+    )
+    for path, expected in build_report["configuration"].items():
+        if digest((root / path).read_bytes()) != expected:
+            raise ValueError("Binary configuration differs from source: " + path)
+    data[release_binary.binary_name(version)] = binary
+    data[release_binary.REPORT] = json_bytes(build_report)
     data["firmware-catalog.json"] = (
         root / "metadata/firmware-catalog.json"
     ).read_bytes()
@@ -279,15 +303,20 @@ def package_bytes(root, version, commit):
         "The maintenance variants are separate builds. Read the wiring, motor\n"
         "isolation, backup and recovery instructions before using them:\n\n"
         f"https://github.com/{REPOSITORY}/blob/{tag}/docs/firmware-update.md\n\n"
-        "This release contains source configurations and metadata, not controller\n"
-        "firmware images or preconfigured ESP binaries.\n"
+        f"The USB image {release_binary.binary_name(version)} is for M5Stack\n"
+        "Stamp-C3 C056-B with 4 MiB flash. Install it with ESPHome Web, configure\n"
+        "Wi-Fi over USB, then hold G3 to read the device credentials in USB logs.\n"
+        "Read the complete setup and erasing-update instructions before use:\n\n"
+        f"https://github.com/{REPOSITORY}/blob/{tag}/docs/binary-install.md\n\n"
+        "No manufacturer controller firmware image is included.\n"
     ).encode()
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "version": version,
         "tag": tag,
         "commit": commit,
         "esphome": esphome_pin(root),
+        "binary": build_report["binary"],
         "catalog_sha256": digest(data["firmware-catalog.json"]),
         "controller_firmware": current_identity(
             json.loads(data["firmware-catalog.json"])
@@ -298,7 +327,7 @@ def package_bytes(root, version, commit):
     data["SHA256SUMS"] = "".join(
         f"{digest(content)}  {name}\n" for name, content in sorted(data.items())
     ).encode()
-    if set(data) != ASSETS:
+    if set(data) != asset_names(version):
         raise ValueError("Unexpected package contents")
     return data
 
@@ -316,18 +345,23 @@ def esphome_pin(root):
 def verify_package(directory, version, commit):
     """Verify regular release assets, identity and checksums and return the manifest."""
     directory = Path(directory)
-    if {p.name for p in directory.iterdir()} != ASSETS:
+    assets = asset_names(version)
+    if {p.name for p in directory.iterdir()} != assets:
         raise ValueError("Unexpected or missing release asset")
     if any(p.is_symlink() or not p.is_file() for p in directory.iterdir()):
         raise ValueError("Assets must be regular files")
     manifest = json.loads((directory / "release-manifest.json").read_text())
-    if (manifest.get("version"), manifest.get("tag"), manifest.get("commit")) != (
+    if manifest.get("schema_version") != 2 or (
+        manifest.get("version"),
+        manifest.get("tag"),
+        manifest.get("commit"),
+    ) != (
         version,
         "v" + version,
         commit,
     ):
         raise ValueError("Package identity mismatch")
-    if set(manifest["assets"]) != ASSETS - {"release-manifest.json", "SHA256SUMS"}:
+    if set(manifest["assets"]) != assets - {"release-manifest.json", "SHA256SUMS"}:
         raise ValueError("Manifest asset allowlist differs")
     for name, expected in manifest["assets"].items():
         if digest((directory / name).read_bytes()) != expected:
@@ -339,9 +373,14 @@ def verify_package(directory, version, commit):
         raise ValueError("Controller firmware identity differs from the catalog")
     if manifest.get("catalog_sha256") != digest(catalog_data):
         raise ValueError("Catalog digest differs from the release manifest")
+    binary, report = release_binary.read_build(
+        directory, version, commit, manifest["esphome"], exact=False
+    )
+    if manifest.get("binary") != report["binary"]:
+        raise ValueError("Binary identity differs from the release manifest")
     expected = "".join(
         f"{digest((directory / name).read_bytes())}  {name}\n"
-        for name in sorted(ASSETS - {"SHA256SUMS"})
+        for name in sorted(assets - {"SHA256SUMS"})
     )
     if (directory / "SHA256SUMS").read_text() != expected:
         raise ValueError("SHA256SUMS differs")
@@ -370,6 +409,7 @@ def main():
     p.add_argument("--commit", required=True)
     p.add_argument("--output", type=Path)
     p.add_argument("--workflow-commit")
+    p.add_argument("--binary-build", type=Path)
     args = p.parse_args()
     if args.command == "validate":
         validate(args.source_root, args.version, args.commit)
@@ -384,7 +424,11 @@ def main():
     elif args.command == "verify-package":
         verify_package(args.output, args.version, args.commit)
     else:
-        data = package_bytes(args.source_root, args.version, args.commit)
+        if not args.binary_build:
+            raise ValueError("Package requires an explicit --binary-build directory")
+        data = package_bytes(
+            args.source_root, args.version, args.commit, args.binary_build
+        )
         if not args.output or args.output.exists():
             raise ValueError("Package output must be a new directory")
         args.output.mkdir(parents=True)

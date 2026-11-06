@@ -32,6 +32,19 @@ firmware maintenance. Earlier firmware reconstruction bytes remain pinned.
 
 ## Hardware validation
 
+### Stamp-C3 USB distribution
+
+The base Stamp-C3 image passed ESPHome Web installation, Wi-Fi failure and
+recovery, authenticated browser and Home Assistant access, and USB power-loss
+retention. Wrong credentials and plaintext API connections were rejected, and
+USB credential output stayed out of subscribed API logs.
+
+A diagnostic build with the same provisioning logic verified credential rotation
+after a full-erase reinstall and retention across Wi-Fi changes. It also measured
+memory and stack usage during concurrent web, Home Assistant and UART activity.
+Release acceptance checks the exact
+[candidate binary](releases.md#maintainer-workflow) before publication.
+
 ### Local panel lock
 
 LK01 passed firmware-maintenance installation and full application readback.

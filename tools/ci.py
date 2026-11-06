@@ -13,6 +13,7 @@ FULL_JOBS = {
     "native",
     "esphome",
     "github-example",
+    "distribution-build",
     "release-checks",
     "release-examples",
 }

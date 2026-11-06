@@ -28,7 +28,7 @@ def main():
     assert ref in (commit, "v" + version), (
         "Release tests use the candidate SHA or its exact tag"
     )
-    package = release.package_bytes(ROOT, version, commit)
+    package = release.yaml_bytes(ROOT, version, commit)
     results = []
     for name in (
         "stamp-c3",

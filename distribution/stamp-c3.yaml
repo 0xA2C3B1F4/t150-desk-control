@@ -1,0 +1,60 @@
+# USB installation erases Wi-Fi, credentials and preset recovery state.
+substitutions:
+  build_directory: .esphome/build/t150-stamp-c3-distribution
+  uart_tx_pin: GPIO4
+  uart_rx_pin: GPIO5
+
+packages:
+  desk_controls: !include ../examples/esphome/packages/stamp-c3-controls.yaml
+
+esphome:
+  name: t150-stamp-c3
+  name_add_mac_suffix: true
+  build_path: ${build_directory}
+  project:
+    name: t150.desk_control
+    version: "2026.11.0"
+
+esp32:
+  variant: esp32c3
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [desk_uart, desk_provisioning]
+
+logger:
+  hardware_uart: UART0
+  baud_rate: 115200
+
+wifi:
+  reboot_timeout: 0s
+
+improv_serial:
+
+api:
+  id: native_api
+  encryption: {}
+  reboot_timeout: 0s
+
+web_server:
+  id: local_web
+  port: 80
+  version: 3
+  local: true
+  log: false
+
+desk_provisioning:
+  api_id: native_api
+  web_id: local_web
+  desk_id: desk
+
+desk_uart:
+  source_version:
+    name: Source version
+  source_revision:
+    name: Source revision

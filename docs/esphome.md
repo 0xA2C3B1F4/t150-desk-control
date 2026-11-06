@@ -5,6 +5,9 @@ ESP-IDF toolchain.
 Choose a board configuration from the [README](../README.md#install); `desk.yaml`
 is the monitoring-only alternative in both example directories.
 
+For the Stamp-C3 factory image, follow [binary installation](binary-install.md).
+The configurations below remain the path for custom options, OTA and maintenance.
+
 ## Setup
 
 ### Existing device
@@ -96,9 +99,11 @@ directory. Their `../../components` points to the checkout's `components/`. If y
 change that path or use an absolute path. The `components/` directory contains
 all component sources, including the portable protocol headers. It can be copied
 without the rest of the repository. Existing `components: [desk_uart]` selections
-remain valid. When copying a local board example directly, its commented GitHub
-source can still override the local entry. The GitHub configurations above handle
-this for the base configuration and optional firmware packages together.
+remain valid. Copying the local Stamp example also requires
+`packages/stamp-c3-controls.yaml`, even when components come from GitHub.
+For a standalone device YAML, use `examples/esphome/github/stamp-c3.yaml`.
+The GitHub configurations above fetch the base configuration and optional
+firmware packages together.
 
 Basic controls work without `web_server`. Confirmed panel-lock and motion-speed
 controls add a build hook only for the supported ESP32 local gzip web-v3 setup.

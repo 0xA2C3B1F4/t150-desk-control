@@ -1,6 +1,7 @@
 """Exercise CI selection, fail-closed results and workflow wiring."""
 
 import copy
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -259,6 +260,115 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(gate["if"], "${{ always() }}")
         self.assertEqual(set(gate["needs"]), ci.FULL_JOBS | {"changes"})
         self.assertEqual(gate["steps"][-1]["env"]["CI_NEEDS"], "${{ toJSON(needs) }}")
+
+    def test_provisioning_and_distribution_are_required(self):
+        """Require provisioning regressions and a full distribution build in CI."""
+        jobs = yaml.safe_load((ROOT / ".github/workflows/test.yml").read_text())["jobs"]
+        matrix = jobs["esphome"]["strategy"]["matrix"]["test"]
+        self.assertIn("provisioning_config", matrix)
+        self.assertIn("wifi_reconfiguration", matrix)
+        build = jobs["distribution-build"]
+        commands = [step["run"] for step in build["steps"] if "run" in step]
+        self.assertIn(
+            'python tests/esphome/distribution_build.py --work-dir "$TMPDIR/desk-distribution/run"',
+            commands,
+        )
+        self.assertIn("distribution-build", ci.FULL_JOBS)
+
+    def test_candidate_builds_once_and_tagged_reuses_candidate(self):
+        """Execute both package branches and forbid a tagged binary rebuild."""
+        release = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text())
+        package = release["jobs"]["package"]
+        command = next(
+            step["run"]
+            for step in package["steps"]
+            if step.get("name")
+            == "Build candidate or reuse the verified candidate package"
+        )
+        for stage in ("candidate-check", "tagged-draft"):
+            with (
+                self.subTest(stage=stage),
+                tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory,
+            ):
+                root = Path(directory)
+                scripts = root / "control/tools"
+                scripts.mkdir(parents=True)
+                stub = (
+                    "import json, os, sys\n"
+                    "from pathlib import Path\n"
+                    "with Path(os.environ['CI_COMMAND_LOG']).open('a') as log:\n"
+                    "    log.write(json.dumps([Path(__file__).name, *sys.argv[1:]]) + '\\n')\n"
+                )
+                for tool in ("release.py", "release_github.py", "release_binary.py"):
+                    (scripts / tool).write_text(stub)
+                # The workflow calls the setup-python interpreter by its plain name.
+                (root / "python").symlink_to(sys.executable)
+                log = root / "commands.jsonl"
+                env = dict(
+                    os.environ,
+                    PATH=str(root) + os.pathsep + os.environ["PATH"],
+                    CI_COMMAND_LOG=str(log),
+                    RUNNER_TEMP=str(root / "runner"),
+                    VERSION="2026.11.0",
+                    CANDIDATE="a" * 40,
+                    WORKFLOW_SHA="b" * 40,
+                    CANDIDATE_RUN="123",
+                    GITHUB_RUN_ID="456",
+                    STAGE=stage,
+                )
+                subprocess.run(
+                    ["bash", "-euo", "pipefail", "-c", command],
+                    cwd=root,
+                    env=env,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                commands = [json.loads(line) for line in log.read_text().splitlines()]
+                operations = [(entry[0], entry[1]) for entry in commands]
+                if stage == "candidate-check":
+                    self.assertEqual(
+                        operations,
+                        [
+                            ("release.py", "infrastructure"),
+                            ("release_binary.py", "build"),
+                            ("release.py", "package"),
+                            ("release_github.py", "report"),
+                        ],
+                    )
+                    self.assertIn("--binary-build", commands[2])
+                    self.assertNotIn("--candidate-run", commands[-1])
+                else:
+                    self.assertEqual(
+                        operations,
+                        [
+                            ("release.py", "infrastructure"),
+                            ("release_github.py", "candidate-download"),
+                            ("release_github.py", "report"),
+                        ],
+                    )
+                    self.assertEqual(
+                        commands[1][-2:], ["--output", str(root / "runner/output")]
+                    )
+                    self.assertEqual(commands[-1][-2:], ["--candidate-run", "123"])
+                report = commands[-1]
+                self.assertEqual(
+                    report[report.index("--package") + 1],
+                    str(root / "runner/output/package"),
+                )
+
+    def test_draft_has_its_own_temporary_directory(self):
+        """Provide draft verification with a writable runner-scoped TMPDIR."""
+        release = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text())
+        draft = release["jobs"]["draft"]
+        self.assertEqual(
+            draft["steps"][0]["run"],
+            'echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"',
+        )
+        for job in ("package", "draft"):
+            self.assertEqual(
+                release["jobs"][job]["env"]["GH_TOKEN"], "${{ github.token }}"
+            )
 
 
 if __name__ == "__main__":
