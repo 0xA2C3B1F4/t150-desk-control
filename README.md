@@ -41,6 +41,13 @@ For an existing ESPHome device, merge [existing-device.yaml](examples/esphome/ex
 into your configuration and keep your network, API and OTA settings.
 See [existing devices](docs/esphome.md#existing-device).
 
+### Ready-made Stamp-C3 image
+
+For a published factory image, follow [USB installation](docs/binary-install.md).
+ESPHome Web configures Wi-Fi, and the Stamp generates its web password and
+Home Assistant key. This path needs no local compiler or YAML edits. Use the
+YAML path below for OTA, firmware maintenance and optional controller controls.
+
 ### ESPHome Device Builder
 
 1. Create a device and replace its YAML with the board configuration above. It downloads its packages and components from GitHub.

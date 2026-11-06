@@ -103,7 +103,13 @@ def validate_board_packages(work, env):
         text = (ROOT / "examples/esphome" / name).read_text()
         text = text.replace("path: ../../components", f"path: {ROOT}/components")
         (examples / name).write_text(text)
-    for name in ("firmware-update", "panel-lock", "reset-speed", "custom-timer-buzzer"):
+    for name in (
+        "stamp-c3-controls",
+        "firmware-update",
+        "panel-lock",
+        "reset-speed",
+        "custom-timer-buzzer",
+    ):
         shutil.copy2(
             ROOT / f"examples/esphome/packages/{name}.yaml",
             examples / f"packages/{name}.yaml",

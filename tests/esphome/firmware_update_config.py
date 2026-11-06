@@ -26,6 +26,7 @@ args = parse_args()
 w = args.work_dir
 (w / "packages").mkdir(exist_ok=True)
 for name in [
+    "stamp-c3-controls",
     "firmware-export",
     "firmware-update",
     "panel-lock",

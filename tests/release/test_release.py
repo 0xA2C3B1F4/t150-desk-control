@@ -11,7 +11,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
+import binary_fixture  # noqa: E402 - The fixture imports the release tools.
 import release  # noqa: E402 - Load tools after the sys.path bootstrap.
+import release_binary  # noqa: E402 - Load tools after the sys.path bootstrap.
 
 
 class ReleaseTest(unittest.TestCase):
@@ -36,6 +38,8 @@ class ReleaseTest(unittest.TestCase):
             "requirements-ci.txt",
             "tools/release.py",
             "tools/release_github.py",
+            "tools/release_binary.py",
+            release_binary.CONFIG,
             ".github/workflows/release.yml",
             ".github/workflows/test.yml",
             "tests/esphome/run_all.py",
@@ -67,21 +71,32 @@ class ReleaseTest(unittest.TestCase):
 
     def package(self):
         """Write the fixture release assets into a new temporary package directory."""
-        directory = Path(self.temp.name) / "package"
-        directory.mkdir()
+        directory = Path(tempfile.mkdtemp(dir=self.temp.name, prefix="package-"))
         for name, data in release.package_bytes(
-            self.root, self.version, self.sha
+            self.root, self.version, self.sha, self.binary_build()
         ).items():
             (directory / name).write_bytes(data)
         return directory
 
+    def binary_build(self):
+        """Create synthetic but structurally verified explicit build outputs."""
+        directory = Path(self.temp.name) / "binary-build"
+        for path in directory.glob("*"):
+            path.unlink()
+        return binary_fixture.write_build(self.root, directory, self.version, self.sha)
+
     def test_deterministic_package_and_refs(self):
         """Produce repeatable assets with tagged sources and flat package includes."""
-        first = release.package_bytes(self.root, self.version, self.sha)
-        self.assertEqual(
-            first, release.package_bytes(self.root, self.version, self.sha)
+        first = release.package_bytes(
+            self.root, self.version, self.sha, self.binary_build()
         )
-        self.assertEqual(set(first), release.ASSETS)
+        self.assertEqual(
+            first,
+            release.package_bytes(
+                self.root, self.version, self.sha, self.binary_build()
+            ),
+        )
+        self.assertEqual(set(first), release.asset_names(self.version))
         self.assertIn("panel-lock.yaml", first)
         self.assertNotIn("child-lock.yaml", first)
         self.assertIn("panel_lock:", first["panel-lock.yaml"].decode())
@@ -122,7 +137,9 @@ class ReleaseTest(unittest.TestCase):
         self.git("add", ".")
         self.git("commit", "-m", "next version fixture")
         self.sha = self.git("rev-parse", "HEAD")
-        package = release.package_bytes(self.root, self.version, self.sha)
+        package = release.package_bytes(
+            self.root, self.version, self.sha, self.binary_build()
+        )
         for name in (
             "stamp-c3.yaml",
             "esp32.yaml",
@@ -214,7 +231,9 @@ class ReleaseTest(unittest.TestCase):
                 (directory / "SHA256SUMS").write_text(
                     "".join(
                         f"{release.digest((directory / name).read_bytes())}  {name}\n"
-                        for name in sorted(release.ASSETS - {"SHA256SUMS"})
+                        for name in sorted(
+                            release.asset_names(self.version) - {"SHA256SUMS"}
+                        )
                     )
                 )
                 with self.assertRaisesRegex(ValueError, "[Cc]atalog"):

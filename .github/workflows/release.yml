@@ -85,6 +85,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: [preflight, tests]
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     permissions:
       contents: read
       actions: read
@@ -95,7 +96,12 @@ jobs:
       WORKFLOW_SHA: ${{ github.sha }}
       CANDIDATE_RUN: ${{ inputs.candidate-run }}
       GH_TOKEN: ${{ github.token }}
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
+      - name: Configure temporary directories
+        run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "PIP_CACHE_DIR=$RUNNER_TEMP/pip-cache" >> "$GITHUB_ENV"
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           path: control
@@ -107,14 +113,22 @@ jobs:
           path: candidate
           fetch-depth: 0
           persist-credentials: false
-      - name: Package with the checked dispatch tools
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install candidate build dependencies
+        if: inputs.stage == 'candidate-check'
+        run: python -m pip install -r candidate/requirements-dev.txt
+      - name: Build candidate or reuse the verified candidate package
         run: |
           python control/tools/release.py infrastructure --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --workflow-commit "$WORKFLOW_SHA"
-          python control/tools/release.py package --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --output "$RUNNER_TEMP/output/package"
-          report_args=()
+          report_args=(--package "$RUNNER_TEMP/output/package")
           if [ "$STAGE" = tagged-draft ]; then
             report_args+=(--candidate-run "$CANDIDATE_RUN")
-            python control/tools/release_github.py candidate-download --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --workflow-commit "$WORKFLOW_SHA" --run-id "$CANDIDATE_RUN" --output "$RUNNER_TEMP/previous"
+            python control/tools/release_github.py candidate-download --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --workflow-commit "$WORKFLOW_SHA" --run-id "$CANDIDATE_RUN" --output "$RUNNER_TEMP/output"
+          else
+            python control/tools/release_binary.py build --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --output "$RUNNER_TEMP/binary-build" --build-root "$RUNNER_TEMP/binary-work"
+            python control/tools/release.py package --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --binary-build "$RUNNER_TEMP/binary-build" --output "$RUNNER_TEMP/output/package"
           fi
           python control/tools/release_github.py report --source-root candidate --version "$VERSION" --commit "$CANDIDATE" --workflow-commit "$WORKFLOW_SHA" --run-id "$GITHUB_RUN_ID" --stage "$STAGE" --output "$RUNNER_TEMP/output/validation-report.json" "${report_args[@]}"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -138,6 +152,8 @@ jobs:
       WORKFLOW_SHA: ${{ github.sha }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Configure temporary directories
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           path: control

@@ -19,9 +19,8 @@ work = args.work_dir
 env = test_env(work)
 examples = ROOT / "examples/esphome"
 (work / "packages").mkdir(exist_ok=True)
-shutil.copy2(
-    examples / "packages/firmware-export.yaml", work / "packages/firmware-export.yaml"
-)
+for name in ("stamp-c3-controls", "firmware-export"):
+    shutil.copy2(examples / f"packages/{name}.yaml", work / f"packages/{name}.yaml")
 base = (examples / "stamp-c3.yaml").read_text()
 base = base.replace("path: ../../components", f"path: {ROOT}/components")
 base = base.replace(

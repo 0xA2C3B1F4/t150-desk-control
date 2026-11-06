@@ -1,7 +1,8 @@
 # Releases
 
 Until the first release, use the development configurations on `main`. Published
-releases provide YAML files pinned to their tag, checksums and validation results.
+releases provide a Stamp-C3 factory image, YAML files pinned to their tag,
+checksums and validation results.
 Use tags for installation only after their release is published.
 
 ## Version identities
@@ -23,15 +24,18 @@ a fork's revision identifies its own source, not upstream origin.
 
 Keep the downloaded board, existing-device and optional package YAMLs together.
 Their includes use this flat layout, and component references use the release tag.
-Other attachments are the firmware identity catalog, install and release notes,
-`release-manifest.json`, `SHA256SUMS` and a validation report. Manufacturer firmware,
-credentials, private logs and compiled ESP images are excluded.
+The Stamp-C3 image is `t150-stamp-c3-<version>.factory.bin`; follow
+[binary installation](binary-install.md). Other attachments are the firmware
+identity catalog, install and release notes, `release-manifest.json`,
+`SHA256SUMS` and a validation report. Manufacturer firmware images, credentials
+and private logs are excluded. There is no OTA or maintenance binary.
 
 The catalog identifies the current controller image and supported historical
 images. The release manifest binds the current image ID and SHA-256 to the
 release version and source commit. Runtime hash checks,
 backup requirements and recovery guards still determine which images can be
-installed. `SHA256SUMS` covers the repeatable text assets and manifest. The
+installed. The manifest also identifies the factory image's source SHA, target,
+size and SHA-256. `SHA256SUMS` covers the text assets, manifest and factory image. The
 validation report records source and workflow revisions, test jobs and run IDs;
 its hash is in the release description. ESPHome binary reproducibility is not
 claimed.
@@ -50,20 +54,22 @@ configure these settings.
 1. Select a clean full commit SHA on `main` whose target version matches the
    intended release.
 2. Run **Release / candidate-check** from `main` with that version and SHA.
-   It runs the full test suite and builds packaged examples using the SHA in
-   temporary copies; release assets retain the intended tag.
-3. Check the results, then test a clean build on a stationary Stamp-C3: startup,
-   source diagnostics, telemetry and existing controls. Earlier R7 hardware results
-   cover the unchanged controller image, not this ESPHome build.
+   It runs the full test suite, validates packaged examples using the SHA and
+   builds the factory image once. Release YAML assets retain the intended tag.
+3. Download that run's artifact and test its exact factory image: USB/Wi-Fi
+   setup, web, Home Assistant, telemetry and preset/Stop controls. Record the
+   run ID, artifact ID, source SHA and binary hash with the results. When
+   restoring a personal YAML build from the same source, check startup, source
+   diagnostics and telemetry. Existing controller tests retain their original scope.
 4. After approval, create an annotated tag on the exact candidate. The tools
    never create or move tags.
 5. Run **Release / tagged-draft** with the same version, SHA and successful
-   candidate-check run ID. It checks the tag's peeled commit, compares packages
-   and tests the literal tag in fresh source caches, including maintenance
-   configurations. If the artifact expired, rerun candidate-check on the same SHA.
-6. Check the draft's attachments, hashes and validation report, the tag and its
-   protections, and the completed hardware test. Publish separately, then verify
-   GitHub reports the release immutable.
+   candidate-check run ID. It verifies the tag and candidate artifact, retains
+   the tested binary and tests the literal tag in fresh source caches, including
+   maintenance configurations. It does not rebuild the published binary.
+6. Check the draft's attachments, hashes and validation report against the
+   hardware approval. Verify the tag and its protections, publish separately,
+   then verify GitHub reports the release immutable.
 7. Update `main`'s installation examples to the published tag in a documentation
    PR. When advancing `project_version.json`, add the matching version heading
    below Unreleased in `CHANGELOG.md` in the same commit. Keep Unreleased.
@@ -73,8 +79,11 @@ and attached YAMLs for installation.
 
 Other PRs may merge during preparation. Release stages compare workflow,
 release-tool and CI-helper blobs with the candidate. Infrastructure changes block
-an older candidate until reconsidered. Retry network failures on the same source.
-A code fix after tagging needs a new version and tag.
+an older candidate until reconsidered. Candidate artifacts expire after 14 days.
+An expired artifact or a new build requires acceptance of the new binary before
+publication, even for the same source SHA. A retained local copy is evidence,
+not a substitute artifact for the workflow. A code fix after tagging needs a
+new version and tag.
 
 ## Local tools
 
@@ -83,7 +92,8 @@ a new output directory outside the repository:
 
 ```sh
 python tools/release.py validate --source-root . --version 2026.11.0 --commit "$CANDIDATE_SHA"
-python tools/release.py package --source-root . --version 2026.11.0 --commit "$CANDIDATE_SHA" --output "$TMPDIR/desk-release"
+python tools/release_binary.py build --source-root . --version 2026.11.0 --commit "$CANDIDATE_SHA" --output "$TMPDIR/desk-binary" --build-root "$TMPDIR/desk-binary-build"
+python tools/release.py package --source-root . --version 2026.11.0 --commit "$CANDIDATE_SHA" --binary-build "$TMPDIR/desk-binary" --output "$TMPDIR/desk-release"
 python tools/release.py verify-tag --source-root . --version 2026.11.0 --commit "$CANDIDATE_SHA"
 python tools/check_firmware_catalog.py
 ```

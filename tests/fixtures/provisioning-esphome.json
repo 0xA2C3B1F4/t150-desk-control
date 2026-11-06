@@ -1,0 +1,49 @@
+{
+  "version": "2026.10.1",
+  "files": {
+    "components/api/api_server.cpp": "04493ab169d14da679ede65e526cf00606d94fbbb51bc78ec37e23b7d6be758f",
+    "components/api/api_server.h": "e5c6492534b9231760c7940a9ad2c8be3da10fdf447f6f738e509db854a7a306",
+    "components/api/api_connection.cpp": "7c528db887aa3407bb157876644a6849d2ec7bcd66f82e99cd243f55a96178da",
+    "components/api/api_connection.h": "20f1ece0371665fc9aacb4faa3275f0807bfe51a302ca9382cb54bc3ed86fa3b",
+    "components/api/api_frame_helper.h": "7d07c237bd9e667ae3bdcaea982ed020801f4d153d9d51d5d716c48def01d333",
+    "components/api/api_frame_helper_plaintext.h": "b41d75471c18aa92d8347f82c686c8d57ddd6ba4d0f2e554412aa5d9c86943da",
+    "components/api/api_frame_helper_plaintext.cpp": "a207e564ef895445f2aac1357afc12489a26e51e5ef24dafc86fa4308b4a56f1",
+    "components/api/__init__.py": "be6affcf30e62556459260283ac0ac55a38805e57392d2c909ecee8e95beb679",
+    "components/mdns/mdns_component.cpp": "70251d301d2e7f2716a4a0b12c6de8a78934809cdbf0ad2f63338f4bad0430f9",
+    "components/web_server_base/web_server_base.h": "1c0e7dc7ad82176a4c6c77774aae001b688faa3da4192b55409f6dcb011939ff",
+    "components/web_server_base/web_server_base.cpp": "a8e9bde41b948d614463d1423b4bf60b5c8126a1458f0ab2fc06f61f63b6bcd8",
+    "components/web_server/web_server.cpp": "b5f0920294081050a0ac8a80478eba784e1515a32541101df88f107841f3997d",
+    "components/web_server_idf/web_server_idf.cpp": "b45f232f6ed1d773e077d3e15a0c53e1633ec8c65f5eb81897a233e7c8d38575",
+    "components/logger/logger_esp32.cpp": "49f7d095504eb2d9470a7083a1bfeacb47e5939626cafae333ce626d1a040ffc",
+    "components/esp32/preferences.cpp": "c9e26028ac205ad0ea9fe62fa3d89789b6ccfc01ac098d2270fa1032c544f9b3",
+    "core/component.cpp": "129b2c7ae98565fe634e2fd36badb8216b88cb20dce5f743e955e638fe7afdbf",
+    "core/component.h": "5455c08357a62ab7851ca00730226251a7587c18a816e898a429f16edc20e354",
+    "core/application.cpp": "c106a2ca1634b9acbb51b59ecb77e3a618ab4cf5eec29f515e030e565f02f702",
+    "components/noise/noise.h": "dbff394147491c06e3b7960263c3f700b5dfb11353e7bb0d166d3f19e4a4ed0b",
+    "components/noise/noise.cpp": "d4223d35aba6e33a3302d6167a4a6e4b932d21335020cfd1dca55b9601ebc755",
+    "components/noise/noise_handshake.cpp": "24028b188e0d550ff61d8e6549ed55affbcb498d8d571e140fde7d81c5469432",
+    "components/noise/__init__.py": "894383336bc5980cb7a5836f6b05b077ca2bd7668857069482b650aa473f047a",
+    "components/api/api_frame_helper_noise.cpp": "da2a2b90e94c2d95d7788c298cdfa60398573300ff80bf94998d121c172bb9dd",
+    "components/api/api_frame_helper_noise.h": "ed323aeb45f0251d3ab7241ecc7e06b1e3b780c0181be45ae0902dc1c3d6528f",
+    "core/progmem.h": "5a4f30255056d01af46ccf721d254537e30cb39cf461d38721fecfe6f9a67a82"
+  },
+  "flag_files": [
+    "components/api/__init__.py",
+    "components/api/api_connection.cpp",
+    "components/api/api_connection.h",
+    "components/api/api_frame_helper.h",
+    "components/api/api_frame_helper_noise.cpp",
+    "components/api/api_frame_helper_noise.h",
+    "components/api/api_frame_helper_plaintext.cpp",
+    "components/api/api_frame_helper_plaintext.h",
+    "components/api/api_server.cpp",
+    "components/api/api_server.h",
+    "components/mdns/mdns_component.cpp",
+    "core/defines.h"
+  ],
+  "baseline": {
+    "commit": "6c9c4c9f70218f4b0c2d2fe5a7c8735f1322ba98",
+    "path": "examples/esphome/stamp-c3.yaml",
+    "sha256": "7367a3eb30e727605d5e870d6cab593ba950349559afaacfbe82d9462e0fc5fb"
+  }
+}

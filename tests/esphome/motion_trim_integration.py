@@ -65,10 +65,11 @@ def validate_packages(work, env):
         (examples / f"{board}.yaml").write_text(
             source.replace("path: ../../components", f"path: {ROOT}/components")
         )
-    shutil.copy2(
-        ROOT / "examples/esphome/packages/motion-trims.yaml",
-        examples / "packages/motion-trims.yaml",
-    )
+    for name in ("stamp-c3-controls", "motion-trims"):
+        shutil.copy2(
+            ROOT / f"examples/esphome/packages/{name}.yaml",
+            examples / f"packages/{name}.yaml",
+        )
     (examples / "secrets.yaml").write_text(
         (ROOT / "examples/esphome/secrets.example.yaml")
         .read_text()

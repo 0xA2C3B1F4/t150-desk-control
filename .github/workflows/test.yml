@@ -184,6 +184,8 @@ jobs:
             component_layout,
             config_validation,
             panel_lock_config,
+            provisioning_config,
+            wifi_reconfiguration,
             identity_integration,
             firmware_export_config,
             firmware_export_integration,
@@ -303,6 +305,40 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  distribution-build:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Configure temporary directories
+        run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "PIP_CACHE_DIR=$RUNNER_TEMP/pip-cache" >> "$GITHUB_ENV"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.source-ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Compile the Stamp-C3 distribution for verification
+        run: python tests/esphome/distribution_build.py --work-dir "$TMPDIR/desk-distribution/run"
+      - name: Preserve distribution diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: diagnostics-distribution-build
+          path: |
+            ${{ runner.temp }}/desk-distribution/run/*.log
+            ${{ runner.temp }}/desk-distribution/run/summary.json
+          if-no-files-found: ignore
+          retention-days: 7
+
   release-checks:
     needs: changes
     if: needs.changes.outputs.full == 'true'
@@ -362,7 +398,17 @@ jobs:
 
   ci-result:
     if: ${{ always() }}
-    needs: [changes, style, native, esphome, github-example, release-checks, release-examples]
+    needs:
+      [
+        changes,
+        style,
+        native,
+        esphome,
+        github-example,
+        distribution-build,
+        release-checks,
+        release-examples,
+      ]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
