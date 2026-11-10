@@ -11,6 +11,15 @@ Sources: [DT410 product sheet](https://asset.conrad.com/media10/add/160267/c1/-/
 and the [shared manual](https://www.electroland.gr/media/productattachment/0/14965/GAM140GAM140Wmanual.pdf).
 See [validation](validation.md) for feature-specific test coverage.
 
+All hardware tests ran on one DT410 desk with one T150-PJ-V1.5 controller in
+metric mode. Another unit of the same model may have a different controller
+revision or firmware. The maintenance page writes only over
+[exact known application images](firmware-update.md#accepted-images-and-storage).
+Before installing anything, check the
+[controller identity](esphome.md#controller-identity) and confirm that the page
+recognizes the image it reads. Report results from your desk with the
+[hardware report form](https://github.com/0xA2C3B1F4/t150-desk-control/issues/new?template=hardware-report.yml).
+
 ### Possible compatibility, untested
 
 These are candidates for firmware comparison and future support. The sources
@@ -28,7 +37,8 @@ controller electronics or firmware. None has been tested with this project.
 ### Help develop support
 
 Firmware from these controllers can reveal shared code and guide support for
-another revision. In a [GitHub issue](https://github.com/0xA2C3B1F4/t150-desk-control/issues/new),
+another revision. In a
+[hardware report](https://github.com/0xA2C3B1F4/t150-desk-control/issues/new?template=hardware-report.yml),
 provide the desk model, controller and PCB markings, and how the image was
 obtained. If reader compatibility has been confirmed for your controller, use
 the maintenance page's [optional private upload](firmware-update.md#unknown-versions).

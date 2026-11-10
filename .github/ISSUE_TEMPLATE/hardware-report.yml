@@ -1,0 +1,47 @@
+name: Hardware report
+description: Report whether the project works on your desk and controller.
+body:
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Desk and hardware
+      description: Desk model and where it was bought, controller enclosure and PCB markings, and ESP32 board.
+    validations:
+      required: true
+  - type: textarea
+    id: identity
+    attributes:
+      label: Controller identity
+      description: The `controller_model`, `controller_manufacturer`, `controller_identifiers` and `controller_date` values from the device's diagnostics. Write "unknown" for any that stay empty.
+    validations:
+      required: true
+  - type: textarea
+    id: firmware
+    attributes:
+      label: Controller firmware
+      description: The **Firmware SHA256** from the read-only firmware reader, and whether the maintenance page recognized the image. If you read it another way, say how.
+  - type: checkboxes
+    id: tried
+    attributes:
+      label: What you tried
+      description: Tick only the steps you completed.
+      options:
+        - label: Monitoring only
+        - label: Presets and target height with the original firmware
+        - label: Stop
+        - label: Firmware read
+        - label: Patched firmware installation with full readback
+        - label: Patched firmware features
+  - type: textarea
+    id: results
+    attributes:
+      label: Results
+      description: What worked, what did not, and anything unexpected. Distinguish what you saw on the desk from what appeared only in logs.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log excerpt
+      description: Remove passwords, API keys, network details and other private information. Do not attach manufacturer firmware images; see [private submission](https://github.com/0xA2C3B1F4/t150-desk-control/blob/main/docs/hardware.md#help-develop-support) instead.
+      render: text
