@@ -1,9 +1,10 @@
 # Panel lock
 
 Panel lock disables ordinary panel controls while keeping remote control available.
-The current controller firmware, LK01, also lets you lock, unlock and stop movement
-from the panel without ESPHome or a network connection. The lock setting survives
-power loss and is shared with the web interface and Home Assistant.
+The current controller firmware, [LK01](firmware-update.md#firmware-versions),
+also lets you lock, unlock and stop movement from the panel without ESPHome or a
+network connection. The lock setting survives power loss and is shared with the
+web interface and Home Assistant.
 
 ## Use the panel
 
@@ -67,10 +68,11 @@ the saved state is uncertain. Explicitly retry the desired setting while idle to
 verify and repair the record. For automations, use the confirmed switch state;
 `command_result` may arrive before it.
 
-Restoring DT02 or the original firmware removes the lock feature but retains its
-EEPROM record. Restoring a firmware version before LK01 removes local unlocking
-and the new local Stop behavior; keep remote lock controls available.
+Restoring the direct height version (DT02) or the original firmware removes the
+lock feature but retains its EEPROM record. Restoring a firmware version before
+LK01 removes local unlocking and the new local Stop behavior; keep remote lock
+controls available.
 
 See [test coverage](validation.md), the
-[CL01 protocol](protocol.md#cl01-panel-lock-extension) and its optional diagnostic
-entities `panel_lock_status` and `panel_lock_available`.
+[panel lock protocol (CL01)](protocol.md#cl01-panel-lock-extension) and its
+optional diagnostic entities `panel_lock_status` and `panel_lock_available`.

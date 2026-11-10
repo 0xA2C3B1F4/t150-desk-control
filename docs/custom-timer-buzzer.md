@@ -83,7 +83,8 @@ menus, calibration and storage operations can block requests. The command-result
 sensor reports acceptance or rejection. Commands are never retried automatically,
 queued across a disconnect or used to wake a sleeping controller.
 
-Older TB01, FP01 and TR01 firmware still accepts the original actions. The new
+Older [firmware versions](firmware-update.md#firmware-versions) with the timer
+and buzzer (TB01, FP01 and TR01) still accept the original actions. The new
 profile actions and Start timer require the current firmware. Use
 `custom_timer_set` with older firmware. Unsupported requests show a result
 message. A full-volume, unsoftened Play buzzer request with pulse and pause of at

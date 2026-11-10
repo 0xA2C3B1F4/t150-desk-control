@@ -59,7 +59,9 @@ example already includes both. The monitoring-only `desk.yaml` does not provide
 the controls these packages require. Follow the
 [firmware maintenance instructions](firmware-update.md) when working on the controller.
 
-After installing TB01, add its controls after `packages.desk`:
+After installing the
+[timer and buzzer firmware](firmware-update.md#firmware-versions) (TB01), add its
+controls after `packages.desk`:
 
 ```yaml
 packages:
@@ -68,7 +70,7 @@ packages:
 ```
 
 This replaces the panel-timer shortcuts with an adjustable timer and adds buzzer
-controls to the web interface and Home Assistant. See [TB01 setup](custom-timer-buzzer.md).
+controls to the web interface and Home Assistant. See [timer and buzzer setup](custom-timer-buzzer.md).
 
 For adjustable height-display timing, add the [display package](display.md).
 
