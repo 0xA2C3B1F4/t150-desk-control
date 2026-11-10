@@ -111,34 +111,44 @@ class WebTest(unittest.TestCase):
     def test_confirmed_speed_and_unknown_placeholder(self):
         """Verify speed menus use confirmed values and keep callbacks on their row."""
         script = r"""
-const assert=require('node:assert/strict');
-const input=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
-const S=(strings,...values)=>({strings,values});
-const Renderer=new Function('D','return class {'+input+'}')(S);
-const r=new Renderer(), sent=[];
-r.actioner={restAction:(entity,action)=>sent.push([entity.name,action])};
-r._select=(...args)=>args;
-for(const value of [null,undefined,'','UNKNOWN','Normal','Slow']){
- r.entity={name:'Motion speed',desk_motion_speed:true,value};
- const t=r.render_select(), known=value==='Normal'||value==='Slow';
- if(!known){
-  assert.match(t.strings.join(''),/>Unknown<\/span>/);
-  assert.doesNotMatch(t.strings.join(''),/<select|<option/);
-  continue;
- }
- assert.deepEqual(t.values.filter(x=>typeof x==='boolean'),[value==='Normal',value==='Slow']);
- assert.equal(t.values[1],value);
- assert.doesNotMatch(t.strings.join(''),/Unknown/); // Only real choices in the menu.
- const callback=t.values.find(x=>typeof x==='function');
- r.entity={name:'Unrelated select',value:'other'}; // Shared renderer moved rows.
- const event={target:{value:'Slow'}};callback(event);
- assert.deepEqual(sent.at(-1),['Motion speed','set?option=Slow']);
- assert.equal(event.target.value,known?value:''); // Await server confirmation.
- const count=sent.length;callback({target:{value:''}});assert.equal(sent.length,count);
+const assert = require("node:assert/strict");
+const input = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+const S = (strings, ...values) => ({ strings, values });
+const Renderer = new Function("D", "return class {" + input + "}")(S);
+const r = new Renderer(),
+  sent = [];
+r.actioner = { restAction: (entity, action) => sent.push([entity.name, action]) };
+r._select = (...args) => args;
+for (const value of [null, undefined, "", "UNKNOWN", "Normal", "Slow"]) {
+  r.entity = { name: "Motion speed", desk_motion_speed: true, value };
+  const t = r.render_select(),
+    known = value === "Normal" || value === "Slow";
+  if (!known) {
+    assert.match(t.strings.join(""), />Unknown<\/span>/);
+    assert.doesNotMatch(t.strings.join(""), /<select|<option/);
+    continue;
+  }
+  assert.deepEqual(
+    t.values.filter((x) => typeof x === "boolean"),
+    [value === "Normal", value === "Slow"],
+  );
+  assert.equal(t.values[1], value);
+  assert.doesNotMatch(t.strings.join(""), /Unknown/); // Only real choices in the menu.
+  const callback = t.values.find((x) => typeof x === "function");
+  r.entity = { name: "Unrelated select", value: "other" }; // Shared renderer moved rows.
+  const event = { target: { value: "Slow" } };
+  callback(event);
+  assert.deepEqual(sent.at(-1), ["Motion speed", "set?option=Slow"]);
+  assert.equal(event.target.value, known ? value : ""); // Await server confirmation.
+  const count = sent.length;
+  callback({ target: { value: "" } });
+  assert.equal(sent.length, count);
 }
-r.entity={name:'Ordinary',option:['a','b'],value:'b'};
-assert.deepEqual(r.render_select(),[r.entity,'set','option',['a','b'],'b']);
-console.log('PASS: speed selection confirmation, unknown placeholder, row binding, ordinary selects');
+r.entity = { name: "Ordinary", option: ["a", "b"], value: "b" };
+assert.deepEqual(r.render_select(), [r.entity, "set", "option", ["a", "b"], "b"]);
+console.log(
+  "PASS: speed selection confirmation, unknown placeholder, row binding, ordinary selects",
+);
 """
         subprocess.run(
             ["node", "-e", script], input=json.dumps(web.SELECT), text=True, check=True
@@ -147,31 +157,39 @@ console.log('PASS: speed selection confirmation, unknown placeholder, row bindin
     def test_confirmed_trim_boxes(self):
         """Keep trim boxes on confirmed values and reject invalid edits locally."""
         script = r"""
-const assert=require('node:assert/strict');
-const input=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
-const S=(strings,...values)=>({strings,values});
-const Renderer=new Function('D','return class {'+input+'}')(S);
-const r=new Renderer(),sent=[];
-r.actioner={restAction:(entity,action)=>sent.push([entity.name,action])};
-for(const value of [null,undefined,'NaN',-4,0,3,-3]){
- r.entity={name:'Normal up trim',desk_motion_trim:true,value};
- const t=r.render_number(),known=Number.isInteger(value)&&value>=-3&&value<=3;
- if(!known){assert.match(t.strings.join(''),/>Unknown<\/span>/);continue;}
- assert.match(t.strings.join(''),/type="number"/);
- assert.match(t.strings.join(''),/min="-3" max="3" step="1"/);
- const send=t.values.find(x=>typeof x==='function');
- r.entity={name:'Unrelated number',value:99};
- const event={target:{value:'2'}};send(event);
- assert.deepEqual(sent.at(-1),['Normal up trim','set?value=2']);
- assert.equal(event.target.value,String(value));
- for(const invalid of ['','NaN','Infinity','1.5','4','-4']){
-  const count=sent.length;send({target:{value:invalid}});assert.equal(sent.length,count);
- }
+const assert = require("node:assert/strict");
+const input = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+const S = (strings, ...values) => ({ strings, values });
+const Renderer = new Function("D", "return class {" + input + "}")(S);
+const r = new Renderer(),
+  sent = [];
+r.actioner = { restAction: (entity, action) => sent.push([entity.name, action]) };
+for (const value of [null, undefined, "NaN", -4, 0, 3, -3]) {
+  r.entity = { name: "Normal up trim", desk_motion_trim: true, value };
+  const t = r.render_number(),
+    known = Number.isInteger(value) && value >= -3 && value <= 3;
+  if (!known) {
+    assert.match(t.strings.join(""), />Unknown<\/span>/);
+    continue;
+  }
+  assert.match(t.strings.join(""), /type="number"/);
+  assert.match(t.strings.join(""), /min="-3" max="3" step="1"/);
+  const send = t.values.find((x) => typeof x === "function");
+  r.entity = { name: "Unrelated number", value: 99 };
+  const event = { target: { value: "2" } };
+  send(event);
+  assert.deepEqual(sent.at(-1), ["Normal up trim", "set?value=2"]);
+  assert.equal(event.target.value, String(value));
+  for (const invalid of ["", "NaN", "Infinity", "1.5", "4", "-4"]) {
+    const count = sent.length;
+    send({ target: { value: invalid } });
+    assert.equal(sent.length, count);
+  }
 }
-r.entity={name:'Ordinary number',value:1,min_value:0,max_value:10,step:1,uom:'s'};
-r._range=(...args)=>args;
-assert.deepEqual(r.render_number().values[0],[r.entity,'set','value',1,0,10,1]);
-console.log('PASS: confirmed trim boxes, unknown state, numeric bounds, row binding');
+r.entity = { name: "Ordinary number", value: 1, min_value: 0, max_value: 10, step: 1, uom: "s" };
+r._range = (...args) => args;
+assert.deepEqual(r.render_number().values[0], [r.entity, "set", "value", 1, 0, 10, 1]);
+console.log("PASS: confirmed trim boxes, unknown state, numeric bounds, row binding");
 """
         subprocess.run(
             ["node", "-e", script], input=json.dumps(web.NUMBER), text=True, check=True
@@ -180,47 +198,59 @@ console.log('PASS: confirmed trim boxes, unknown state, numeric bounds, row bind
     def test_confirmed_display_controls(self):
         """Use display-specific choices and seconds while retaining confirmed values."""
         script = r"""
-const assert=require('node:assert/strict');
-const data=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
-const D=(strings,...values)=>({strings,values});
-const Renderer=new Function('D','return class {'+data.select+data.number+'}')(D);
-const r=new Renderer(),sent=[];
-r.actioner={restAction:(entity,action)=>sent.push([entity.name,action])};
-for(const value of [null,undefined,'Slow','Auto blank','Normal']){
- r.entity={name:'Display mode',desk_display_mode:true,value};
- const t=r.render_select();
- if(value!=='Auto blank'&&value!=='Normal'){
-  assert.match(t.strings.join(''),/>Unknown<\/span>/);continue;
- }
- assert.deepEqual(t.values.filter(x=>typeof x==='boolean'),[value==='Auto blank',value==='Normal']);
- const send=t.values.find(x=>typeof x==='function');
- r.entity={name:'Other row',value:'Normal'};
- const event={target:{value:'Auto blank'}};send(event);
- assert.deepEqual(sent.at(-1),['Display mode','set?option=Auto%20blank']);
- assert.equal(event.target.value,value);
- for(const invalid of ['Slow','','UNKNOWN']){
-  const count=sent.length;send({target:{value:invalid}});assert.equal(sent.length,count);
- }
+const assert = require("node:assert/strict");
+const data = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+const D = (strings, ...values) => ({ strings, values });
+const Renderer = new Function("D", "return class {" + data.select + data.number + "}")(D);
+const r = new Renderer(),
+  sent = [];
+r.actioner = { restAction: (entity, action) => sent.push([entity.name, action]) };
+for (const value of [null, undefined, "Slow", "Auto blank", "Normal"]) {
+  r.entity = { name: "Display mode", desk_display_mode: true, value };
+  const t = r.render_select();
+  if (value !== "Auto blank" && value !== "Normal") {
+    assert.match(t.strings.join(""), />Unknown<\/span>/);
+    continue;
+  }
+  assert.deepEqual(
+    t.values.filter((x) => typeof x === "boolean"),
+    [value === "Auto blank", value === "Normal"],
+  );
+  const send = t.values.find((x) => typeof x === "function");
+  r.entity = { name: "Other row", value: "Normal" };
+  const event = { target: { value: "Auto blank" } };
+  send(event);
+  assert.deepEqual(sent.at(-1), ["Display mode", "set?option=Auto%20blank"]);
+  assert.equal(event.target.value, value);
+  for (const invalid of ["Slow", "", "UNKNOWN"]) {
+    const count = sent.length;
+    send({ target: { value: invalid } });
+    assert.equal(sent.length, count);
+  }
 }
-for(const value of [null,undefined,0,1,60,65535,65536]){
- r.entity={name:'Display timeout',desk_display_timeout:true,value,uom:'s'};
- const t=r.render_number();
- if(value===null||value===undefined||value<1||value>65535){
-  assert.match(t.strings.join(''),/>Unknown<\/span>/);continue;
- }
- assert.match(t.strings.join(''),/min="1" max="65535" step="1"/);
- const send=t.values.find(x=>typeof x==='function');
- r.entity={name:'Other row',value:3};
- for(const seconds of ['1','60','65535']){
-  const event={target:{value:seconds}};send(event);
-  assert.deepEqual(sent.at(-1),['Display timeout','set?value='+seconds]);
-  assert.equal(event.target.value,String(value));
- }
- for(const invalid of ['','0','65536','1.5','NaN','Infinity']){
-  const count=sent.length;send({target:{value:invalid}});assert.equal(sent.length,count);
- }
+for (const value of [null, undefined, 0, 1, 60, 65535, 65536]) {
+  r.entity = { name: "Display timeout", desk_display_timeout: true, value, uom: "s" };
+  const t = r.render_number();
+  if (value === null || value === undefined || value < 1 || value > 65535) {
+    assert.match(t.strings.join(""), />Unknown<\/span>/);
+    continue;
+  }
+  assert.match(t.strings.join(""), /min="1" max="65535" step="1"/);
+  const send = t.values.find((x) => typeof x === "function");
+  r.entity = { name: "Other row", value: 3 };
+  for (const seconds of ["1", "60", "65535"]) {
+    const event = { target: { value: seconds } };
+    send(event);
+    assert.deepEqual(sent.at(-1), ["Display timeout", "set?value=" + seconds]);
+    assert.equal(event.target.value, String(value));
+  }
+  for (const invalid of ["", "0", "65536", "1.5", "NaN", "Infinity"]) {
+    const count = sent.length;
+    send({ target: { value: invalid } });
+    assert.equal(sent.length, count);
+  }
 }
-console.log('PASS: display modes, timeout bounds, confirmed values and row binding');
+console.log("PASS: display modes, timeout bounds, confirmed values and row binding");
 """
         subprocess.run(
             ["node", "-e", script],
@@ -234,59 +264,131 @@ console.log('PASS: display modes, timeout bounds, confirmed values and row bindi
         # Execute the exact renderer inserted into the bundled Lit application.
         # Preserve template values so click handlers are exercised, not regexed.
         script = r"""
-const assert=require('node:assert/strict');
-const data=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
-const S=(strings,...values)=>({strings,values});
-const Renderer=new Function('D','return class {'+data.render+'}')(S);
-const r=new Renderer(),sent=[];
-r._switch=()=> 'ordinary-switch';
-r.actioner={restAction:(entity,action)=>sent.push({name:entity.name,action})};
-function render(state){r.entity={name:'Panel lock',domain:'switch',assumed_state:true,desk_panel_lock:true,state};return r.render_switch();}
-function view(t){return t.strings.reduce((s,p,i)=>s+p+(typeof t.values[i]==='function'?'handler':t.values[i]??''),'');}
-let t=render('OFF');
-assert.match(view(t),/color:#ef5350/);assert.doesNotMatch(view(t),/#4caf50/);
-assert.match(view(t),/>Off<\/span>/);
-const originalEntity=r.entity;
-r.entity={name:'Timer',state:'OFF'}; // Shared renderer has advanced to another row.
-t.values.filter(x=>typeof x==='function')[1]();
-assert.deepEqual(sent,[{name:'Panel lock',action:'turn_on'}]);assert.equal(originalEntity.state,'OFF');
-t=render('ON');assert.match(view(t),/color:#4caf50/);assert.doesNotMatch(view(t),/#ef5350/);
-assert.match(view(t),/>On<\/span>/);
-t.values.filter(x=>typeof x==='function')[0]();
-assert.deepEqual(sent,[{name:'Panel lock',action:'turn_on'},{name:'Panel lock',action:'turn_off'}]);
-for(const state of ['UNKNOWN',undefined,null]){
- t=render(state);assert.match(view(t),/>Unknown<\/span>/);
- assert.doesNotMatch(view(t),/#ef5350|#4caf50/);
- assert.equal((view(t).match(/aria-pressed="false"/g)||[]).length,2);
+const assert = require("node:assert/strict");
+const data = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+const S = (strings, ...values) => ({ strings, values });
+const Renderer = new Function("D", "return class {" + data.render + "}")(S);
+const r = new Renderer(),
+  sent = [];
+r._switch = () => "ordinary-switch";
+r.actioner = { restAction: (entity, action) => sent.push({ name: entity.name, action }) };
+function render(state) {
+  r.entity = {
+    name: "Panel lock",
+    domain: "switch",
+    assumed_state: true,
+    desk_panel_lock: true,
+    state,
+  };
+  return r.render_switch();
 }
-r.entity={assumed_state:false,state:'ON'};assert.equal(r.render_switch(),'ordinary-switch');
-r._actionButton=(entity,label,action)=>action;
-r.entity={assumed_state:true,state:'ON'};
-assert.deepEqual(r.render_switch().values,['turn_off','turn_on']);
-const entities=[{domain:'switch',assumed_state:true,desk_panel_lock:true,state:'ON'},
- {domain:'switch',assumed_state:true,desk_panel_lock:true,state:'OFF'},{domain:'sensor',state:'73.0'},
- {domain:'switch',assumed_state:true,state:'OFF'},
- {domain:'switch',assumed_state:false,state:'ON'},
- {domain:'select',desk_motion_speed:true,state:'Slow',value:'Slow'},
- {domain:'select',state:'Normal',value:'Normal'},
- {domain:'number',desk_motion_trim:true,state:'2',value:2},
- {domain:'number',state:'100',value:100},
- {domain:'select',desk_display_mode:true,state:'Auto blank',value:'Auto blank'},
- {domain:'number',desk_display_timeout:true,state:'60',value:60}];
-let updates=0,listener;
-const table={entities,requestUpdate:()=>updates++};
-const app={updateComplete:Promise.resolve(),shadowRoot:{querySelector:()=>table}};
-const run=new Function('customElements','document','window', 'return (async()=>{'+data.disconnect+'})()');
-run({whenDefined:()=>Promise.resolve()},{querySelector:()=>app},
- {source:{addEventListener:(type,fn)=>{assert.equal(type,'error');listener=fn;}}}).then(()=>{
- listener();assert.equal(updates,1);
- assert.deepEqual(entities.map(e=>e.state),['UNKNOWN','UNKNOWN','73.0','OFF','ON','UNKNOWN','Normal','UNKNOWN','100','UNKNOWN','UNKNOWN']);
- assert.equal(entities[5].value,null);assert.equal(entities[6].value,'Normal');
- assert.equal(entities[7].value,null);assert.equal(entities[8].value,100);
- assert.equal(entities[9].value,null);assert.equal(entities[10].value,null);
- assert.deepEqual(sent,[{name:'Panel lock',action:'turn_on'},{name:'Panel lock',action:'turn_off'}]);
- console.log('PASS: confirmed colors, explicit actions, unknown state, disconnect, ordinary switch');
-}).catch(e=>{console.error(e);process.exitCode=1;});
+function view(t) {
+  return t.strings.reduce(
+    (s, p, i) => s + p + (typeof t.values[i] === "function" ? "handler" : (t.values[i] ?? "")),
+    "",
+  );
+}
+let t = render("OFF");
+assert.match(view(t), /color:#ef5350/);
+assert.doesNotMatch(view(t), /#4caf50/);
+assert.match(view(t), />Off<\/span>/);
+const originalEntity = r.entity;
+r.entity = { name: "Timer", state: "OFF" }; // Shared renderer has advanced to another row.
+t.values.filter((x) => typeof x === "function")[1]();
+assert.deepEqual(sent, [{ name: "Panel lock", action: "turn_on" }]);
+assert.equal(originalEntity.state, "OFF");
+t = render("ON");
+assert.match(view(t), /color:#4caf50/);
+assert.doesNotMatch(view(t), /#ef5350/);
+assert.match(view(t), />On<\/span>/);
+t.values.filter((x) => typeof x === "function")[0]();
+assert.deepEqual(sent, [
+  { name: "Panel lock", action: "turn_on" },
+  { name: "Panel lock", action: "turn_off" },
+]);
+for (const state of ["UNKNOWN", undefined, null]) {
+  t = render(state);
+  assert.match(view(t), />Unknown<\/span>/);
+  assert.doesNotMatch(view(t), /#ef5350|#4caf50/);
+  assert.equal((view(t).match(/aria-pressed="false"/g) || []).length, 2);
+}
+r.entity = { assumed_state: false, state: "ON" };
+assert.equal(r.render_switch(), "ordinary-switch");
+r._actionButton = (entity, label, action) => action;
+r.entity = { assumed_state: true, state: "ON" };
+assert.deepEqual(r.render_switch().values, ["turn_off", "turn_on"]);
+const entities = [
+  { domain: "switch", assumed_state: true, desk_panel_lock: true, state: "ON" },
+  { domain: "switch", assumed_state: true, desk_panel_lock: true, state: "OFF" },
+  { domain: "sensor", state: "73.0" },
+  { domain: "switch", assumed_state: true, state: "OFF" },
+  { domain: "switch", assumed_state: false, state: "ON" },
+  { domain: "select", desk_motion_speed: true, state: "Slow", value: "Slow" },
+  { domain: "select", state: "Normal", value: "Normal" },
+  { domain: "number", desk_motion_trim: true, state: "2", value: 2 },
+  { domain: "number", state: "100", value: 100 },
+  { domain: "select", desk_display_mode: true, state: "Auto blank", value: "Auto blank" },
+  { domain: "number", desk_display_timeout: true, state: "60", value: 60 },
+];
+let updates = 0,
+  listener;
+const table = { entities, requestUpdate: () => updates++ };
+const app = { updateComplete: Promise.resolve(), shadowRoot: { querySelector: () => table } };
+const run = new Function(
+  "customElements",
+  "document",
+  "window",
+  "return (async()=>{" + data.disconnect + "})()",
+);
+run(
+  { whenDefined: () => Promise.resolve() },
+  { querySelector: () => app },
+  {
+    source: {
+      addEventListener: (type, fn) => {
+        assert.equal(type, "error");
+        listener = fn;
+      },
+    },
+  },
+)
+  .then(() => {
+    listener();
+    assert.equal(updates, 1);
+    assert.deepEqual(
+      entities.map((e) => e.state),
+      [
+        "UNKNOWN",
+        "UNKNOWN",
+        "73.0",
+        "OFF",
+        "ON",
+        "UNKNOWN",
+        "Normal",
+        "UNKNOWN",
+        "100",
+        "UNKNOWN",
+        "UNKNOWN",
+      ],
+    );
+    assert.equal(entities[5].value, null);
+    assert.equal(entities[6].value, "Normal");
+    assert.equal(entities[7].value, null);
+    assert.equal(entities[8].value, 100);
+    assert.equal(entities[9].value, null);
+    assert.equal(entities[10].value, null);
+    assert.deepEqual(sent, [
+      { name: "Panel lock", action: "turn_on" },
+      { name: "Panel lock", action: "turn_off" },
+    ]);
+    console.log(
+      "PASS: confirmed colors, explicit actions, unknown state, disconnect, ordinary switch",
+    );
+  })
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  });
 """
         disconnect = web.DISCONNECT.split('<script type="module">')[1].split(
             "</script>"
