@@ -7,9 +7,8 @@
 | Deltaco Gaming DT410 / GAM-140            | Tested desk       | Development and desk tests used metric mode.        |
 | T150-22-03-PJ enclosure, T150-PJ-V1.5 PCB | Tested controller | STM32F030C8T6 MCU; UART reports model `T150-22-03`. |
 
-Sources: [DT410 product sheet](https://asset.conrad.com/media10/add/160267/c1/-/en/002749663DS00/fiche-technique-2749663-deltaco-gaming-dt410-table-de-gaming-noir.pdf),
-[shared manual](https://www.electroland.gr/media/productattachment/0/14965/GAM140GAM140Wmanual.pdf)
-and the [DT410 retailer listing](https://www.multitronic.fi/en/products/3031488).
+Sources: [DT410 product sheet](https://asset.conrad.com/media10/add/160267/c1/-/en/002749663DS00/fiche-technique-2749663-deltaco-gaming-dt410-table-de-gaming-noir.pdf)
+and the [shared manual](https://www.electroland.gr/media/productattachment/0/14965/GAM140GAM140Wmanual.pdf).
 See [validation](validation.md) for feature-specific test coverage.
 
 ### Possible compatibility, untested
