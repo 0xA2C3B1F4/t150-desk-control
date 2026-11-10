@@ -332,9 +332,10 @@ configure `auto` explicitly to enable detection.
 
 ### Direct backend
 
-`target_height_mode: direct` requires DT02, CL01, RS01 or TB01 and
-`experimental_target_height: true`. It never borrows presets or falls back to
-the preset backend. Old temporary-preset backups remain stored but do not block
+`target_height_mode: direct` requires `experimental_target_height: true` and
+controller firmware with direct height commands: DT02 or any later
+[firmware version](firmware-update.md#firmware-versions). It never borrows
+presets or falls back to the preset backend. Old temporary-preset backups remain stored but do not block
 direct control or trigger preset recovery. Each request checks capability and
 idle state first.
 An uncertain acknowledgement requests Stop without retrying the target.
