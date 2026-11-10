@@ -4,7 +4,7 @@
 
 | Desk or identifier                        | Status            | Details                                             |
 | ----------------------------------------- | ----------------- | --------------------------------------------------- |
-| Deltaco Gaming DT410 / GAM-140            | Tested desk       | Development and desk tests used metric mode.        |
+| Deltaco Gaming DT410 / GAM-140            | Tested desk       | Developed with the panel in metric mode.            |
 | T150-22-03-PJ enclosure, T150-PJ-V1.5 PCB | Tested controller | STM32F030C8T6 MCU; UART reports model `T150-22-03`. |
 
 Sources: [DT410 product sheet](https://asset.conrad.com/media10/add/160267/c1/-/en/002749663DS00/fiche-technique-2749663-deltaco-gaming-dt410-table-de-gaming-noir.pdf)
