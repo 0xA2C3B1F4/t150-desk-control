@@ -1,26 +1,42 @@
 # T150 Desk Control
 
-T150 Desk Control adds ESPHome, browser and Home Assistant control to compatible T150 standing desks, with optional patches that extend and fix the original controller firmware.
+T150 Desk Control adds ESPHome, browser and Home Assistant control to compatible T150 standing desks. An ESP32 talks to the desk controller over UART. Optional patches extend and fix the original controller firmware.
 
-Target-height control first used the existing UART interface to temporarily borrow a memory preset. That workaround led to firmware commands for direct height control without changing saved presets, followed by panel locking, calibration and speed controls.
-
-The project also includes targeted fixes for controller sleep logic and UART receive handling. See [firmware fixes and their validation status](docs/validation.md#controller-firmware-fixes) for what each patch changes and how it has been tested.
-
-Basic control works with supported stock firmware; patches are optional. Developed on a Deltaco Gaming DT410. See [hardware and compatibility](docs/hardware.md) for controller markings, related models and wiring.
+Developed on a Deltaco Gaming DT410. See [hardware and compatibility](docs/hardware.md) for controller markings, related models and wiring.
 
 ![T150 control panel with up, down, preset, M and T buttons](docs/images/t150-control-panel.png)
 
-## What it does
+## Features
 
-- ESP32 controls provide height in cm or inches, preset recall and editing, target-height moves, controlled Stop, UART status and preset recovery through ESPHome, the browser and Home Assistant. Optional controls cover keep-awake, load telemetry, load settings and timers.
-- Controller firmware extensions add [direct height commands](docs/esphome.md#direct-backend), a persistent [panel lock with local unlocking and Stop](docs/panel-lock.md), and [calibration and speed controls](docs/reset-speed.md).
-- Experimental [TB01 timer and buzzer controls](docs/custom-timer-buzzer.md) add an adjustable timer and buzzer pulses to the web interface and Home Assistant.
-- [Display controls](docs/display.md) set how long idle height digits remain visible.
-- Targeted [controller firmware fixes](docs/validation.md#controller-firmware-fixes) address sleep logic at the RTC hour boundary and UART receive parsing.
+Every control is available in ESPHome, the browser and Home Assistant. Hardware results apply to the DT410; see [supported features and testing](docs/validation.md) for what has been checked.
 
-The optional [firmware maintenance tools](docs/firmware-update.md) provide backup, patching, installation and recovery.
+### With the original controller firmware
 
-See [supported features and testing](docs/validation.md) for completed hardware and host checks.
+| Feature                   | Notes                                                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Height                    | In [cm or inches](docs/esphome.md#display-units), with UART connection status                               |
+| Presets                   | Recall and edit presets 1 to 3                                                                              |
+| Target height             | Borrows preset 3 for the move, then restores it. See the [preset backend](docs/esphome.md#preset-backend)   |
+| Stop                      | Soft deceleration, not an emergency stop. See [what Stop does](docs/esphome.md#what-stop-does)              |
+| Keep-awake                | Optional. A periodic preset-3 workaround keeps the UART awake. See [keep-awake](docs/esphome.md#keep-awake) |
+| Panel timers              | Optional. Emulates T-key presses for the panel's own durations. See [timers](docs/esphome.md#timers)        |
+| Load telemetry and limits | Optional. Raw, uncalibrated values. See [load settings](docs/esphome.md#optional-load-settings)             |
+| Firmware backup           | Separate read-only build. See the [firmware reader](docs/firmware-export.md)                                |
+
+### With the patched controller firmware
+
+[Firmware maintenance](docs/firmware-update.md) backs up the original firmware, installs the patched version and can restore the backup. The current patched firmware includes everything below.
+
+| Feature                      | Notes                                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Direct target height         | Moves to a height without changing saved presets. See the [direct backend](docs/esphome.md#direct-backend)                      |
+| Panel lock                   | Lock, unlock and stop from the panel with M + T. The lock survives power loss. See [panel lock](docs/panel-lock.md)             |
+| Calibration and motion speed | Guarded calibration and a Normal/Slow speed choice. See [reset and motion speed](docs/reset-speed.md)                           |
+| Motion trims                 | Stopping adjustment for each speed and direction. See [motion trims](docs/motion-trims.md)                                      |
+| Custom timer and buzzer      | Timer of 2 to 720 minutes, volume, short pulses and a separate alarm sound. See [timer and buzzer](docs/custom-timer-buzzer.md) |
+| Display timeout              | Blanks the idle height digits after a set time. See [display timeout](docs/display.md)                                          |
+| Sleep fix                    | Keeps telemetry running across the RTC hour boundary. See [firmware fixes](docs/validation.md#controller-firmware-fixes)        |
+| UART receive fix             | Stops split or merged commands in the receive parser. See [firmware fixes](docs/validation.md#controller-firmware-fixes)        |
 
 For related desks, see [untested compatibility candidates and how to contribute firmware](docs/hardware.md#possible-compatibility-untested).
 
