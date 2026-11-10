@@ -11,8 +11,8 @@ Sources: [DT410 product sheet](https://asset.conrad.com/media10/add/160267/c1/-/
 and the [shared manual](https://www.electroland.gr/media/productattachment/0/14965/GAM140GAM140Wmanual.pdf).
 See [validation](validation.md) for feature-specific test coverage.
 
-All hardware tests ran on one DT410 desk with one T150-PJ-V1.5 controller in
-metric mode. Another unit of the same model may have a different controller
+All hardware tests ran on one DT410 desk with one T150-PJ-V1.5 controller.
+Another unit of the same model may have a different controller
 revision or firmware. The maintenance page writes only over
 [exact known application images](firmware-update.md#accepted-images-and-storage).
 Before installing anything, check the
