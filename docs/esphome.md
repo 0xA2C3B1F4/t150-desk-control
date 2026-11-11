@@ -335,9 +335,9 @@ configure `auto` explicitly to enable detection.
 `target_height_mode: direct` requires `experimental_target_height: true` and
 controller firmware with direct height commands: DT02 or any later
 [firmware version](firmware-update.md#firmware-versions). It never borrows
-presets or falls back to the preset backend. Old temporary-preset backups remain stored but do not block
-direct control or trigger preset recovery. Each request checks capability and
-idle state first.
+presets or falls back to the preset backend. Old temporary-preset backups remain
+stored but do not block direct control or trigger preset recovery. Each request
+checks capability and idle state first.
 An uncertain acknowledgement requests Stop without retrying the target.
 
 Changing a target during a direct move stops the desk. Wait for settling and
