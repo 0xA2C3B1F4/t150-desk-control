@@ -12,8 +12,8 @@ and the [shared manual](https://www.electroland.gr/media/productattachment/0/149
 See [validation](validation.md) for feature-specific test coverage.
 
 All hardware tests ran on one DT410 desk with one T150-PJ-V1.5 controller.
-Another unit of the same model may have a different controller
-revision or firmware. The maintenance page writes only over
+Another unit of the same model may have a different controller revision or
+firmware. The maintenance page writes only over
 [exact known application images](firmware-update.md#accepted-images-and-storage).
 Before installing anything, check the
 [controller identity](esphome.md#controller-identity) and confirm that the page

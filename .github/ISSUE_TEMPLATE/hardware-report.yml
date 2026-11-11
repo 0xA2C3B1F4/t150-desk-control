@@ -12,7 +12,7 @@ body:
     id: identity
     attributes:
       label: Controller identity
-      description: The `controller_model`, `controller_manufacturer`, `controller_identifiers` and `controller_date` values from the device's diagnostics. Write "unknown" for any that stay empty.
+      description: The **Controller model**, **Controller manufacturer**, **Controller identifiers** and **Controller date** values from the device's diagnostics. Write "unknown" for any that stay empty.
     validations:
       required: true
   - type: textarea
