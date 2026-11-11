@@ -222,8 +222,9 @@
     >
     <p
       >Installation erases application flash. A failed transfer may require restoring the original
-      file. Only exact supported 55,296-byte original, DT02, CL01, RS01, TB01, FP01 or TR01
-      application files can be installed. Unknown versions can be saved for research.</p
+      file. Only exact supported 55,296-byte original, DT02, CL01, RS01, TB01, FP01, TR01, BZ01,
+      DS01 or LK01 application files can be installed. Unknown versions can be saved for
+      research.</p
     >
     <p>Files in this page are temporary. The computer download is your persistent backup.</p>
   </details>
@@ -248,9 +249,21 @@
       RS01 = "ad1f321c570de25abef0f106175a5722d709b92e5db6d3da792bed9cc55fe78b",
       TB01 = "eb4ea2ff574aab412d5b7c5b4d6a74a3515ab6329d5459fae2143baec2356f07",
       FP01 = "7ae194172863a9cff9847b671bfe24a1d33399d5fa3a90eabb158992f70a0adb",
-      TR01 = "2493c4b1d24e1ed6b1e5fa478224a4466068d50b7d52781bc004e3b0d928dcc9";
-    const lockNotice =
+      TR01 = "2493c4b1d24e1ed6b1e5fa478224a4466068d50b7d52781bc004e3b0d928dcc9",
+      BZ01 = "e7b7392cb648209ca9b7eb0d5b02cd96f407bdfb73b2e5cfe5c5748398d13d25",
+      DS01 = "3ecdedb88e63c6b83bb2b6816dbb8bb4003ead092f4430b405ba5706a4a6c5b9",
+      LK01 = "040fa9a6de9b98124f90e9f631c26d3ec8860980a1c03f246b8f898e1b2aa6e1";
+    const remoteUnlockNotice =
       "Without a valid saved panel-lock setting, the panel starts locked. All physical buttons are blocked while locked, including buttons used to stop movement. Unlock the panel remotely to enable the buttons.";
+    const localUnlockNotice =
+      "Without a valid saved panel-lock setting, the panel starts locked. With the desk stationary, hold M + T together for three seconds or use the remote controls to unlock it. Any panel button stops movement while locked.";
+    // LK01 added the local M + T unlock and local Stop; earlier lock images need the remote controls.
+    const lockNotice = (sha256) =>
+      sha256 === LK01
+        ? " " + localUnlockNotice
+        : [CL01, RS01, TB01, FP01, TR01, BZ01, DS01].includes(sha256)
+          ? " " + remoteUnlockNotice
+          : "";
     let status = null,
       locked = false,
       original = null,
@@ -458,7 +471,7 @@
         title = "All application bytes verified";
         detail =
           "Select Finish maintenance to resume normal desk communication and operation. Reconnect the motor only with controller power off." +
-          ([CL01, RS01, TB01, FP01, TR01].includes(status.sha256) ? " " + lockNotice : "");
+          lockNotice(status.sha256);
         attention = true;
       } else if (expired) {
         title = "Preflight expired. Read the controller again";
@@ -466,14 +479,16 @@
           "Save any backup you still need, then select Read controller firmware to obtain a fresh preflight before preparing or installing an image.";
         attention = true;
       } else if (status.state === "read_complete") {
-        const known = [STOCK, DT02, CL01, RS01, TB01, FP01, TR01].includes(status.sha256);
+        const known = [STOCK, DT02, CL01, RS01, TB01, FP01, TR01, BZ01, DS01, LK01].includes(
+          status.sha256,
+        );
         const current = status.target_sha256 && status.sha256 === status.target_sha256;
         title = current
           ? "Current firmware is already installed"
           : "Read complete. Save the controller backup";
         detail = current
-          ? "Save this backup. Prepare current firmware to reinstall it, or select a saved supported application file. " +
-            lockNotice
+          ? "Save this backup. Prepare current firmware to reinstall it, or select a saved supported application file." +
+            lockNotice(status.sha256)
           : "Download and save the backup, then prepare the current firmware. Leave controller power on.";
         if (!known) {
           title = status.recovery_required
@@ -491,7 +506,7 @@
         title = "Image prepared. Confirm and arm installation";
         detail =
           "Installation erases application flash; a failed transfer may require restoring the original file. Confirm installation below and select Arm installation. Leave controller power on until the instruction changes to OFF, then ON." +
-          ([CL01, RS01, TB01, FP01, TR01].includes(status.sha256) ? " " + lockNotice : "");
+          lockNotice(status.sha256);
       } else if (normalBootNeeded && status.state === "idle" && !status.claimed) {
         title = "Maintenance finished. Restart the controller for normal use";
         detail =
