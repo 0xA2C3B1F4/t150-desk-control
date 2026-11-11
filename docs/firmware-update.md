@@ -38,11 +38,13 @@ and cannot be combined with this build. A rejected OTA attempt logs
 The OTA guard checks the reviewed ESPHome source. If a different ESPHome version
 fails with `Unreviewed ESPHome OTA source`, use the supported version above.
 Keep the [panel-lock package](panel-lock.md) enabled for remote lock controls.
-Firmware before LK01 requires these controls to unlock the panel.
+Firmware before the local panel lock version (LK01) requires these controls to
+unlock the panel. See [firmware versions](#firmware-versions) for each code.
 
 ## Read, patch and verify
 
-RS01 R7 requires the ESPHome adapter from the same version for UART frame recovery.
+The calibration and speed firmware (RS01 R7) requires the ESPHome adapter from
+the same version for UART frame recovery.
 See [test coverage and known limits](validation.md).
 
 Follow the active instruction panel. Keep the ESP32 powered throughout.
@@ -77,6 +79,25 @@ If the browser disconnects, the ESP32 continues the transfer. Reopen the page
 and wait for completion or timeout before taking over the idle session. A new
 tab cannot cancel the previous tab's transfer. Unknown status disables actions;
 keep both devices powered until status returns. Writes never retry automatically.
+
+## Firmware versions
+
+The maintenance page, example files and test notes name controller firmware
+versions by short codes. Each version includes everything in the rows above it.
+**Prepare current firmware** installs LK01.
+
+| Code     | Name                     | Adds                                                                                | Guide                                       |
+| -------- | ------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------- |
+| Original | Original firmware        | The manufacturer's T150-PJ-V1.5 application, without patches                        | [Hardware](hardware.md)                     |
+| DT02     | Direct height            | Direct height commands and the [sleep fix](validation.md#controller-firmware-fixes) | [Direct backend](esphome.md#direct-backend) |
+| CL01     | Panel lock               | Remote panel locking; the lock survives power loss                                  | [Panel lock](panel-lock.md)                 |
+| RS01 R7  | Calibration and speed    | Guarded calibration, Normal/Slow speeds and the UART receive fix                    | [Reset and motion speed](reset-speed.md)    |
+| TB01     | Timer and buzzer         | Custom timer and buzzer commands                                                    | [Timer and buzzer](custom-timer-buzzer.md)  |
+| FP01     | Shared firmware platform | A shared base for the later patches                                                 | [Controller firmware](firmware-platform.md) |
+| TR01     | Motion trims             | Stopping adjustments for each speed and direction                                   | [Motion trims](motion-trims.md)             |
+| BZ01     | Sound profiles           | Buzzer volume, 5 ms pulses and a separate timer alarm sound                         | [Timer and buzzer](custom-timer-buzzer.md)  |
+| DS01     | Display timeout          | Blanks the idle height digits after a set time                                      | [Display timeout](display.md)               |
+| LK01     | Local panel lock         | Locking and unlocking with M + T on the panel, and physical Stop while locked       | [Panel lock](panel-lock.md#use-the-panel)   |
 
 ## Accepted images and storage
 

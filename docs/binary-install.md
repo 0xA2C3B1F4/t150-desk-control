@@ -8,7 +8,6 @@ support. You do not need a compiler or YAML edits.
 Use [YAML installation](../README.md#esphome-device-builder) for other pin layouts,
 firmware maintenance, optional controller-extension controls or OTA updates.
 The factory image updates the ESP32, not the desk controller.
-Until a release is published, use the development YAML configurations.
 
 ## USB and Wi-Fi
 
