@@ -1,8 +1,9 @@
 # Releases
 
-Until the first release, use the development configurations on `main`. Published
-releases provide a Stamp-C3 factory image, YAML files pinned to their tag,
-checksums and validation results.
+Install from a [published release](https://github.com/0xA2C3B1F4/t150-desk-control/releases).
+Each release provides a Stamp-C3 factory image, YAML files pinned to its tag,
+checksums and validation results. The configurations on `main` follow development
+sources.
 Use tags for installation only after their release is published.
 
 ## Version identities

@@ -777,9 +777,12 @@ The maintenance adapter accepts only these 55,296-byte application hashes:
 | TB01                             | `eb4ea2ff574aab412d5b7c5b4d6a74a3515ab6329d5459fae2143baec2356f07` |
 | FP01                             | `7ae194172863a9cff9847b671bfe24a1d33399d5fa3a90eabb158992f70a0adb` |
 | TR01                             | `2493c4b1d24e1ed6b1e5fa478224a4466068d50b7d52781bc004e3b0d928dcc9` |
+| BZ01                             | `e7b7392cb648209ca9b7eb0d5b02cd96f407bdfb73b2e5cfe5c5748398d13d25` |
+| DS01                             | `3ecdedb88e63c6b83bb2b6816dbb8bb4003ead092f4430b405ba5706a4a6c5b9` |
+| LK01                             | `040fa9a6de9b98124f90e9f631c26d3ec8860980a1c03f246b8f898e1b2aa6e1` |
 
 The pinned loader erases 53 application pages, writes 25 blocks for original/DT02,
-26 for CL01, 32 for RS01/TB01, or 53 for FP01/TR01. It leaves the final flash page untouched. Admission
+26 for CL01, 32 for RS01/TB01, or 53 for FP01 and later images. It leaves the final flash page untouched. Admission
 requires an erased final page; verification covers the full 54 KiB application, including
 unwritten bytes. Replacement headers contain our patch code, not vendor images.
 
@@ -787,7 +790,7 @@ Before installation, the ESP saves source/target block fingerprints. Interrupted
 original-image recovery retains a third fingerprint set so it can be retried.
 Every 1 KiB block must match a recorded identity or be erased, except at most one
 partial block within the write payload. After the exact original is uploaded and
-hashed, the adapter reconstructs original/DT02/CL01/RS01/TB01/FP01/TR01 candidates and requires the
+hashed, the adapter reconstructs a candidate for each image in the table and requires the
 partial block to match a halfword-aligned programmed prefix followed by erased
 bytes. This recovery path permits only original-image restoration. Multiple
 partial blocks, programmed halfwords outside that pattern or a damaged final

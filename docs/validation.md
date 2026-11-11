@@ -190,9 +190,10 @@ only the selected YAML and test secrets in the configuration directory. Tests
 check that packages and components resolve to the same commit, local component
 sources are replaced, and firmware builds retain the OTA guard.
 
-The first release still requires a stationary Stamp-C3 smoke test of its exact
-ESPHome candidate. The earlier R7 hardware results above apply to the unchanged
-controller image. See [release procedure](releases.md#maintainer-workflow).
+Each release requires a stationary Stamp-C3 smoke test of its exact candidate.
+Release v2026.11.0 passed this test on 6 November 2026; additional hardware
+checks covered preset movement and Stop. The earlier R7 hardware results above
+apply to the unchanged controller image. See [release procedure](releases.md#maintainer-workflow).
 
 The CI workflow defines Debug/Release native tests with ASan/UBSan, ESPHome host
 UART tests and Stamp-C3/ESP32 builds. Tests use dummy credentials and never upload
