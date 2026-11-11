@@ -22,7 +22,7 @@ const base = {
   source_sha256: "",
   target_name: "T150 Desk Control controller firmware",
   target_version: "2026.11.0",
-  target_sha256: "2493c4b1d24e1ed6b1e5fa478224a4466068d50b7d52781bc004e3b0d928dcc9",
+  target_sha256: "040fa9a6de9b98124f90e9f631c26d3ec8860980a1c03f246b8f898e1b2aa6e1",
   prepare_available: false,
 };
 async function page() {
@@ -92,6 +92,9 @@ async function page() {
     ["TB01", "tb01_patch.h"],
     ["FP01", "platform_patch.h"],
     ["TR01", "motion_trim_patch.h"],
+    ["BZ01", "buzzer_patch.h"],
+    ["DS01", "display_patch.h"],
+    ["LK01", "local_lock_patch.h"],
   ]) {
     const source = readFileSync(
       join(__dirname, "../../components/desk_firmware_update", header),
@@ -126,7 +129,18 @@ async function page() {
     "patchMotionTrims",
   ])
     assert.equal(e[id], undefined);
-  for (const identity of ["STOCK", "DT02", "CL01", "RS01", "TB01", "FP01", "TR01"]) {
+  for (const identity of [
+    "STOCK",
+    "DT02",
+    "CL01",
+    "RS01",
+    "TB01",
+    "FP01",
+    "TR01",
+    "BZ01",
+    "DS01",
+    "LK01",
+  ]) {
     await p.state({
       state: "read_complete",
       sha256: p.run(identity),
@@ -134,7 +148,9 @@ async function page() {
       prepare_available: true,
     });
     assert.equal(e.prepareCurrent.disabled, false);
-    assert.equal(e.guidanceTitle.textContent.includes("already installed"), identity === "TR01");
+    assert.doesNotMatch(e.guidanceTitle.textContent, /Unknown firmware/);
+    assert.equal(e.guidanceTitle.textContent.includes("already installed"), identity === "LK01");
+    if (identity === "LK01") assert.match(e.guidanceDetail.textContent, /hold M \+ T together/);
     assert.match(e.targetFirmware.textContent, /target version 2026.11.0/);
   }
   await p.state({ state: "read_complete", sha256: p.run("STOCK"), source_sha256: p.run("STOCK") });
@@ -161,8 +177,17 @@ async function page() {
     await p.state({ state: "read_complete", ...fields, prepare_available: false });
     assert.equal(e.prepareCurrent.disabled, true);
   }
-  await p.state({ state: "verified", sha256: p.run("TR01") });
-  assert.match(e.guidanceDetail.textContent, /unlock the panel remotely/i);
+  for (const identity of ["TR01", "BZ01", "DS01"]) {
+    await p.state({ state: "verified", sha256: p.run(identity) });
+    assert.match(e.guidanceDetail.textContent, /unlock the panel remotely/i);
+  }
+  for (const state of ["verified", "staged"]) {
+    await p.state({ state, sha256: p.run("LK01") });
+    assert.match(e.guidanceDetail.textContent, /hold M \+ T together/);
+    assert.doesNotMatch(e.guidanceDetail.textContent, /All physical buttons are blocked/);
+    await p.state({ state, sha256: p.run("DT02") });
+    assert.doesNotMatch(e.guidanceDetail.textContent, /panel starts locked/);
+  }
   await p.state({
     state: "staged",
     sha256: "e5324473e0c7cdb43b0a3328d023454f56724875ab61973a5640c683727dabff",
