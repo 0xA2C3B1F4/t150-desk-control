@@ -33,19 +33,23 @@ def instrument(work):
     )
     assert source.count(old) == 1
     source = source.replace(old, new)
-    old = """if (this->height_seen_ && static_cast<uint32_t>(now - this->last_height_received_) > 750) {
-      this->invalidate_panel_lock_("No recent controller reply; panel-lock state unknown");"""
-    new = """if (this->height_seen_ && static_cast<uint32_t>(now - this->last_height_received_) > 750) {
+    # Match only the condition so other invalidations added to this branch,
+    # such as the RS01 reset-speed one, do not break the anchor.
+    old = "if (this->height_seen_ && static_cast<uint32_t>(now - this->last_height_received_) > 750) {"
+    new = (
+        old
+        + """
       if (!timing_rx_reported) {
         timing_rx_reported = true;
         ESP_LOGI("uart_timing", "invalidate site=rx now=%u height_at=%u age=%u loop_gap=%u rx=%u known=%d",
                  now, this->last_height_received_, now - this->last_height_received_, timing_gap,
                  unsigned(this->available()), this->panel_lock_.state_known());
-      }
-      this->invalidate_panel_lock_("No recent controller reply; panel-lock state unknown");"""
+      }"""
+    )
     assert source.count(old) == 1
     source = source.replace(old, new)
-    old = 'if (!fresh) this->invalidate_panel_lock_("No recent controller reply; panel-lock state unknown");'
+    old = """if (!fresh)
+    this->invalidate_panel_lock_("No recent controller reply; panel-lock state unknown");"""
     new = """if (!fresh) {
     if (this->panel_lock_.state_known())
       ESP_LOGI("uart_timing", "invalidate site=panel_lock now=%u height_at=%u age=%u rx=%u seen=%d monitor_fresh=%d",
