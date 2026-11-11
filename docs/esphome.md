@@ -59,7 +59,9 @@ example already includes both. The monitoring-only `desk.yaml` does not provide
 the controls these packages require. Follow the
 [firmware maintenance instructions](firmware-update.md) when working on the controller.
 
-After installing TB01, add its controls after `packages.desk`:
+After installing the
+[timer and buzzer firmware](firmware-update.md#firmware-versions) (TB01), add its
+controls after `packages.desk`:
 
 ```yaml
 packages:
@@ -68,7 +70,7 @@ packages:
 ```
 
 This replaces the panel-timer shortcuts with an adjustable timer and adds buzzer
-controls to the web interface and Home Assistant. See [TB01 setup](custom-timer-buzzer.md).
+controls to the web interface and Home Assistant. See [timer and buzzer setup](custom-timer-buzzer.md).
 
 For adjustable height-display timing, add the [display package](display.md).
 
@@ -330,11 +332,12 @@ configure `auto` explicitly to enable detection.
 
 ### Direct backend
 
-`target_height_mode: direct` requires DT02, CL01, RS01 or TB01 and
-`experimental_target_height: true`. It never borrows presets or falls back to
-the preset backend. Old temporary-preset backups remain stored but do not block
-direct control or trigger preset recovery. Each request checks capability and
-idle state first.
+`target_height_mode: direct` requires `experimental_target_height: true` and
+controller firmware with direct height commands: DT02 or any later
+[firmware version](firmware-update.md#firmware-versions). It never borrows
+presets or falls back to the preset backend. Old temporary-preset backups remain
+stored but do not block direct control or trigger preset recovery. Each request
+checks capability and idle state first.
 An uncertain acknowledgement requests Stop without retrying the target.
 
 Changing a target during a direct move stops the desk. Wait for settling and

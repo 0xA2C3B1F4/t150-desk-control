@@ -2,6 +2,8 @@
 
 Hardware results apply to the [tested controller](hardware.md#desk-and-controller-compatibility).
 Host tests and successful builds do not establish physical behavior.
+Sections name controller firmware by version code; see
+[firmware versions](firmware-update.md#firmware-versions) for what each adds.
 
 ## Local panel lock
 

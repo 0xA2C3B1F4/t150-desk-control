@@ -1,7 +1,9 @@
 # Reset and motion speed
 
-RS01 R7 includes DT02 and CL01 and adds guarded desk calibration, a Normal/Slow
-speed choice and the UART receive fix. Install it through
+The [calibration and speed firmware](firmware-update.md#firmware-versions)
+(RS01 R7) includes direct height control (DT02) and panel locking (CL01) and adds
+guarded desk calibration, a Normal/Slow speed choice and the UART receive fix.
+Install it through
 [firmware maintenance](firmware-update.md) and use the ESPHome adapter from
 the same version. See [test coverage and known limits](validation.md).
 

@@ -1,6 +1,7 @@
 # Motion trims
 
-TR01 stores four independent stopping adjustments: Normal up, Normal down,
+The [motion trim firmware](firmware-update.md#firmware-versions) (TR01) stores
+four independent stopping adjustments: Normal up, Normal down,
 Slow up and Slow down. Each accepts an integer from -3 to +3. Zero keeps the
 original compensation. Positive values extend the target farther in the
 direction of travel; negative values reduce that extension. These are controller

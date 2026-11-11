@@ -13,6 +13,9 @@ Run `pio pkg pack .` at the repository root to package the library using
 `library.json`. The package contains the portable headers and does not compile
 the ESPHome adapter. There is no CMake install rule.
 
+Extension sections use the controller firmware codes listed in
+[firmware versions](firmware-update.md#firmware-versions).
+
 Contents:
 
 - [Headers](#headers)
