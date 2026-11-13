@@ -238,8 +238,9 @@ class Probe : public esphome::desk_uart::DeskUART {
     fresh();
     wire_.sent.clear();
     const auto writes_before = disk_.writes;
-    const auto now = esphome::millis();
     require(this->accept_current_preset(), "explicit Accept starts");
+    // The action starts its timer internally; do not tick it with an earlier timestamp.
+    const auto now = esphome::millis();
     this->target_loop_(now);
     require(wire_.sent.size() == 1 && wire_.sent.back().bytes[0] == 0x15, "first acceptance read");
     this->target_move_.accept(value(0x1F, current, 1), now);
@@ -282,8 +283,9 @@ class Probe : public esphome::desk_uart::DeskUART {
     wire_.sent.clear();
     const auto records_before = disk_.records;
     const auto writes_before = disk_.writes;
-    const auto now = esphome::millis();
     require(this->restore_temporary_preset(), "explicit Restore starts");
+    // The action starts its timer internally; do not tick it with an earlier timestamp.
+    const auto now = esphome::millis();
     this->target_loop_(now);
     require(wire_.sent.size() == 1 && wire_.sent[0].bytes[0] == 0x15, "first restoration read");
     this->target_move_.accept(value(0x1F, current, 11), now);
