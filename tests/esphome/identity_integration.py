@@ -22,7 +22,7 @@ def main():
     """Verify identity queries wait for stable UART and pause during movement."""
     work = parse_args(__doc__).work_dir
     env = test_env(work)
-    master, slave = open_pty()
+    master = slave = None
     proc = None
     fields = {
         "controller_model": "T150-22-03",
@@ -81,13 +81,14 @@ desk_uart:
     results = []
     try:
         with (work / "build.log").open("w") as log:
-            build_host(cfg, work, env, log, uart_port=os.ttyname(slave))
+            build_host(cfg, work, env, log, uart_expr='getenv("DESK_TEST_UART")')
         for scenario, seconds in [
             ("all_fields", 16),
             ("missing_malformed_and_moving", 27),
         ]:
-            while select.select([master], [], [], 0)[0]:
-                os.read(master, 4096)
+            # Unread height samples must not carry over from the previous process.
+            master, slave = open_pty()
+            env["DESK_TEST_UART"] = os.ttyname(slave)
             output = bytearray()
             processed = seq = 0
             next_height = 0
@@ -166,6 +167,9 @@ desk_uart:
                         processed = len(found)
                 proc.terminate()
                 proc.wait(timeout=5)
+            os.close(master)
+            os.close(slave)
+            master = slave = None
             text = (work / (scenario + ".log")).read_text()
             for key, value in fields.items():
                 if scenario != "all_fields" and key == "controller_date":
@@ -188,8 +192,10 @@ desk_uart:
         if proc is not None and proc.poll() is None:
             proc.kill()
             proc.wait()
-        os.close(master)
-        os.close(slave)
+        if master is not None:
+            os.close(master)
+        if slave is not None:
+            os.close(slave)
 
 
 if __name__ == "__main__":
