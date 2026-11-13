@@ -70,6 +70,9 @@ PROFILE = bytes.fromhex(
     "18002700da029c040800e4020600e40208000700faff0100"
 )
 NAME = "backend-journal-test"
+# An identity read blocks maintenance for at most 700 ms and the next read
+# starts at least 1000 ms after it, so a request must be accepted within 1 s.
+MAINTENANCE_WAIT_LIMIT_MS = 1000
 
 
 def journal(kind):
@@ -115,6 +118,21 @@ interval:
           fclose(f);
           if (!read) return;
           if ((!strcmp(action, "direct") || !strcmp(action, "read")) && !BackendJournalAccess::ready(id(desk))) return;
+          if (!strcmp(action, "maintenance")) {{
+            // The adapter refuses maintenance while a background identity read
+            // is in flight (at most 700 ms), and firmware export reports that
+            // refusal as "retry shortly". Keep the request until it is accepted
+            // and log the wait in ms.
+            static const uint32_t first_attempt = esphome::millis();
+            BackendJournalAccess::inspect(id(desk), action);
+            const bool accepted = id(desk)->begin_firmware_export(false);
+            ESP_LOGI("fixture", "MAINTENANCE=%d|%u", accepted,
+                static_cast<unsigned>(esphome::millis() - first_attempt));
+            if (!accepted) return;
+            id(desk)->end_firmware_export();
+            remove("action");
+            return;
+          }}
           remove("action");
           BackendJournalAccess::inspect(id(desk), action);
           if (!strcmp(action, "direct")) {{
@@ -127,10 +145,6 @@ interval:
           }} else if (!strcmp(action, "inert")) {{
             BackendJournalAccess::inert(id(desk));
             ESP_LOGI("fixture", "MOVE=%d", id(desk)->move_to_height(78));
-          }} else if (!strcmp(action, "maintenance")) {{
-            const bool accepted = id(desk)->begin_firmware_export(false);
-            ESP_LOGI("fixture", "MAINTENANCE=%d", accepted);
-            if (accepted) id(desk)->end_firmware_export();
           }} else if (!strcmp(action, "read")) {{
             BackendJournalAccess::read3(id(desk));
           }} else if (!strcmp(action, "stop")) {{
@@ -428,7 +442,13 @@ def run_case(work, env, binary, name):
             "Other controller" if "identity_mismatch" in name else "T150-22-03"
         )
         model = f"IDENTITY_MODEL={expected_model}"
-        assert model in text and "MAINTENANCE=1" in text, (name, text[-6000:])
+        accepted = re.search(r"MAINTENANCE=1\|(\d+)", text)
+        assert model in text and accepted, (name, text[-6000:])
+        assert int(accepted[1]) <= MAINTENANCE_WAIT_LIMIT_MS, (
+            name,
+            "maintenance refused for longer than one identity read",
+            accepted[0],
+        )
         assert text.index(model) < text.index("MAINTENANCE=1"), (
             name,
             "identity did not publish before maintenance",
