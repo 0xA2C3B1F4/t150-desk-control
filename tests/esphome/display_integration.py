@@ -281,11 +281,14 @@ async def exercise(scenario, work, env):
                 "reconnect_high_sequence",
             ):
                 before = len(events)
-                pause_until = time.monotonic() + 1.5
-                await asyncio.sleep(1)
-                assert latest("Display timeout").missing_state
+                # Keep the peer silent until invalidation reaches the API. A slow
+                # host may process queued height samples after the pause starts.
+                pause_until = float("inf")
+                # Stay below the height monitor's 3 s stale-link fallback.
+                await wait_until(lambda: latest("Display timeout").missing_state, 2)
                 if scenario != "reconnect_same":
                     sequence, mode, seconds = 0, 0, 60
+                pause_until = 0
                 await wait_until(
                     lambda: any(
                         body.startswith("d70400") for _, body in events[before:]
