@@ -8,7 +8,8 @@ def instrument(work):
 
     Production sources and existing timeout thresholds remain unchanged.
     """
-    path = work / "build/src/esphome/components/desk_uart/desk_uart.cpp"
+    component = work / "build/src/esphome/components/desk_uart"
+    path = component / "desk_uart.cpp"
     original = path.read_text()
     source = original
     old = "void DeskUART::loop() {"
@@ -48,6 +49,11 @@ def instrument(work):
     )
     assert source.count(old) == 1
     source = source.replace(old, new)
+    patched = [(path, original, source)]
+    # The third anchor is in panel_lock_loop_(), in the panel-lock feature file.
+    path = component / "panel_lock_controls.cpp"
+    original = path.read_text()
+    source = original
     old = """if (!fresh)
     this->invalidate_panel_lock_("No recent controller reply; panel-lock state unknown");"""
     new = """if (!fresh) {
@@ -59,16 +65,16 @@ def instrument(work):
   }"""
     assert source.count(old) == 1
     source = source.replace(old, new)
-    if path.is_symlink():
-        path.unlink()
-    path.write_text(source)
-    (work / "timing-instrumentation.diff").write_text(
-        "".join(
-            difflib.unified_diff(
-                original.splitlines(True),
-                source.splitlines(True),
-                fromfile="production/desk_uart.cpp",
-                tofile="generated-host/desk_uart.cpp",
-            )
+    patched.append((path, original, source))
+    diff = []
+    for path, original, source in patched:
+        if path.is_symlink():
+            path.unlink()
+        path.write_text(source)
+        diff += difflib.unified_diff(
+            original.splitlines(True),
+            source.splitlines(True),
+            fromfile=f"production/{path.name}",
+            tofile=f"generated-host/{path.name}",
         )
-    )
+    (work / "timing-instrumentation.diff").write_text("".join(diff))
